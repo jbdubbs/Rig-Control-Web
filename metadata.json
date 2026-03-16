@@ -1,0 +1,5 @@
+{
+  "name": "RigControl Web",
+  "description": "A web-based frontend for hamlib rigctld with PWA support for local installation and portable backend capabilities.",
+  "requestFramePermissions": []
+}
