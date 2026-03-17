@@ -431,7 +431,7 @@ export default function App() {
                   )}>
                     <Radio size={16} />
                   </div>
-                  <h1 className="text-sm font-bold tracking-tighter uppercase italic">RigControl</h1>
+                  <h1 className="text-sm font-bold tracking-tighter uppercase italic">RigControl Web</h1>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] text-[#8e9299] uppercase">{host}:{port}</span>
@@ -452,62 +452,55 @@ export default function App() {
               </div>
 
               {showHeaderOptions && (
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#2a2b2e] animate-in slide-in-from-top-2 duration-200">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[8px] uppercase text-[#8e9299]">Host</label>
-                    <input 
-                      type="text" 
-                      value={host}
-                      onChange={(e) => setHost(e.target.value)}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[8px] uppercase text-[#8e9299]">Port</label>
-                    <input 
-                      type="number" 
-                      value={(port === null || isNaN(port)) ? "" : port}
-                      onChange={(e) => setPort(parseInt(e.target.value))}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                  <div className="col-span-2 flex gap-2 pt-1">
+                <div className="pt-2 border-t border-[#2a2b2e] animate-in slide-in-from-top-2 duration-200 space-y-2">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 flex flex-col gap-1">
+                      <label className="text-[8px] uppercase text-[#8e9299]">Host</label>
+                      <input 
+                        type="text" 
+                        value={host}
+                        onChange={(e) => setHost(e.target.value)}
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div className="w-16 flex flex-col gap-1">
+                      <label className="text-[8px] uppercase text-[#8e9299]">Port</label>
+                      <input 
+                        type="number" 
+                        value={(port === null || isNaN(port)) ? "" : port}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setPort(isNaN(val) ? NaN : val);
+                        }}
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
                     <button 
                       onClick={handleConnect}
                       className={cn(
-                        "flex-1 py-1.5 rounded font-bold uppercase text-[9px] transition-all flex items-center justify-center gap-1",
+                        "w-24 py-1 rounded font-bold uppercase text-[9px] transition-all flex items-center justify-center gap-1 h-[22px]",
                         connected ? "bg-red-500/20 text-red-500 border border-red-500/50" : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50"
                       )}
                     >
                       <Power size={10} />
                       {connected ? "Disconnect" : "Connect"}
                     </button>
-                    {!connected && (
-                      <button 
-                        onClick={() => socket?.emit("connect-rig", { host: "mock", port: 0 })}
-                        className="px-3 py-1.5 rounded font-bold uppercase text-[9px] bg-amber-500/20 text-amber-500 border border-amber-500/50"
-                      >
-                        Demo
-                      </button>
-                    )}
                   </div>
-                  <div className="col-span-2 flex gap-2">
-                    <button 
-                      onClick={() => setShowSetupModal(true)}
-                      className="flex-1 py-1.5 rounded font-bold uppercase text-[9px] bg-[#2a2b2e] text-[#8e9299] border border-[#3a3b3e] flex items-center justify-center gap-1"
-                    >
-                      <Server size={10} />
-                      Portable
-                    </button>
-                    <div className="flex-1 flex flex-col gap-0.5">
+                  
+                  <div className="flex justify-center">
+                    <div className="w-1/3 flex flex-col gap-1">
+                      <label className="text-[8px] uppercase text-[#8e9299] text-center">Polling Rate</label>
                       <select 
                         value={pollRate}
                         onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
-                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer"
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-1 py-1 text-[10px] focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer text-center"
                       >
                         <option value={250}>250ms</option>
+                        <option value={500}>500ms</option>
                         <option value={1000}>1000ms</option>
+                        <option value={1500}>1500ms</option>
                         <option value={2000}>2000ms</option>
+                        <option value={5000}>5000ms</option>
                       </select>
                     </div>
                   </div>
@@ -526,13 +519,6 @@ export default function App() {
                 <div>
                   <div className="flex items-center gap-3">
                     <h1 className="text-2xl font-bold tracking-tighter uppercase italic">RigControl Web</h1>
-                    <button 
-                      onClick={() => setIsCompact(true)}
-                      className="p-1.5 hover:bg-white/5 rounded text-[#8e9299] transition-colors"
-                      title="Enter Compact Mode"
-                    >
-                      <Minimize2 size={16} />
-                    </button>
                   </div>
                   <p className="text-xs text-[#8e9299] uppercase tracking-widest">Hamlib rigctld Interface</p>
                 </div>
@@ -600,6 +586,13 @@ export default function App() {
                         Demo
                       </button>
                     )}
+                    <button 
+                      onClick={() => setIsCompact(true)}
+                      className="px-3 py-2 rounded font-bold uppercase text-xs transition-all bg-[#2a2b2e] text-[#8e9299] border border-[#3a3b3e] hover:bg-[#3a3b3e] hover:text-white flex items-center justify-center"
+                      title="Enter Compact Mode"
+                    >
+                      <Minimize2 size={14} />
+                    </button>
                   </div>
                 </div>
 

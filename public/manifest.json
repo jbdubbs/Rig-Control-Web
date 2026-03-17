@@ -1,6 +1,6 @@
 {
-  "name": "Ham Radio Rig Control",
-  "short_name": "RigControl",
+  "name": "RIGCONTROL WEB",
+  "short_name": "RIGCONTROL WEB",
   "description": "A web-based interface for controlling ham radio rigs via rigctld.",
   "start_url": "/",
   "scope": "/",
