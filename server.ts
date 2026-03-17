@@ -12,13 +12,59 @@ async function startServer() {
   const PORT = 3000;
 
   let rigSocket: net.Socket | null = null;
-  let pollingInterval: NodeJS.Timeout | null = null;
+  let pollingTimeout: NodeJS.Timeout | null = null;
   let pollRate = 2000;
   let rigConfig = { host: "", port: 0 };
+  let isConnected = false;
+
+  const connectToRig = (host: string, port: number, socket?: any) => {
+    if (rigSocket) {
+      rigSocket.destroy();
+      rigSocket = null;
+    }
+
+    rigConfig = { host, port };
+    rigSocket = new net.Socket();
+    
+    rigSocket.connect(port, host, () => {
+      console.log(`Connected to rigctld at ${host}:${port}`);
+      isConnected = true;
+      if (socket) socket.emit("rig-connected", { host, port });
+      startPolling();
+    });
+
+    rigSocket.on("error", (err) => {
+      console.error("Rig socket error:", err);
+      isConnected = false;
+      if (socket) socket.emit("rig-error", `Connection Error: ${err.message}`);
+    });
+
+    rigSocket.on("close", () => {
+      console.log("Rig connection closed");
+      isConnected = false;
+      if (socket) socket.emit("rig-disconnected");
+      stopPolling();
+    });
+  };
+
+  const startPolling = () => {
+    stopPolling();
+    const runPoll = async () => {
+      if (!isConnected && !isMock) return;
+      await pollRig();
+      pollingTimeout = setTimeout(runPoll, pollRate);
+    };
+    pollingTimeout = setTimeout(runPoll, pollRate);
+  };
+
+  const stopPolling = () => {
+    if (pollingTimeout) {
+      clearTimeout(pollingTimeout);
+      pollingTimeout = null;
+    }
+  };
 
   let isMock = false;
-  let lastSlowPollTime = 0;
-  let isFirstPoll = true;
   let visibleMeters: string[] = ['swr', 'alc'];
   let lastStatus: any = {
     frequency: "14074000",
@@ -41,8 +87,6 @@ async function startServer() {
   };
 
   const resetRigState = () => {
-    isFirstPoll = true;
-    lastSlowPollTime = 0;
     lastStatus = {
       frequency: "14074000",
       mode: "USB",
@@ -64,6 +108,37 @@ async function startServer() {
     };
   };
 
+  const formatExtendedCommand = (cmd: string): string => {
+    const trimmed = cmd.trim();
+    const parts = trimmed.split(/\s+/);
+    if (parts[0].length === 1) {
+      return `+${trimmed}`;
+    }
+    return `+\\${trimmed}`;
+  };
+
+  const parseExtendedResponse = (resp: string): string => {
+    const lines = resp.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length < 3) return resp;
+    
+    const lastLine = lines[lines.length - 1];
+    if (lastLine.includes("RPRT 1")) {
+      throw new Error("Rig command error (RPRT 1)");
+    }
+    
+    const values: string[] = [];
+    for (let i = 1; i < lines.length - 1; i++) {
+      const line = lines[i];
+      const colonIndex = line.indexOf(":");
+      if (colonIndex !== -1) {
+        values.push(line.substring(colonIndex + 1).trim());
+      } else {
+        values.push(line);
+      }
+    }
+    return values.join("\n");
+  };
+
   let mockAtt = 0;
   let mockPreamp = 0;
   let mockNB = 0;
@@ -72,144 +147,201 @@ async function startServer() {
   let mockTuner = 0;
   let mockRFPower = 0.5;
 
-  let rigCommandQueue: Promise<any> = Promise.resolve();
+  const rigCommandQueue: { cmd: string; useExtended: boolean; resolve: (val: string) => void; reject: (err: any) => void }[] = [];
+  let isRigBusy = false;
 
-  const sendToRig = (cmd: string): Promise<string> => {
-    if (isMock) {
-      const cleanCmd = cmd.startsWith("\\") ? cmd.substring(1) : cmd;
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          if (cleanCmd === "f") resolve("14250000");
-          else if (cleanCmd === "m") resolve("USB\n2400");
-          else if (cleanCmd === "M ?") resolve("AM CW USB LSB RTTY FM PKTUSB PKTLSB");
-          else if (cleanCmd === "t") resolve("0");
-          else if (cleanCmd === "v") resolve("VFOA");
-          else if (cleanCmd.startsWith("G")) resolve("RPRT 0");
-          else if (cleanCmd.startsWith("l STRENGTH")) resolve((Math.random() * -100).toString());
-          else if (cleanCmd.startsWith("l SWR")) resolve((1 + Math.random() * 0.5).toString());
-          else if (cleanCmd.startsWith("l ALC")) resolve(Math.random().toString());
-          else if (cleanCmd.startsWith("l VD_METER")) resolve((13.5 + Math.random() * 0.6).toString());
-          else if (cleanCmd.startsWith("l RFPOWER_METER")) resolve((mockRFPower * (0.9 + Math.random() * 0.2)).toString());
-          else if (cleanCmd.startsWith("l RFPOWER")) resolve(mockRFPower.toString());
-          else if (cleanCmd.startsWith("l ATT")) resolve(mockAtt.toString());
-          else if (cleanCmd.startsWith("l PREAMP")) resolve(mockPreamp.toString());
-          else if (cleanCmd.startsWith("u NB")) resolve(mockNB.toString());
-          else if (cleanCmd.startsWith("u NR")) resolve(mockNR.toString());
-          else if (cleanCmd.startsWith("l NR")) resolve(mockNRLevel.toString());
-          else if (cleanCmd.startsWith("u TUNER")) resolve(mockTuner.toString());
-          else if (cleanCmd.startsWith("L ATT")) {
-            mockAtt = parseInt(cleanCmd.split(" ")[2]);
-            resolve("RPRT 0");
-          }
-          else if (cleanCmd.startsWith("L PREAMP")) {
-            mockPreamp = parseInt(cleanCmd.split(" ")[2]);
-            resolve("RPRT 0");
-          }
-          else if (cleanCmd.startsWith("U NB")) {
-            mockNB = parseInt(cleanCmd.split(" ")[2]);
-            resolve("RPRT 0");
-          }
-          else if (cleanCmd.startsWith("U NR")) {
-            mockNR = parseInt(cleanCmd.split(" ")[2]);
-            resolve("RPRT 0");
-          }
-          else if (cleanCmd.startsWith("L NR")) {
-            mockNRLevel = parseFloat(cleanCmd.split(" ")[2]);
-            resolve("RPRT 0");
-          }
-          else if (cleanCmd.startsWith("U TUNER")) {
-            mockTuner = parseInt(cleanCmd.split(" ")[2]);
-            resolve("RPRT 0");
-          }
-          else if (cleanCmd.startsWith("G TUNE")) {
-            mockTuner = 1;
-            resolve("RPRT 0");
-          }
-          else if (cleanCmd.startsWith("L RFPOWER")) {
-            mockRFPower = parseFloat(cleanCmd.split(" ")[2]);
-            resolve("RPRT 0");
-          }
-          else resolve("RPRT 0");
-        }, 50);
-      });
+  const processRigQueue = async () => {
+    if (isRigBusy || rigCommandQueue.length === 0) return;
+    isRigBusy = true;
+    const { cmd, useExtended, resolve, reject } = rigCommandQueue.shift()!;
+    
+    try {
+      const resp = await executeRigCommand(cmd, useExtended);
+      resolve(resp);
+    } catch (err) {
+      reject(err);
+    } finally {
+      isRigBusy = false;
+      setTimeout(processRigQueue, 10);
     }
+  };
 
-    // Real rig logic with queue and extended protocol
-    return rigCommandQueue = rigCommandQueue.then(async () => {
-      if (!rigSocket || rigSocket.destroyed) throw new Error("Not connected to rig");
-
-      const extendedCmd = cmd.startsWith("\\") ? cmd : `\\${cmd}`;
-      const cmdName = cmd.split(" ")[0];
-
-      return new Promise<string>((resolve, reject) => {
-        let buffer = "";
-        const timeout = setTimeout(() => {
-          cleanup();
-          reject(new Error(`Rig timeout on command: ${cmd}`));
-        }, 3000);
-
-        const onData = (data: Buffer) => {
-          buffer += data.toString();
-          if (buffer.includes("RPRT")) {
-            cleanup();
-            const lines = buffer.trim().split(/\r?\n/);
-            let resultLines: string[] = [];
-            let foundCmd = false;
-            let rprtValue = "";
-
-            for (const line of lines) {
-              if (line.startsWith("RPRT")) {
-                rprtValue = line;
-                break;
-              }
-              if (line.startsWith(`${cmdName}:`)) {
-                foundCmd = true;
-                const val = line.substring(cmdName.length + 1).trim();
-                if (val) resultLines.push(val);
-              } else if (foundCmd) {
-                resultLines.push(line.trim());
-              }
-            }
-
-            if (resultLines.length === 0) {
-              resolve(rprtValue || lines[lines.length - 1]);
-            } else {
-              resolve(resultLines.join("\n"));
-            }
-          }
-        };
-
-        const onError = (err: Error) => {
-          cleanup();
-          reject(err);
-        };
-
-        const cleanup = () => {
-          rigSocket?.removeListener("data", onData);
-          rigSocket?.removeListener("error", onError);
-          clearTimeout(timeout);
-        };
-
-        rigSocket!.on("data", onData);
-        rigSocket!.on("error", onError);
-        rigSocket!.write(extendedCmd + "\n");
-      });
-    }).catch(err => {
-      // We catch here to ensure the queue doesn't get stuck on a single failure
-      // but we still rethrow so the caller knows it failed.
-      throw err;
+  const sendToRig = (cmd: string, useExtended = false): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      rigCommandQueue.push({ cmd, useExtended, resolve, reject });
+      processRigQueue();
     });
   };
 
-  const pollRig = async (forceSlow = false) => {
-    if (!isMock && (!rigSocket || rigSocket.destroyed)) return;
+  const executeRigCommand = (cmd: string, useExtended = false): Promise<string> => {
+    const finalCmd = useExtended ? formatExtendedCommand(cmd) : cmd;
+    
+    if (isMock) {
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          let response = "";
+          let longCmd = "";
+          
+          // Determine long command name for extended protocol
+          if (cmd === "f") longCmd = "get_freq";
+          else if (cmd === "m") longCmd = "get_mode";
+          else if (cmd === "t") longCmd = "get_ptt";
+          else if (cmd === "v") longCmd = "get_vfo";
+          else if (cmd.startsWith("l")) longCmd = "get_level";
+          else if (cmd.startsWith("u")) longCmd = "get_func";
+          else longCmd = cmd;
+
+          if (cmd === "f") response = "14250000";
+          else if (cmd === "m") response = "USB\n2400";
+          else if (cmd === "M ?") response = "AM CW USB LSB RTTY FM PKTUSB PKTLSB";
+          else if (cmd === "t") response = "0";
+          else if (cmd === "v") response = "VFOA";
+          else if (cmd.startsWith("G")) response = "RPRT 0";
+          else if (cmd.startsWith("l STRENGTH")) response = (Math.random() * -100).toString();
+          else if (cmd.startsWith("l SWR")) response = (1 + Math.random() * 0.5).toString();
+          else if (cmd.startsWith("l ALC")) response = Math.random().toString();
+          else if (cmd.startsWith("l VD_METER")) response = (13.5 + Math.random() * 0.6).toString();
+          else if (cmd.startsWith("l RFPOWER_METER")) response = (mockRFPower * (0.9 + Math.random() * 0.2)).toString();
+          else if (cmd.startsWith("l RFPOWER")) response = mockRFPower.toString();
+          else if (cmd.startsWith("l ATT")) response = mockAtt.toString();
+          else if (cmd.startsWith("l PREAMP")) response = mockPreamp.toString();
+          else if (cmd.startsWith("u NB")) response = mockNB.toString();
+          else if (cmd.startsWith("u NR")) response = mockNR.toString();
+          else if (cmd.startsWith("l NR")) response = mockNRLevel.toString();
+          else if (cmd.startsWith("u TUNER")) response = mockTuner.toString();
+          else if (cmd.startsWith("L ATT")) {
+            mockAtt = parseInt(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("L PREAMP")) {
+            mockPreamp = parseInt(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("U NB")) {
+            mockNB = parseInt(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("U NR")) {
+            mockNR = parseInt(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("L NR")) {
+            mockNRLevel = parseFloat(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("U TUNER")) {
+            mockTuner = parseInt(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("G TUNE")) {
+            mockTuner = 1;
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("L RFPOWER")) {
+            mockRFPower = parseFloat(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else response = "RPRT 0";
+
+          if (useExtended) {
+            let extendedResp = `${longCmd}:\n`;
+            const lines = response.split("\n");
+            if (cmd === "m") {
+              extendedResp += `Mode: ${lines[0]}\nPassband: ${lines[1]}\n`;
+            } else if (cmd.startsWith("l")) {
+              const param = cmd.split(" ")[1];
+              extendedResp += `${param}: ${response}\n`;
+            } else if (cmd.startsWith("u")) {
+              const param = cmd.split(" ")[1];
+              extendedResp += `${param}: ${response}\n`;
+            } else {
+              extendedResp += `Value: ${response}\n`;
+            }
+            extendedResp += "RPRT 0";
+            try {
+              resolve(parseExtendedResponse(extendedResp));
+            } catch (e) {
+              reject(e);
+            }
+          } else {
+            resolve(response.trim());
+          }
+        }, 50);
+      });
+    }
+    return new Promise((resolve, reject) => {
+      if (!rigSocket || rigSocket.destroyed) {
+        return reject("Not connected to rig");
+      }
+      
+      let responseBuffer = "";
+      const timeout = setTimeout(() => {
+        rigSocket?.removeListener("data", onData);
+        rigSocket?.removeListener("error", onError);
+        
+        // On timeout, the socket state is likely corrupted (leftover data).
+        // We reconnect to ensure the next command starts clean.
+        console.warn("Rig command timeout - reconnecting to reset state");
+        if (rigSocket) {
+          rigSocket.destroy();
+          isConnected = false;
+          // Reconnect logic will be handled by the next poll or manual action
+          // but for now we just reject.
+        }
+        
+        reject("Rig command timeout");
+      }, 10000);
+
+      const onData = (data: Buffer) => {
+        responseBuffer += data.toString();
+        
+        if (useExtended) {
+          if (responseBuffer.includes("RPRT 0") || responseBuffer.includes("RPRT 1")) {
+            clearTimeout(timeout);
+            rigSocket?.removeListener("data", onData);
+            rigSocket?.removeListener("error", onError);
+            try {
+              resolve(parseExtendedResponse(responseBuffer));
+            } catch (e) {
+              reject(e);
+            }
+          }
+        } else {
+          // Standard mode
+          clearTimeout(timeout);
+          rigSocket?.removeListener("data", onData);
+          rigSocket?.removeListener("error", onError);
+          resolve(responseBuffer.trim());
+        }
+      };
+      
+      const onError = (err: Error) => {
+        clearTimeout(timeout);
+        rigSocket?.removeListener("data", onData);
+        reject(err);
+      };
+      
+      rigSocket.on("data", onData);
+      rigSocket.once("error", onError);
+      rigSocket.write(finalCmd + "\n");
+    });
+  };
+
+  const pollRig = async () => {
+    if (!isMock && !isConnected) {
+      // If disconnected, try to reconnect occasionally
+      if (rigConfig.host && rigConfig.host !== "mock" && !isMock) {
+        console.log("Attempting background reconnection...");
+        connectToRig(rigConfig.host, rigConfig.port);
+      }
+      return;
+    }
     try {
       const now = Date.now();
-      const shouldPollSlow = forceSlow || isFirstPoll || (now - lastSlowPollTime > 30000);
       
-      // Fast Poll Items (Always)
-      const ptt = await sendToRig("t");
-      const smeter = await sendToRig("l STRENGTH");
+      // Poll all items at the user-selected pollRate
+      const ptt = await sendToRig("t", true);
+      const smeter = await sendToRig("l STRENGTH", true);
       const isPttActive = ptt === "1";
       
       let alc = "0";
@@ -218,9 +350,9 @@ async function startServer() {
 
       if (isPttActive) {
         try {
-          alc = await sendToRig("l ALC");
-          powerMeter = await sendToRig("l RFPOWER_METER");
-          swr = await sendToRig("l SWR");
+          alc = await sendToRig("l ALC", true);
+          powerMeter = await sendToRig("l RFPOWER_METER", true);
+          swr = await sendToRig("l SWR", true);
         } catch (e) {
           console.warn("TX levels poll failed, might not be supported");
         }
@@ -229,40 +361,20 @@ async function startServer() {
       // VDD Poll (Conditional)
       let vdd = lastStatus.vdd?.toString() || "13.8";
       if (visibleMeters.includes('vdd')) {
-        vdd = await sendToRig("l VD_METER").catch(() => "13.8");
+        vdd = await sendToRig("l VD_METER", true).catch(() => "13.8");
       }
 
-      // Slow Poll Items
-      let frequency = lastStatus.frequency;
-      let mode = lastStatus.mode;
-      let bandwidth = lastStatus.bandwidth;
-      let rfpower = lastStatus.rfpower;
-      let vfo = lastStatus.vfo;
-      let att = lastStatus.attenuation;
-      let preamp = lastStatus.preamp;
-      let nb = lastStatus.nb;
-      let nr = lastStatus.nr;
-      let nrLevel = lastStatus.nrLevel;
-      let tuner = lastStatus.tuner;
-
-      if (shouldPollSlow) {
-        frequency = await sendToRig("f");
-        const modeBw = await sendToRig("m");
-        const [m, bw] = modeBw.split("\n");
-        mode = m;
-        bandwidth = bw;
-        rfpower = parseFloat(await sendToRig("l RFPOWER"));
-        vfo = await sendToRig("v");
-        att = parseInt(await sendToRig("l ATT")) || 0;
-        preamp = parseInt(await sendToRig("l PREAMP")) || 0;
-        nb = (await sendToRig("u NB")) === "1";
-        nr = (await sendToRig("u NR").catch(() => "0")) === "1";
-        nrLevel = parseFloat(await sendToRig("l NR").catch(() => "0"));
-        tuner = (await sendToRig("u TUNER").catch(() => "0")) === "1";
-        
-        lastSlowPollTime = now;
-        isFirstPoll = false;
-      }
+      const frequency = await sendToRig("f", true);
+      const modeBw = await sendToRig("m", true);
+      const [mode, bandwidth] = modeBw.split("\n");
+      const rfpower = parseFloat(await sendToRig("l RFPOWER", true));
+      const vfo = await sendToRig("v", true);
+      const att = parseInt(await sendToRig("l ATT", true)) || 0;
+      const preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
+      const nb = (await sendToRig("u NB", true)) === "1";
+      const nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
+      const nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
+      const tuner = (await sendToRig("u TUNER", true).catch(() => "0")) === "1";
 
       lastStatus = {
         frequency,
@@ -300,39 +412,12 @@ async function startServer() {
         isMock = true;
         console.log("Starting Mock Rig Mode");
         socket.emit("rig-connected", { host: "MOCK", port: 0 });
-        if (pollingInterval) clearInterval(pollingInterval);
-        pollingInterval = setInterval(pollRig, pollRate);
+        startPolling();
         return;
       }
 
       isMock = false;
-      if (rigSocket) {
-        rigSocket.destroy();
-        if (pollingInterval) clearInterval(pollingInterval);
-      }
-
-      rigConfig = { host, port };
-      
-      rigSocket = new net.Socket();
-      
-      rigSocket.connect(port, host, () => {
-        console.log(`Connected to rigctld at ${host}:${port}`);
-        socket.emit("rig-connected", { host, port });
-        
-        if (pollingInterval) clearInterval(pollingInterval);
-        pollingInterval = setInterval(pollRig, pollRate);
-      });
-
-      rigSocket.on("error", (err) => {
-        console.error("Rig socket error:", err);
-        socket.emit("rig-error", `Connection Failed: ${err.message}. Please check your settings and try again.`);
-      });
-
-      rigSocket.on("close", () => {
-        console.log("Rig connection closed");
-        socket.emit("rig-disconnected");
-        if (pollingInterval) clearInterval(pollingInterval);
-      });
+      connectToRig(host, port, socket);
     });
 
     socket.on("disconnect-rig", () => {
@@ -342,10 +427,8 @@ async function startServer() {
         rigSocket.destroy();
         rigSocket = null;
       }
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-      }
+      isConnected = false;
+      stopPolling();
       socket.emit("rig-disconnected");
       console.log("Rig manually disconnected");
     });
@@ -353,7 +436,7 @@ async function startServer() {
     socket.on("set-func", async ({ func, state }) => {
       try {
         await sendToRig(`U ${func} ${state ? "1" : "0"}`);
-        pollRig(true);
+        pollRig();
       } catch (err) {
         socket.emit("rig-error", `Failed to set ${func}`);
       }
@@ -362,7 +445,7 @@ async function startServer() {
     socket.on("set-level", async ({ level, val }) => {
       try {
         await sendToRig(`L ${level} ${val}`);
-        pollRig(true);
+        pollRig();
       } catch (err) {
         socket.emit("rig-error", `Failed to set ${level}`);
       }
@@ -371,7 +454,7 @@ async function startServer() {
     socket.on("set-frequency", async (freq) => {
       try {
         await sendToRig(`F ${freq}`);
-        pollRig(true);
+        pollRig();
       } catch (err) {
         socket.emit("rig-error", "Failed to set frequency");
       }
@@ -380,7 +463,7 @@ async function startServer() {
     socket.on("set-mode", async ({ mode, bandwidth }) => {
       try {
         await sendToRig(`M ${mode} ${bandwidth}`);
-        pollRig(true);
+        pollRig();
       } catch (err) {
         socket.emit("rig-error", "Failed to set mode/bandwidth");
       }
@@ -400,7 +483,7 @@ async function startServer() {
     socket.on("set-ptt", async (ptt) => {
       try {
         await sendToRig(`T ${ptt ? "1" : "0"}`);
-        pollRig(true);
+        pollRig();
       } catch (err) {
         socket.emit("rig-error", "Failed to set PTT");
       }
@@ -409,7 +492,7 @@ async function startServer() {
     socket.on("set-vfo", async (vfo) => {
       try {
         await sendToRig(`V ${vfo}`);
-        pollRig(true);
+        pollRig();
       } catch (err) {
         socket.emit("rig-error", "Failed to set VFO");
       }
@@ -418,7 +501,7 @@ async function startServer() {
     socket.on("vfo-op", async (op) => {
       try {
         await sendToRig(`G ${op}`);
-        pollRig(true);
+        pollRig();
       } catch (err) {
         socket.emit("rig-error", `Failed to execute VFO operation: ${op}`);
       }
@@ -430,10 +513,7 @@ async function startServer() {
 
     socket.on("set-poll-rate", (rate) => {
       pollRate = rate;
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = setInterval(pollRig, pollRate);
-      }
+      startPolling();
     });
 
     socket.on("send-raw", async (cmd) => {
