@@ -39,6 +39,31 @@ async function startServer() {
     nrLevel: 0.5,
     tuner: false
   };
+
+  const resetRigState = () => {
+    isFirstPoll = true;
+    lastSlowPollTime = 0;
+    lastStatus = {
+      frequency: "14074000",
+      mode: "USB",
+      bandwidth: "2400",
+      ptt: false,
+      smeter: -54,
+      swr: 1.0,
+      alc: 0,
+      powerMeter: 0,
+      rfpower: 0.5,
+      vdd: 13.8,
+      vfo: "VFOA",
+      attenuation: 0,
+      preamp: 0,
+      nb: false,
+      nr: false,
+      nrLevel: 0.5,
+      tuner: false
+    };
+  };
+
   let mockAtt = 0;
   let mockPreamp = 0;
   let mockNB = 0;
@@ -132,15 +157,17 @@ async function startServer() {
       // Fast Poll Items (Always)
       const ptt = await sendToRig("t");
       const smeter = await sendToRig("l STRENGTH");
-      const swr = await sendToRig("l SWR");
       const isPttActive = ptt === "1";
       
       let alc = "0";
       let powerMeter = "0";
+      let swr = "1.0";
+
       if (isPttActive) {
         try {
           alc = await sendToRig("l ALC");
           powerMeter = await sendToRig("l RFPOWER_METER");
+          swr = await sendToRig("l SWR");
         } catch (e) {
           console.warn("TX levels poll failed, might not be supported");
         }
@@ -215,6 +242,7 @@ async function startServer() {
     console.log("Client connected");
 
     socket.on("connect-rig", ({ host, port }) => {
+      resetRigState();
       if (host === "mock") {
         isMock = true;
         console.log("Starting Mock Rig Mode");
@@ -232,13 +260,6 @@ async function startServer() {
 
       rigConfig = { host, port };
       
-      // Check for private IP ranges
-      const isPrivate = /^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.)/.test(host);
-      if (isPrivate && host !== "localhost") {
-        socket.emit("rig-error", `Private IP Detected (${host}): This app runs in the cloud and cannot access your home network directly. You must use a public URL (like ngrok) or set up port forwarding on your router.`);
-        return;
-      }
-
       rigSocket = new net.Socket();
       
       rigSocket.connect(port, host, () => {
@@ -251,7 +272,7 @@ async function startServer() {
 
       rigSocket.on("error", (err) => {
         console.error("Rig socket error:", err);
-        socket.emit("rig-error", `Connection Failed: ${err.message}. If running locally, ensure rigctld is listening on 0.0.0.0 and your firewall allows the connection.`);
+        socket.emit("rig-error", `Connection Failed: ${err.message}. Please check your settings and try again.`);
       });
 
       rigSocket.on("close", () => {
@@ -263,6 +284,7 @@ async function startServer() {
 
     socket.on("disconnect-rig", () => {
       isMock = false;
+      resetRigState();
       if (rigSocket) {
         rigSocket.destroy();
         rigSocket = null;
