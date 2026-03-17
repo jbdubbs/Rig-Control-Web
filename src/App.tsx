@@ -126,6 +126,10 @@ export default function App() {
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [isCompact, setIsCompact] = useState(() => localStorage.getItem("is-compact") === "true");
+  const [fontSize, setFontSize] = useState(() => {
+    const saved = localStorage.getItem("font-size");
+    return saved ? parseInt(saved) : 16;
+  });
   const [activeMeter, setActiveMeter] = useState<'signal' | 'swr' | 'alc' | 'vdd'>('signal');
   const effectiveRightMeter = (isCompact && activeMeter === 'signal') ? 'swr' : activeMeter;
   const [activeVFO, setActiveVFO] = useState<'A' | 'B'>('A');
@@ -135,10 +139,12 @@ export default function App() {
   const targetModeRef = useRef("");
   const modeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const skipPollsCount = useRef(0);
+  const pttRef = useRef(false);
 
   useEffect(() => {
     if (status) {
       localStorage.setItem("last-rig-status", JSON.stringify(status));
+      pttRef.current = status.ptt;
     }
   }, [status]);
 
@@ -167,17 +173,25 @@ export default function App() {
   }, [isCompact]);
 
   useEffect(() => {
+    localStorage.setItem("font-size", fontSize.toString());
+    document.documentElement.style.fontSize = `${fontSize}px`;
+  }, [fontSize]);
+
+  useEffect(() => {
     if (!socket) return;
     const visible = [];
+    const isPtt = status?.ptt || false;
     if (isCompact) {
-      if (effectiveRightMeter === 'swr') visible.push('swr');
-      if (effectiveRightMeter === 'alc') visible.push('alc');
+      if (effectiveRightMeter === 'swr' && isPtt) visible.push('swr');
+      if (effectiveRightMeter === 'alc' && isPtt) visible.push('alc');
       if (effectiveRightMeter === 'vdd') visible.push('vdd');
     } else {
-      visible.push('swr', 'alc');
+      if (isPtt) {
+        visible.push('swr', 'alc');
+      }
     }
     socket.emit("set-visible-meters", visible);
-  }, [socket, isCompact, effectiveRightMeter]);
+  }, [socket, isCompact, effectiveRightMeter, status?.ptt]);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
@@ -238,7 +252,14 @@ export default function App() {
       // Sanitize S-Meter: range is -54 (S0) to +60 (S9+60)
       newStatus.smeter = Math.max(-54, Math.min(60, newStatus.smeter ?? -54));
       
-      setStatus(prev => ({ ...prev, ...newStatus }));
+      setStatus(prev => {
+        const updated = { ...prev, ...newStatus };
+        if (!updated.ptt) {
+          updated.swr = 1.0;
+          updated.alc = 0;
+        }
+        return updated;
+      });
 
       if (!isDraggingRF.current && newStatus.rfpower !== undefined && newStatus.rfpower !== null) {
         setLocalRFPower(newStatus.rfpower);
@@ -256,12 +277,13 @@ export default function App() {
       if (newStatus.vfo === "VFOB" && newStatus.frequency) setVfoB(newStatus.frequency);
       
       setHistory(prev => {
+        const currentPtt = newStatus.ptt !== undefined ? newStatus.ptt : pttRef.current;
         const next = [...prev, { 
-          time: new Date(newStatus.timestamp).toLocaleTimeString(),
+          time: new Date(newStatus.timestamp || Date.now()).toLocaleTimeString(),
           smeter: newStatus.smeter,
-          swr: newStatus.swr,
-          swrGraph: Math.min(5, newStatus.swr),
-          alc: newStatus.alc,
+          swr: currentPtt ? (newStatus.swr ?? 1.0) : 1.0,
+          swrGraph: Math.min(5, currentPtt ? (newStatus.swr ?? 1.0) : 1.0),
+          alc: currentPtt ? (newStatus.alc ?? 0) : 0,
           powerMeter: newStatus.powerMeter,
           vdd: newStatus.vdd
         }];
@@ -432,6 +454,22 @@ export default function App() {
                     <Radio size={16} />
                   </div>
                   <h1 className="text-sm font-bold tracking-tighter uppercase italic">RigControl Web</h1>
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
+                      className="w-4 h-4 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[10px] hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      title="Decrease Font Size"
+                    >
+                      -
+                    </button>
+                    <button 
+                      onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
+                      className="w-4 h-4 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[10px] hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      title="Increase Font Size"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] text-[#8e9299] uppercase">{host}:{port}</span>
@@ -519,6 +557,22 @@ export default function App() {
                 <div>
                   <div className="flex items-center gap-3">
                     <h1 className="text-2xl font-bold tracking-tighter uppercase italic">RigControl Web</h1>
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
+                        className="w-6 h-6 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-sm hover:border-emerald-500 text-[#8e9299] transition-colors"
+                        title="Decrease Font Size"
+                      >
+                        -
+                      </button>
+                      <button 
+                        onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
+                        className="w-6 h-6 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-sm hover:border-emerald-500 text-[#8e9299] transition-colors"
+                        title="Increase Font Size"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                   <p className="text-xs text-[#8e9299] uppercase tracking-widest">Hamlib rigctld Interface</p>
                 </div>
