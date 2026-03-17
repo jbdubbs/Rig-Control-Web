@@ -72,79 +72,132 @@ async function startServer() {
   let mockTuner = 0;
   let mockRFPower = 0.5;
 
+  let rigCommandQueue: Promise<any> = Promise.resolve();
+
   const sendToRig = (cmd: string): Promise<string> => {
     if (isMock) {
+      const cleanCmd = cmd.startsWith("\\") ? cmd.substring(1) : cmd;
       return new Promise((resolve) => {
         setTimeout(() => {
-          if (cmd === "f") resolve("14250000");
-          else if (cmd === "m") resolve("USB\n2400");
-          else if (cmd === "M ?") resolve("AM CW USB LSB RTTY FM PKTUSB PKTLSB");
-          else if (cmd === "t") resolve("0");
-          else if (cmd === "v") resolve("VFOA");
-          else if (cmd.startsWith("G")) resolve("RPRT 0");
-          else if (cmd.startsWith("l STRENGTH")) resolve((Math.random() * -100).toString());
-          else if (cmd.startsWith("l SWR")) resolve((1 + Math.random() * 0.5).toString());
-          else if (cmd.startsWith("l ALC")) resolve(Math.random().toString());
-          else if (cmd.startsWith("l VD_METER")) resolve((13.5 + Math.random() * 0.6).toString());
-          else if (cmd.startsWith("l RFPOWER_METER")) resolve((mockRFPower * (0.9 + Math.random() * 0.2)).toString());
-          else if (cmd.startsWith("l RFPOWER")) resolve(mockRFPower.toString());
-          else if (cmd.startsWith("l ATT")) resolve(mockAtt.toString());
-          else if (cmd.startsWith("l PREAMP")) resolve(mockPreamp.toString());
-          else if (cmd.startsWith("u NB")) resolve(mockNB.toString());
-          else if (cmd.startsWith("u NR")) resolve(mockNR.toString());
-          else if (cmd.startsWith("l NR")) resolve(mockNRLevel.toString());
-          else if (cmd.startsWith("u TUNER")) resolve(mockTuner.toString());
-          else if (cmd.startsWith("L ATT")) {
-            mockAtt = parseInt(cmd.split(" ")[2]);
+          if (cleanCmd === "f") resolve("14250000");
+          else if (cleanCmd === "m") resolve("USB\n2400");
+          else if (cleanCmd === "M ?") resolve("AM CW USB LSB RTTY FM PKTUSB PKTLSB");
+          else if (cleanCmd === "t") resolve("0");
+          else if (cleanCmd === "v") resolve("VFOA");
+          else if (cleanCmd.startsWith("G")) resolve("RPRT 0");
+          else if (cleanCmd.startsWith("l STRENGTH")) resolve((Math.random() * -100).toString());
+          else if (cleanCmd.startsWith("l SWR")) resolve((1 + Math.random() * 0.5).toString());
+          else if (cleanCmd.startsWith("l ALC")) resolve(Math.random().toString());
+          else if (cleanCmd.startsWith("l VD_METER")) resolve((13.5 + Math.random() * 0.6).toString());
+          else if (cleanCmd.startsWith("l RFPOWER_METER")) resolve((mockRFPower * (0.9 + Math.random() * 0.2)).toString());
+          else if (cleanCmd.startsWith("l RFPOWER")) resolve(mockRFPower.toString());
+          else if (cleanCmd.startsWith("l ATT")) resolve(mockAtt.toString());
+          else if (cleanCmd.startsWith("l PREAMP")) resolve(mockPreamp.toString());
+          else if (cleanCmd.startsWith("u NB")) resolve(mockNB.toString());
+          else if (cleanCmd.startsWith("u NR")) resolve(mockNR.toString());
+          else if (cleanCmd.startsWith("l NR")) resolve(mockNRLevel.toString());
+          else if (cleanCmd.startsWith("u TUNER")) resolve(mockTuner.toString());
+          else if (cleanCmd.startsWith("L ATT")) {
+            mockAtt = parseInt(cleanCmd.split(" ")[2]);
             resolve("RPRT 0");
           }
-          else if (cmd.startsWith("L PREAMP")) {
-            mockPreamp = parseInt(cmd.split(" ")[2]);
+          else if (cleanCmd.startsWith("L PREAMP")) {
+            mockPreamp = parseInt(cleanCmd.split(" ")[2]);
             resolve("RPRT 0");
           }
-          else if (cmd.startsWith("U NB")) {
-            mockNB = parseInt(cmd.split(" ")[2]);
+          else if (cleanCmd.startsWith("U NB")) {
+            mockNB = parseInt(cleanCmd.split(" ")[2]);
             resolve("RPRT 0");
           }
-          else if (cmd.startsWith("U NR")) {
-            mockNR = parseInt(cmd.split(" ")[2]);
+          else if (cleanCmd.startsWith("U NR")) {
+            mockNR = parseInt(cleanCmd.split(" ")[2]);
             resolve("RPRT 0");
           }
-          else if (cmd.startsWith("L NR")) {
-            mockNRLevel = parseFloat(cmd.split(" ")[2]);
+          else if (cleanCmd.startsWith("L NR")) {
+            mockNRLevel = parseFloat(cleanCmd.split(" ")[2]);
             resolve("RPRT 0");
           }
-          else if (cmd.startsWith("U TUNER")) {
-            mockTuner = parseInt(cmd.split(" ")[2]);
+          else if (cleanCmd.startsWith("U TUNER")) {
+            mockTuner = parseInt(cleanCmd.split(" ")[2]);
             resolve("RPRT 0");
           }
-          else if (cmd.startsWith("G TUNE")) {
+          else if (cleanCmd.startsWith("G TUNE")) {
             mockTuner = 1;
             resolve("RPRT 0");
           }
-          else if (cmd.startsWith("L RFPOWER")) {
-            mockRFPower = parseFloat(cmd.split(" ")[2]);
+          else if (cleanCmd.startsWith("L RFPOWER")) {
+            mockRFPower = parseFloat(cleanCmd.split(" ")[2]);
             resolve("RPRT 0");
           }
           else resolve("RPRT 0");
         }, 50);
       });
     }
-    return new Promise((resolve, reject) => {
-      if (!rigSocket || rigSocket.destroyed) {
-        return reject("Not connected to rig");
-      }
-      const onData = (data: Buffer) => {
-        rigSocket?.removeListener("error", onError);
-        resolve(data.toString().trim());
-      };
-      const onError = (err: Error) => {
-        rigSocket?.removeListener("data", onData);
-        reject(err);
-      };
-      rigSocket.once("data", onData);
-      rigSocket.once("error", onError);
-      rigSocket.write(cmd + "\n");
+
+    // Real rig logic with queue and extended protocol
+    return rigCommandQueue = rigCommandQueue.then(async () => {
+      if (!rigSocket || rigSocket.destroyed) throw new Error("Not connected to rig");
+
+      const extendedCmd = cmd.startsWith("\\") ? cmd : `\\${cmd}`;
+      const cmdName = cmd.split(" ")[0];
+
+      return new Promise<string>((resolve, reject) => {
+        let buffer = "";
+        const timeout = setTimeout(() => {
+          cleanup();
+          reject(new Error(`Rig timeout on command: ${cmd}`));
+        }, 3000);
+
+        const onData = (data: Buffer) => {
+          buffer += data.toString();
+          if (buffer.includes("RPRT")) {
+            cleanup();
+            const lines = buffer.trim().split(/\r?\n/);
+            let resultLines: string[] = [];
+            let foundCmd = false;
+            let rprtValue = "";
+
+            for (const line of lines) {
+              if (line.startsWith("RPRT")) {
+                rprtValue = line;
+                break;
+              }
+              if (line.startsWith(`${cmdName}:`)) {
+                foundCmd = true;
+                const val = line.substring(cmdName.length + 1).trim();
+                if (val) resultLines.push(val);
+              } else if (foundCmd) {
+                resultLines.push(line.trim());
+              }
+            }
+
+            if (resultLines.length === 0) {
+              resolve(rprtValue || lines[lines.length - 1]);
+            } else {
+              resolve(resultLines.join("\n"));
+            }
+          }
+        };
+
+        const onError = (err: Error) => {
+          cleanup();
+          reject(err);
+        };
+
+        const cleanup = () => {
+          rigSocket?.removeListener("data", onData);
+          rigSocket?.removeListener("error", onError);
+          clearTimeout(timeout);
+        };
+
+        rigSocket!.on("data", onData);
+        rigSocket!.on("error", onError);
+        rigSocket!.write(extendedCmd + "\n");
+      });
+    }).catch(err => {
+      // We catch here to ensure the queue doesn't get stuck on a single failure
+      // but we still rethrow so the caller knows it failed.
+      throw err;
     });
   };
 
