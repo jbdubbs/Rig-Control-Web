@@ -658,14 +658,33 @@ export default function App() {
         {isCompact ? (
           <div className="space-y-2 animate-in fade-in duration-300">
             {/* Unified VFO & Mode/BW Box */}
-            <div className="bg-[#151619] p-3 rounded-xl border border-emerald-500/30 shadow-lg space-y-2">
+            <div className={cn(
+              "bg-[#151619] p-3 rounded-xl border shadow-lg space-y-2",
+              status.vfo === "VFOA" ? "border-emerald-500/30" : "border-blue-500/30"
+            )}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <button 
-                    onClick={() => handleSetVFO(status.vfo === "VFOA" ? "VFOB" : "VFOA")}
-                    className="px-3 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 rounded text-[10px] font-bold uppercase hover:bg-emerald-500 hover:text-white transition-all"
+                    onClick={() => handleSetVFO("VFOA")}
+                    className={cn(
+                      "px-3 py-1 rounded text-[10px] font-bold uppercase transition-all",
+                      status.vfo === "VFOA" 
+                        ? "bg-emerald-500 text-white border border-emerald-500" 
+                        : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20"
+                    )}
                   >
-                    VFO {status.vfo === "VFOA" ? "A" : "B"}
+                    VFO A
+                  </button>
+                  <button 
+                    onClick={() => handleSetVFO("VFOB")}
+                    className={cn(
+                      "px-3 py-1 rounded text-[10px] font-bold uppercase transition-all",
+                      status.vfo === "VFOB" 
+                        ? "bg-blue-500 text-white border border-blue-500" 
+                        : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20"
+                    )}
+                  >
+                    VFO B
                   </button>
                   <select 
                     value={vfoStep}
@@ -706,11 +725,22 @@ export default function App() {
                     }
                   }}
                   onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                  className="w-full bg-white/5 text-4xl font-bold tracking-tighter text-emerald-500 font-mono text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-emerald-500/10 focus:bg-emerald-500/10 rounded-lg transition-all cursor-text py-1 px-2 border border-[#2a2b2e] focus:border-emerald-500/50"
+                  className={cn(
+                    "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none rounded-lg transition-all cursor-text py-1 px-2 border",
+                    status.vfo === "VFOA" 
+                      ? "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50" 
+                      : "text-blue-500 hover:bg-blue-500/10 focus:bg-blue-500/10 border-[#2a2b2e] focus:border-blue-500/50"
+                  )}
                   title="Click to edit frequency"
                 />
-                <span className="text-sm text-emerald-500/50 font-bold">MHz</span>
-                <Pencil size={12} className="absolute right-12 top-1/2 -translate-y-1/2 text-emerald-500/30 transition-opacity pointer-events-none" />
+                <span className={cn(
+                  "text-sm font-bold",
+                  status.vfo === "VFOA" ? "text-emerald-500/50" : "text-blue-500/50"
+                )}>MHz</span>
+                <Pencil size={12} className={cn(
+                  "absolute right-12 top-1/2 -translate-y-1/2 transition-opacity pointer-events-none",
+                  status.vfo === "VFOA" ? "text-emerald-500/30" : "text-blue-500/30"
+                )} />
               </div>
             </div>
 
@@ -913,7 +943,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] flex flex-col justify-center gap-0.5">
+              <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] flex flex-col justify-center gap-1">
                 <div className="flex justify-between items-center">
                   <span className="text-[9px] uppercase text-[#8e9299]">RF Power</span>
                   <span className="text-[10px] text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
@@ -930,7 +960,7 @@ export default function App() {
                   }}
                   className="w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer"
                 />
-                <div className="flex justify-between items-center mt-1">
+                <div className="flex justify-between items-center mt-3">
                   <span className="text-[9px] uppercase text-[#8e9299]">DNR Level</span>
                   <span className="text-[10px] text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
                 </div>
