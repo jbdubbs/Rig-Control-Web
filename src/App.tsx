@@ -20,7 +20,8 @@ import {
   Maximize2,
   Minimize2,
   Pencil,
-  Volume2
+  Volume2,
+  Check
 } from "lucide-react";
 import { 
   LineChart, 
@@ -134,6 +135,57 @@ export default function App() {
   const effectiveRightMeter = (isCompact && activeMeter === 'signal') ? 'swr' : activeMeter;
   const [activeVFO, setActiveVFO] = useState<'A' | 'B'>('A');
   const [showHeaderOptions, setShowHeaderOptions] = useState(false);
+  const [autoStart, setAutoStart] = useState(false);
+  const [rigctldSettings, setRigctldSettings] = useState({
+    rigNumber: "",
+    serialPort: "",
+    portNumber: "4532",
+    ipAddress: "127.0.0.1",
+    serialPortSpeed: "38400"
+  });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [radios, setRadios] = useState<{id: string, mfg: string, model: string}[]>([]);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on("settings-data", (data: any) => {
+        setRigctldSettings(data.settings);
+        setAutoStart(data.autoStart);
+      });
+      socket.on("radios-list", (list: any) => {
+        const unique = Array.from(new Map(list.map((r: any) => [r.id, r])).values()) as any[];
+        setRadios(unique);
+      });
+      socket.emit("get-settings");
+      socket.emit("get-radios");
+    }
+  }, [socket]);
+
+  const isSettingsValid = () => {
+    return (
+      rigctldSettings.rigNumber &&
+      rigctldSettings.serialPort &&
+      rigctldSettings.portNumber &&
+      rigctldSettings.ipAddress &&
+      rigctldSettings.serialPortSpeed
+    );
+  };
+
+  const handleSaveSettings = () => {
+    socket?.emit("save-settings", rigctldSettings);
+    setIsSettingsOpen(false);
+  };
+
+  const handleToggleAutoStart = () => {
+    if (!autoStart && !isSettingsValid()) {
+      setIsSettingsOpen(true);
+      return;
+    }
+    const newValue = !autoStart;
+    setAutoStart(newValue);
+    socket?.emit("toggle-auto-start", newValue);
+  };
+
   const isDraggingRF = useRef(false);
   const isChangingMode = useRef(false);
   const targetModeRef = useRef("");
@@ -446,25 +498,27 @@ export default function App() {
           {isCompact ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className={cn(
-                    "p-1.5 rounded-full",
-                    connected ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
-                  )}>
-                    <Radio size={16} />
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "p-1.5 rounded-full",
+                      connected ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
+                    )}>
+                      <Radio size={16} />
+                    </div>
+                    <h1 className="text-sm font-bold tracking-tighter uppercase italic">RigControl Web</h1>
                   </div>
-                  <h1 className="text-sm font-bold tracking-tighter uppercase italic">RigControl Web</h1>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 w-10 flex-none mt-1 ml-1">
                     <button 
                       onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
-                      className="w-4 h-4 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[10px] hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      className="w-4 h-4 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.625rem] hover:border-emerald-500 text-[#8e9299] transition-colors"
                       title="Decrease Font Size"
                     >
                       -
                     </button>
                     <button 
                       onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
-                      className="w-4 h-4 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[10px] hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      className="w-4 h-4 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.625rem] hover:border-emerald-500 text-[#8e9299] transition-colors"
                       title="Increase Font Size"
                     >
                       +
@@ -472,7 +526,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-[#8e9299] uppercase">{host}:{port}</span>
+                  <span className="text-[0.5625rem] text-[#8e9299] uppercase">{host}:{port}</span>
                   <button 
                     onClick={() => setShowHeaderOptions(!showHeaderOptions)}
                     className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
@@ -493,16 +547,16 @@ export default function App() {
                 <div className="pt-2 border-t border-[#2a2b2e] animate-in slide-in-from-top-2 duration-200 space-y-2">
                   <div className="flex items-end gap-2">
                     <div className="flex-1 flex flex-col gap-1">
-                      <label className="text-[8px] uppercase text-[#8e9299]">Host</label>
+                      <label className="text-[0.5rem] uppercase text-[#8e9299]">Host</label>
                       <input 
                         type="text" 
                         value={host}
                         onChange={(e) => setHost(e.target.value)}
-                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500"
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500"
                       />
                     </div>
                     <div className="w-16 flex flex-col gap-1">
-                      <label className="text-[8px] uppercase text-[#8e9299]">Port</label>
+                      <label className="text-[0.5rem] uppercase text-[#8e9299]">Port</label>
                       <input 
                         type="number" 
                         value={(port === null || isNaN(port)) ? "" : port}
@@ -510,13 +564,13 @@ export default function App() {
                           const val = parseInt(e.target.value);
                           setPort(isNaN(val) ? NaN : val);
                         }}
-                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500"
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500"
                       />
                     </div>
                     <button 
                       onClick={handleConnect}
                       className={cn(
-                        "w-24 py-1 rounded font-bold uppercase text-[9px] transition-all flex items-center justify-center gap-1 h-[22px]",
+                         "w-24 py-1 rounded font-bold uppercase text-[0.5625rem] transition-all flex items-center justify-center gap-1 h-[22px]",
                         connected ? "bg-red-500/20 text-red-500 border border-red-500/50" : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50"
                       )}
                     >
@@ -525,13 +579,13 @@ export default function App() {
                     </button>
                   </div>
                   
-                  <div className="flex justify-center">
-                    <div className="w-1/3 flex flex-col gap-1">
-                      <label className="text-[8px] uppercase text-[#8e9299] text-center">Polling Rate</label>
+                  <div className="flex items-center justify-center gap-4">
+                    <div className="flex flex-col gap-1 w-1/3">
+                      <label className="text-[0.5rem] uppercase text-[#8e9299] text-center">Polling Rate</label>
                       <select 
                         value={pollRate}
                         onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
-                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-1 py-1 text-[10px] focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer text-center"
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-1 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer text-center"
                       >
                         <option value={250}>250ms</option>
                         <option value={500}>500ms</option>
@@ -540,6 +594,27 @@ export default function App() {
                         <option value={2000}>2000ms</option>
                         <option value={5000}>5000ms</option>
                       </select>
+                    </div>
+                    <div className="flex items-center gap-2 pt-3">
+                      <label className="flex items-center gap-1.5 cursor-pointer group">
+                        <div 
+                          onClick={handleToggleAutoStart}
+                          className={cn(
+                            "w-3 h-3 rounded border transition-all flex items-center justify-center",
+                            autoStart ? "bg-emerald-500 border-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] group-hover:border-emerald-500/50"
+                          )}
+                        >
+                          {autoStart && <Check size={8} className="text-white" strokeWidth={4} />}
+                        </div>
+                        <span className="text-[0.5rem] uppercase text-[#8e9299] whitespace-nowrap">Auto Start Rigctld</span>
+                      </label>
+                      <button 
+                        onClick={() => setIsSettingsOpen(true)}
+                        className="p-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-colors"
+                        title="Rigctld Settings"
+                      >
+                        <Settings size={10} />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -555,33 +630,31 @@ export default function App() {
                   <Radio size={32} />
                 </div>
                 <div>
-                  <div className="flex items-center gap-3">
-                    <h1 className="text-2xl font-bold tracking-tighter uppercase italic">RigControl Web</h1>
-                    <div className="flex items-center gap-1">
-                      <button 
-                        onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
-                        className="w-6 h-6 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-sm hover:border-emerald-500 text-[#8e9299] transition-colors"
-                        title="Decrease Font Size"
-                      >
-                        -
-                      </button>
-                      <button 
-                        onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
-                        className="w-6 h-6 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-sm hover:border-emerald-500 text-[#8e9299] transition-colors"
-                        title="Increase Font Size"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
+                  <h1 className="text-2xl font-bold tracking-tighter uppercase italic">RigControl Web</h1>
                   <p className="text-xs text-[#8e9299] uppercase tracking-widest">Hamlib rigctld Interface</p>
+                  <div className="flex items-center gap-1 w-16 flex-none mt-2">
+                    <button 
+                      onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
+                      className="w-6 h-6 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-sm hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      title="Decrease Font Size"
+                    >
+                      -
+                    </button>
+                    <button 
+                      onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
+                      className="w-6 h-6 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-sm hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      title="Increase Font Size"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-4 w-full md:w-auto">
                 <div className="flex flex-wrap gap-4 items-center">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] uppercase text-[#8e9299]">Host Address</label>
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Host Address</label>
                     <input 
                       type="text" 
                       value={host}
@@ -591,7 +664,7 @@ export default function App() {
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] uppercase text-[#8e9299]">Port</label>
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Port</label>
                     <input 
                       type="number" 
                       value={(port === null || isNaN(port)) ? "" : port}
@@ -650,20 +723,44 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] uppercase text-[#8e9299]">Poll Rate</label>
-                  <select 
-                    value={pollRate}
-                    onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
-                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-1 text-sm focus:outline-none focus:border-emerald-500 transition-colors appearance-none cursor-pointer"
-                  >
-                    <option value={250}>250 ms</option>
-                    <option value={500}>500 ms</option>
-                    <option value={1000}>1000 ms</option>
-                    <option value={1500}>1500 ms</option>
-                    <option value={2000}>2000 ms</option>
-                    <option value={5000}>5000 ms</option>
-                  </select>
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Poll Rate</label>
+                    <select 
+                      value={pollRate}
+                      onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
+                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-1 text-sm focus:outline-none focus:border-emerald-500 transition-colors appearance-none cursor-pointer"
+                    >
+                      <option value={250}>250 ms</option>
+                      <option value={500}>500 ms</option>
+                      <option value={1000}>1000 ms</option>
+                      <option value={1500}>1500 ms</option>
+                      <option value={2000}>2000 ms</option>
+                      <option value={5000}>5000 ms</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-4">
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <div 
+                        onClick={handleToggleAutoStart}
+                        className={cn(
+                          "w-4 h-4 rounded border transition-all flex items-center justify-center",
+                          autoStart ? "bg-emerald-500 border-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] group-hover:border-emerald-500/50"
+                        )}
+                      >
+                        {autoStart && <Check size={10} className="text-white" strokeWidth={4} />}
+                      </div>
+                      <span className="text-[0.625rem] uppercase text-[#8e9299] whitespace-nowrap">Auto Start Rigctld</span>
+                    </label>
+                    <button 
+                      onClick={() => setIsSettingsOpen(true)}
+                      className="p-1.5 bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      title="Rigctld Settings"
+                    >
+                      <Settings size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -680,8 +777,8 @@ export default function App() {
               <p className="text-xs text-red-400/80 mt-1 leading-relaxed">{error}</p>
               
               <div className="mt-4 p-3 bg-black/40 rounded border border-red-500/20 space-y-2">
-                <p className="text-[10px] text-[#8e9299] uppercase font-bold">How to fix this:</p>
-                <ul className="text-[11px] list-disc list-inside space-y-1 text-red-300/70">
+                <p className="text-[0.625rem] text-[#8e9299] uppercase font-bold">How to fix this:</p>
+                <ul className="text-[0.6875rem] list-disc list-inside space-y-1 text-red-300/70">
                   <li><strong>Use ngrok:</strong> Run <code className="bg-black px-1">ngrok tcp 4532</code> on your radio computer and use the provided <code className="text-white">0.tcp.ngrok.io</code> address.</li>
                   <li><strong>Port Forwarding:</strong> Forward port <code className="text-white">4532</code> on your router to <code className="text-white">192.168.86.34</code>.</li>
                   <li><strong>Public IP:</strong> Ensure you use your <em>Public</em> IP (search "What is my IP") and not your local 192.168.x.x address.</li>
@@ -691,7 +788,7 @@ export default function App() {
               <div className="mt-3 flex gap-4">
                 <button 
                   onClick={() => socket?.emit("connect-rig", { host: "mock", port: 0 })}
-                  className="text-[10px] uppercase font-bold text-amber-500 hover:underline"
+                  className="text-[0.625rem] uppercase font-bold text-amber-500 hover:underline"
                 >
                   Try Demo Mode (Mock Rig)
                 </button>
@@ -699,7 +796,7 @@ export default function App() {
                   href="https://github.com/Hamlib/Hamlib/wiki/rigctld" 
                   target="_blank" 
                   rel="noreferrer"
-                  className="text-[10px] uppercase font-bold text-emerald-500 hover:underline"
+                  className="text-[0.625rem] uppercase font-bold text-emerald-500 hover:underline"
                 >
                   Rigctld Setup Guide
                 </a>
@@ -721,7 +818,7 @@ export default function App() {
                   <button 
                     onClick={() => handleSetVFO("VFOA")}
                     className={cn(
-                      "px-3 py-1 rounded text-[10px] font-bold uppercase transition-all",
+                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
                       status.vfo === "VFOA" 
                         ? "bg-emerald-500 text-white border border-emerald-500" 
                         : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20"
@@ -732,7 +829,7 @@ export default function App() {
                   <button 
                     onClick={() => handleSetVFO("VFOB")}
                     className={cn(
-                      "px-3 py-1 rounded text-[10px] font-bold uppercase transition-all",
+                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
                       status.vfo === "VFOB" 
                         ? "bg-blue-500 text-white border border-blue-500" 
                         : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20"
@@ -743,7 +840,7 @@ export default function App() {
                   <select 
                     value={vfoStep}
                     onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[9px] px-2 py-1 focus:outline-none focus:border-emerald-500 text-[#8e9299]"
+                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-2 py-1 focus:outline-none focus:border-emerald-500 text-[#8e9299]"
                   >
                     {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
                   </select>
@@ -752,14 +849,14 @@ export default function App() {
                   <select 
                     value={localMode}
                     onChange={(e) => handleSetMode(e.target.value)}
-                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500"
+                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500"
                   >
                     {availableModes.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                   <select 
                     value={status?.bandwidth || "2400"}
                     onChange={(e) => handleSetBw(parseInt(e.target.value))}
-                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500"
+                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500"
                   >
                     {BANDWIDTHS.map(bw => <option key={bw} value={bw}>{bw}Hz</option>)}
                   </select>
@@ -804,13 +901,13 @@ export default function App() {
               <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] space-y-1">
                 <div className="flex items-center justify-between border-b border-[#2a2b2e] pb-1">
                   <span className={cn(
-                    "text-[9px] font-bold uppercase",
+                    "text-[0.5625rem] font-bold uppercase",
                     status.ptt ? "text-red-500" : "text-[#8e9299]"
                   )}>
                     {status.ptt ? "POWER OUT" : "S-METER"}
                   </span>
                   <span className={cn(
-                    "text-[9px] font-mono font-bold",
+                    "text-[0.5625rem] font-mono font-bold",
                     status.ptt ? "text-red-500" : "text-emerald-500"
                   )}>
                     {status.ptt 
@@ -825,7 +922,7 @@ export default function App() {
                       <XAxis dataKey="time" hide />
                       <YAxis domain={status.ptt ? [0, 1] : [-54, 60]} hide />
                       <Tooltip 
-                        contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '8px' }}
+                        contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.5}px` }}
                         itemStyle={{ color: status.ptt ? '#ef4444' : '#10b981' }}
                         formatter={(val: number) => [
                           status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (val ?? 0),
@@ -854,7 +951,7 @@ export default function App() {
                         key={m}
                         onClick={() => setActiveMeter(m)}
                         className={cn(
-                          "px-2 py-0.5 rounded text-[8px] font-bold uppercase transition-all",
+                          "px-2 py-0.5 rounded text-[0.5rem] font-bold uppercase transition-all",
                           effectiveRightMeter === m ? "bg-emerald-500 text-white" : "text-[#8e9299] hover:bg-white/5"
                         )}
                       >
@@ -865,10 +962,10 @@ export default function App() {
                   <div className="flex flex-col items-end gap-0">
                     {effectiveRightMeter !== 'vdd' && (
                       <>
-                        <span className="text-[8px] font-mono font-bold leading-tight" style={{ color: '#f59e0b' }}>
+                        <span className="text-[0.5rem] font-mono font-bold leading-tight" style={{ color: '#f59e0b' }}>
                           SWR {(status.swr ?? 1).toFixed(2)}
                         </span>
-                        <span className="text-[8px] font-mono font-bold leading-tight" style={{ color: '#3b82f6' }}>
+                        <span className="text-[0.5rem] font-mono font-bold leading-tight" style={{ color: '#3b82f6' }}>
                           ALC {(status.alc ?? 0).toFixed(5)}
                         </span>
                       </>
@@ -885,12 +982,12 @@ export default function App() {
                         hide={effectiveRightMeter !== 'swr' && effectiveRightMeter !== 'vdd'}
                         ticks={effectiveRightMeter === 'swr' ? [0, 1, 2, 3, 4, 5] : effectiveRightMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
                         width={15}
-                        style={{ fontSize: '6px', fill: '#4a4b4e' }}
+                        style={{ fontSize: `${fontSize * 0.375}px`, fill: '#4a4b4e' }}
                         axisLine={false}
                         tickLine={false}
                       />
                       <Tooltip 
-                        contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '8px' }}
+                        contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.5}px` }}
                         itemStyle={{ color: effectiveRightMeter === 'swr' ? '#f59e0b' : effectiveRightMeter === 'vdd' ? '#10b981' : '#3b82f6' }}
                         formatter={(val: number, name: string, props: any) => {
                           if (effectiveRightMeter === 'swr') {
@@ -927,7 +1024,7 @@ export default function App() {
                   )}
                 >
                   <Mic size={14} />
-                  <span className="text-[8px] uppercase font-bold">PTT</span>
+                  <span className="text-[0.5rem] uppercase font-bold">PTT</span>
                 </button>
                 <button 
                   onClick={() => {
@@ -943,7 +1040,7 @@ export default function App() {
                   )}
                 >
                   <RefreshCw size={14} className={cn(status.tuner && "animate-spin")} />
-                  <span className="text-[8px] uppercase font-bold">Tune</span>
+                  <span className="text-[0.5rem] uppercase font-bold">Tune</span>
                 </button>
                 <button 
                   onClick={() => handleSetFunc("NB", !status.nb)}
@@ -953,7 +1050,7 @@ export default function App() {
                   )}
                 >
                   <Activity size={14} />
-                  <span className="text-[8px] uppercase font-bold">NB</span>
+                  <span className="text-[0.5rem] uppercase font-bold">NB</span>
                 </button>
                 <button 
                   onClick={() => {
@@ -966,7 +1063,7 @@ export default function App() {
                   )}
                 >
                   <Signal size={14} />
-                  <span className="text-[8px] uppercase font-bold">
+                  <span className="text-[0.5rem] uppercase font-bold">
                     {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "ATT -6" : "ATT -12"}
                   </span>
                 </button>
@@ -981,7 +1078,7 @@ export default function App() {
                   )}
                 >
                   <Zap size={14} />
-                  <span className="text-[8px] uppercase font-bold">
+                  <span className="text-[0.5rem] uppercase font-bold">
                     {status.preamp === 0 ? "IPO" : status.preamp === 10 ? "AMP1" : "AMP2"}
                   </span>
                 </button>
@@ -993,14 +1090,14 @@ export default function App() {
                   )}
                 >
                   <Volume2 size={14} />
-                  <span className="text-[8px] uppercase font-bold">DNR</span>
+                  <span className="text-[0.5rem] uppercase font-bold">DNR</span>
                 </button>
               </div>
 
               <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] flex flex-col justify-center gap-1">
                 <div className="flex justify-between items-center">
-                  <span className="text-[9px] uppercase text-[#8e9299]">RF Power</span>
-                  <span className="text-[10px] text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
+                  <span className="text-[0.5625rem] uppercase text-[#8e9299]">RF Power</span>
+                  <span className="text-[0.625rem] text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
                 </div>
                 <input 
                   type="range" 
@@ -1015,8 +1112,8 @@ export default function App() {
                   className="w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer"
                 />
                 <div className="flex justify-between items-center mt-3">
-                  <span className="text-[9px] uppercase text-[#8e9299]">DNR Level</span>
-                  <span className="text-[10px] text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                  <span className="text-[0.5625rem] uppercase text-[#8e9299]">DNR Level</span>
+                  <span className="text-[0.625rem] text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
                 </div>
                 <input 
                   type="range" 
@@ -1047,11 +1144,11 @@ export default function App() {
               )}>
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] uppercase text-[#8e9299]">VFO A</span>
+                    <span className="text-[0.625rem] uppercase text-[#8e9299]">VFO A</span>
                     <select 
                       value={vfoStep}
                       onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[9px] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]"
+                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]"
                     >
                       {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
                     </select>
@@ -1084,7 +1181,7 @@ export default function App() {
                 </div>
                 <button 
                   onClick={() => handleSetVFO("VFOA")}
-                  className="mt-4 w-full py-1 text-[10px] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors"
+                  className="mt-4 w-full py-1 text-[0.625rem] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors"
                 >
                   Select VFO A
                 </button>
@@ -1096,11 +1193,11 @@ export default function App() {
               )}>
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] uppercase text-[#8e9299]">VFO B</span>
+                    <span className="text-[0.625rem] uppercase text-[#8e9299]">VFO B</span>
                     <select 
                       value={vfoStep}
                       onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[9px] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]"
+                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]"
                     >
                       {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
                     </select>
@@ -1133,7 +1230,7 @@ export default function App() {
                 </div>
                 <button 
                   onClick={() => handleSetVFO("VFOB")}
-                  className="mt-4 w-full py-1 text-[10px] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors"
+                  className="mt-4 w-full py-1 text-[0.625rem] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors"
                 >
                   Select VFO B
                 </button>
@@ -1152,7 +1249,7 @@ export default function App() {
                 )}
               >
                 <Mic size={20} />
-                <span className="text-[10px] uppercase font-bold">PTT</span>
+                <span className="text-[0.625rem] uppercase font-bold">PTT</span>
               </button>
 
               <button 
@@ -1169,7 +1266,7 @@ export default function App() {
                 )}
               >
                 <RefreshCw size={20} className={cn("transition-transform", status.tuner ? "animate-spin" : "group-active:rotate-180")} />
-                <span className="text-[10px] uppercase font-bold">Tune</span>
+                <span className="text-[0.625rem] uppercase font-bold">Tune</span>
               </button>
 
               <button 
@@ -1190,8 +1287,8 @@ export default function App() {
               >
                 <Signal size={20} />
                 <div className="flex flex-col items-center">
-                  <span className="text-[10px] uppercase font-bold">Atten</span>
-                  <span className="text-[9px] font-bold opacity-80">
+                  <span className="text-[0.625rem] uppercase font-bold">Atten</span>
+                  <span className="text-[0.5625rem] font-bold opacity-80">
                     {status.attenuation === 0 ? "OFF" : 
                      status.attenuation === 6 ? "-6dB" : 
                      status.attenuation === 12 ? "-12dB" : "OFF"}
@@ -1217,8 +1314,8 @@ export default function App() {
               >
                 <Zap size={20} />
                 <div className="flex flex-col items-center">
-                  <span className="text-[10px] uppercase font-bold">Preamp</span>
-                  <span className="text-[9px] font-bold opacity-80">
+                  <span className="text-[0.625rem] uppercase font-bold">Preamp</span>
+                  <span className="text-[0.5625rem] font-bold opacity-80">
                     {status.preamp === 0 ? "IPO" : 
                      status.preamp === 10 ? "AMP1" : 
                      status.preamp === 20 ? "AMP2" : "IPO"}
@@ -1237,8 +1334,8 @@ export default function App() {
               >
                 <Activity size={20} />
                 <div className="flex flex-col items-center">
-                  <span className="text-[10px] uppercase font-bold">NB</span>
-                  <span className="text-[9px] font-bold opacity-80">
+                  <span className="text-[0.625rem] uppercase font-bold">NB</span>
+                  <span className="text-[0.5625rem] font-bold opacity-80">
                     {status.nb ? "ON" : "OFF"}
                   </span>
                 </div>
@@ -1255,8 +1352,8 @@ export default function App() {
               >
                 <Volume2 size={20} />
                 <div className="flex flex-col items-center">
-                  <span className="text-[10px] uppercase font-bold">DNR</span>
-                  <span className="text-[9px] font-bold opacity-80">
+                  <span className="text-[0.625rem] uppercase font-bold">DNR</span>
+                  <span className="text-[0.5625rem] font-bold opacity-80">
                     {status.nr ? "ON" : "OFF"}
                   </span>
                 </div>
@@ -1268,7 +1365,7 @@ export default function App() {
               <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] space-y-4">
                 <div className="flex items-center gap-2 text-[#8e9299]">
                   <Waves size={14} />
-                  <span className="text-[10px] uppercase tracking-widest">Mode Selection</span>
+                  <span className="text-[0.625rem] uppercase tracking-widest">Mode Selection</span>
                 </div>
                 <select 
                   value={localMode}
@@ -1282,7 +1379,7 @@ export default function App() {
               <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] space-y-4">
                 <div className="flex items-center gap-2 text-[#8e9299]">
                   <Settings size={14} />
-                  <span className="text-[10px] uppercase tracking-widest">Filter Bandwidth</span>
+                  <span className="text-[0.625rem] uppercase tracking-widest">Filter Bandwidth</span>
                 </div>
                 <select 
                   value={status?.bandwidth || "2400"}
@@ -1304,7 +1401,7 @@ export default function App() {
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2 text-[#8e9299]">
                     <Gauge size={14} />
-                    <span className="text-[10px] uppercase tracking-widest">RF Power</span>
+                    <span className="text-[0.625rem] uppercase tracking-widest">RF Power</span>
                   </div>
                   <span className="text-emerald-500 font-bold">{Math.round(localRFPower * 100)} Watts</span>
                 </div>
@@ -1326,7 +1423,7 @@ export default function App() {
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2 text-[#8e9299]">
                     <Volume2 size={14} />
-                    <span className="text-[10px] uppercase tracking-widest">DNR Level</span>
+                    <span className="text-[0.625rem] uppercase tracking-widest">DNR Level</span>
                   </div>
                   <span className="text-emerald-500 font-bold">Level {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
                 </div>
@@ -1351,7 +1448,7 @@ export default function App() {
                 <div className="flex items-center gap-2 text-[#8e9299]">
                   {status.ptt ? <Gauge size={14} className="text-red-500" /> : <Signal size={14} />}
                   <span className={cn(
-                    "text-[10px] uppercase tracking-widest",
+                    "text-[0.625rem] uppercase tracking-widest",
                     status.ptt ? "text-red-500 font-bold" : "text-[#8e9299]"
                   )}>
                     {status.ptt ? "POWER OUT" : "S-Meter"}
@@ -1401,7 +1498,7 @@ export default function App() {
                     <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '100%' }} />
                   </div>
                 </div>
-                <div className="flex justify-between text-[8px] text-[#4a4b4e] font-mono uppercase tracking-tighter">
+                <div className="flex justify-between text-[0.5rem] text-[#4a4b4e] font-mono uppercase tracking-tighter">
                   {status.ptt ? (
                     <>
                       <span>0W</span>
@@ -1439,12 +1536,12 @@ export default function App() {
                         return "";
                       }}
                       width={35}
-                      style={{ fontSize: '8px', fill: '#4a4b4e' }}
+                      style={{ fontSize: `${fontSize * 0.5}px`, fill: '#4a4b4e' }}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip 
-                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '10px' }}
+                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.625}px` }}
                       itemStyle={{ color: status.ptt ? '#ef4444' : '#10b981' }}
                       labelStyle={{ display: 'none' }}
                       formatter={(value: number) => [
@@ -1472,7 +1569,7 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-[#8e9299]">
                   <Activity size={14} />
-                  <span className="text-[10px] uppercase tracking-widest">SWR Ratio</span>
+                  <span className="text-[0.625rem] uppercase tracking-widest">SWR Ratio</span>
                 </div>
                 <span className="text-xs font-mono text-amber-500 font-bold">
                   {(status.swr ?? 1).toFixed(2)}
@@ -1487,12 +1584,12 @@ export default function App() {
                       domain={[0, 5]} 
                       ticks={[0, 1, 2, 3, 4, 5]}
                       width={25}
-                      style={{ fontSize: '8px', fill: '#4a4b4e' }}
+                      style={{ fontSize: `${fontSize * 0.5}px`, fill: '#4a4b4e' }}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip 
-                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '10px' }}
+                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.625}px` }}
                       itemStyle={{ color: '#f59e0b' }}
                       formatter={(val: number, name: string, props: any) => [(props.payload?.swr ?? 1).toFixed(2), 'SWR']}
                     />
@@ -1513,7 +1610,7 @@ export default function App() {
             <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] space-y-4 h-[250px]">
               <div className="flex items-center gap-2 text-[#8e9299]">
                 <Waves size={14} />
-                <span className="text-[10px] uppercase tracking-widest">ALC Level</span>
+                <span className="text-[0.625rem] uppercase tracking-widest">ALC Level</span>
               </div>
               <div className="h-full pb-8">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1523,13 +1620,13 @@ export default function App() {
                     <YAxis 
                       domain={[0, 1]} 
                       width={45}
-                      style={{ fontSize: '8px', fill: '#4a4b4e' }}
+                      style={{ fontSize: `${fontSize * 0.5}px`, fill: '#4a4b4e' }}
                       axisLine={false}
                       tickLine={false}
                       tickFormatter={(val) => (val ?? 0).toFixed(1)}
                     />
                     <Tooltip 
-                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '10px' }}
+                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.625}px` }}
                       itemStyle={{ color: '#3b82f6' }}
                       formatter={(value: number) => [(value ?? 0).toFixed(5), 'ALC']}
                     />
@@ -1554,17 +1651,17 @@ export default function App() {
           <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-2xl">
             <div className="bg-[#1a1b1e] px-4 py-2 border-b border-[#2a2b2e] flex items-center gap-2">
               <Settings size={14} className="text-[#8e9299]" />
-              <span className="text-[10px] uppercase font-bold tracking-widest text-[#8e9299]">Rigctld Command Console</span>
+              <span className="text-[0.625rem] uppercase font-bold tracking-widest text-[#8e9299]">Rigctld Command Console</span>
             </div>
             
             <div className="p-4 space-y-4">
-              <div className="bg-[#0a0a0a] rounded border border-[#2a2b2e] h-40 overflow-y-auto p-3 font-mono text-[11px] space-y-1">
+              <div className="bg-[#0a0a0a] rounded border border-[#2a2b2e] h-40 overflow-y-auto p-3 font-mono text-[0.6875rem] space-y-1">
                 {consoleLogs.length === 0 ? (
                   <div className="text-[#4a4b4e] italic">No commands sent yet. Try "f" for frequency or "m" for mode.</div>
                 ) : (
                   consoleLogs.map((log, i) => (
                     <div key={i} className="border-b border-[#1a1b1e] pb-1 last:border-0">
-                      <div className="flex justify-between opacity-50 text-[9px]">
+                      <div className="flex justify-between opacity-50 text-[0.5625rem]">
                         <span>{log.time}</span>
                         <span>CMD: {log.cmd}</span>
                       </div>
@@ -1598,10 +1695,12 @@ export default function App() {
         )}
 
         {/* Footer Status Bar */}
-        <footer className="bg-[#151619] px-6 py-3 rounded-xl border border-[#2a2b2e] flex justify-between items-center text-[10px] uppercase tracking-widest text-[#8e9299]">
+        <footer className="bg-[#151619] px-6 py-3 rounded-xl border border-[#2a2b2e] flex justify-between items-center text-[0.625rem] uppercase tracking-widest text-[#8e9299]">
           <div className="flex gap-6">
             <span>Status: <span className={connected ? "text-emerald-500" : "text-red-500"}>{connected ? "Online" : "Offline"}</span></span>
-            <span>Rig: {connected ? `${host}:${port}` : "None"}</span>
+            {!isCompact && (
+              <span>Server: {connected ? `${host}:${port}` : "None"}</span>
+            )}
           </div>
           <div className="flex gap-6">
             <span>Mode: <span className="text-white">{status.mode}</span></span>
@@ -1621,7 +1720,7 @@ export default function App() {
                   </div>
                   <div>
                     <h2 className="text-lg font-bold uppercase tracking-tight">Portable Setup</h2>
-                    <p className="text-[10px] text-[#8e9299] uppercase tracking-widest">Run RigControl locally on your computer</p>
+                    <p className="text-[0.625rem] text-[#8e9299] uppercase tracking-widest">Run RigControl locally on your computer</p>
                   </div>
                 </div>
                 <button 
@@ -1653,12 +1752,12 @@ export default function App() {
                       To control your local radio without port forwarding, you need to run the backend server on the same computer as your radio.
                     </p>
                     <div className="bg-[#0a0a0a] p-4 rounded-lg border border-[#2a2b2e] space-y-3">
-                      <p className="text-[10px] text-emerald-500/70 font-bold uppercase">Quick Start Command:</p>
-                      <code className="block text-[11px] text-white bg-black/50 p-3 rounded border border-white/5 break-all">
+                      <p className="text-[0.625rem] text-emerald-500/70 font-bold uppercase">Quick Start Command:</p>
+                      <code className="block text-[0.6875rem] text-white bg-black/50 p-3 rounded border border-white/5 break-all">
                         git clone https://github.com/example/rigcontrol-web.git<br/>
                         cd rigcontrol-web && npm install && npm start
                       </code>
-                      <p className="text-[10px] text-[#4a4b4e] italic">
+                      <p className="text-[0.625rem] text-[#4a4b4e] italic">
                         * Requires Node.js and Hamlib (rigctld) installed on your system.
                       </p>
                     </div>
@@ -1675,7 +1774,7 @@ export default function App() {
                       Once your local backend is running, point this app to it. If running on the same machine, use <code className="text-white">http://localhost:3000</code>.
                     </p>
                     <div className="flex flex-col gap-2">
-                      <label className="text-[10px] uppercase text-[#8e9299]">Local Backend URL</label>
+                      <label className="text-[0.625rem] uppercase text-[#8e9299]">Local Backend URL</label>
                       <div className="flex gap-2">
                         <input 
                           type="text" 
@@ -1691,7 +1790,7 @@ export default function App() {
                           Apply
                         </button>
                       </div>
-                      <p className="text-[9px] text-amber-500/70 italic">
+                      <p className="text-[0.5625rem] text-amber-500/70 italic">
                         * Changing this will refresh the page to reconnect.
                       </p>
                     </div>
@@ -1706,6 +1805,99 @@ export default function App() {
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Rigctld Settings Modal */}
+        {isSettingsOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-[#151619] border border-[#2a2b2e] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-4 border-b border-[#2a2b2e] flex justify-between items-center bg-[#1a1b1e]">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg">
+                    <Settings size={16} />
+                  </div>
+                  <h2 className="text-sm font-bold uppercase tracking-tight">Rigctld Auto-Start Settings</h2>
+                </div>
+                <button 
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="p-1.5 hover:bg-white/5 rounded-full transition-colors text-[#8e9299] hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[0.625rem] uppercase text-[#8e9299]">Rig Model (Hamlib Rig #)</label>
+                  <select 
+                    value={rigctldSettings.rigNumber}
+                    onChange={(e) => setRigctldSettings(prev => ({ ...prev, rigNumber: e.target.value }))}
+                    className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                  >
+                    <option value="">Select a Radio...</option>
+                    {radios.map(r => (
+                      <option key={`${r.id}-${r.mfg}-${r.model}`} value={r.id}>
+                        {r.id}: {r.mfg} {r.model}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Port (e.g. /dev/ttyUSB0 or COM3)</label>
+                  <input 
+                    type="text"
+                    value={rigctldSettings.serialPort}
+                    onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPort: e.target.value }))}
+                    placeholder="/dev/ttyUSB0"
+                    className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Server Port</label>
+                    <input 
+                      type="text"
+                      value={rigctldSettings.portNumber}
+                      onChange={(e) => setRigctldSettings(prev => ({ ...prev, portNumber: e.target.value }))}
+                      placeholder="4532"
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Speed</label>
+                    <input 
+                      type="text"
+                      value={rigctldSettings.serialPortSpeed}
+                      onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPortSpeed: e.target.value }))}
+                      placeholder="38400"
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[0.625rem] uppercase text-[#8e9299]">Listen Address</label>
+                  <input 
+                    type="text"
+                    value={rigctldSettings.ipAddress}
+                    onChange={(e) => setRigctldSettings(prev => ({ ...prev, ipAddress: e.target.value }))}
+                    placeholder="127.0.0.1"
+                    className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                  />
+                </div>
+
+                <div className="pt-4">
+                  <button 
+                    onClick={handleSaveSettings}
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold uppercase text-xs transition-all shadow-lg shadow-emerald-500/20"
+                  >
+                    Save Settings
+                  </button>
+                </div>
               </div>
             </div>
           </div>

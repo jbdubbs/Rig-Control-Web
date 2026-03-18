@@ -4,12 +4,107 @@ import { Server } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import net from "net";
 import path from "path";
+import { spawn, ChildProcess } from "child_process";
+import fs from "fs";
 
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer);
   const PORT = 3000;
+
+  const SETTINGS_FILE = path.join(process.cwd(), "settings.json");
+  const RADIOS_FILE = path.join(process.cwd(), "radios.json");
+
+  let rigctldProcess: ChildProcess | null = null;
+  let autoStartEnabled = false;
+  let rigctldSettings = {
+    rigNumber: "",
+    serialPort: "",
+    portNumber: "4532",
+    ipAddress: "127.0.0.1",
+    serialPortSpeed: "38400"
+  };
+
+  // Load settings if they exist
+  if (fs.existsSync(SETTINGS_FILE)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
+      rigctldSettings = { ...rigctldSettings, ...data.settings };
+      autoStartEnabled = data.autoStart || false;
+    } catch (e) {
+      console.error("Failed to load settings:", e);
+    }
+  }
+
+  const saveSettings = () => {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+      settings: rigctldSettings,
+      autoStart: autoStartEnabled
+    }, null, 2));
+  };
+
+  const stopRigctld = () => {
+    if (rigctldProcess) {
+      console.log("Stopping rigctld...");
+      rigctldProcess.kill();
+      rigctldProcess = null;
+    }
+  };
+
+  const startRigctld = () => {
+    stopRigctld();
+    
+    const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = rigctldSettings;
+    
+    if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
+      console.error("Cannot start rigctld: missing settings");
+      return;
+    }
+
+    console.log(`Starting rigctld: rigctld -m ${rigNumber} -r ${serialPort} -t ${portNumber} -T ${ipAddress} -s ${serialPortSpeed}`);
+    
+    rigctldProcess = spawn("rigctld", [
+      "-m", rigNumber,
+      "-r", serialPort,
+      "-t", portNumber,
+      "-T", ipAddress,
+      "-s", serialPortSpeed
+    ], { detached: false });
+
+    rigctldProcess.stdout?.on("data", (data) => {
+      console.log(`rigctld stdout: ${data}`);
+    });
+
+    rigctldProcess.stderr?.on("data", (data) => {
+      console.error(`rigctld stderr: ${data}`);
+    });
+
+    rigctldProcess.on("close", (code) => {
+      console.log(`rigctld process exited with code ${code}`);
+      rigctldProcess = null;
+    });
+
+    rigctldProcess.on("error", (err) => {
+      console.error("Failed to start rigctld:", err);
+      rigctldProcess = null;
+    });
+  };
+
+  // Start rigctld on server boot if enabled
+  if (autoStartEnabled) {
+    startRigctld();
+  }
+
+  process.on("exit", stopRigctld);
+  process.on("SIGINT", () => {
+    stopRigctld();
+    process.exit();
+  });
+  process.on("SIGTERM", () => {
+    stopRigctld();
+    process.exit();
+  });
 
   let rigSocket: net.Socket | null = null;
   let pollingTimeout: NodeJS.Timeout | null = null;
@@ -514,6 +609,45 @@ async function startServer() {
     socket.on("set-poll-rate", (rate) => {
       pollRate = rate;
       startPolling();
+    });
+
+    socket.on("get-settings", () => {
+      socket.emit("settings-data", {
+        settings: rigctldSettings,
+        autoStart: autoStartEnabled
+      });
+    });
+
+    socket.on("save-settings", (data) => {
+      rigctldSettings = data;
+      saveSettings();
+      if (autoStartEnabled) {
+        startRigctld();
+      }
+    });
+
+    socket.on("toggle-auto-start", (enabled) => {
+      autoStartEnabled = enabled;
+      saveSettings();
+      if (enabled) {
+        startRigctld();
+      } else {
+        stopRigctld();
+      }
+    });
+
+    socket.on("get-radios", () => {
+      if (fs.existsSync(RADIOS_FILE)) {
+        try {
+          const radios = JSON.parse(fs.readFileSync(RADIOS_FILE, "utf-8"));
+          socket.emit("radios-list", radios);
+        } catch (e) {
+          console.error("Failed to load radios:", e);
+          socket.emit("radios-list", []);
+        }
+      } else {
+        socket.emit("radios-list", []);
+      }
     });
 
     socket.on("send-raw", async (cmd) => {
