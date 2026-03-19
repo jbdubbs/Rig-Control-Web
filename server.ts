@@ -203,7 +203,10 @@ async function startServer() {
     rfpower: 0.5,
     vdd: 13.8,
     vfo: "VFOA",
-    splitVfo: false,
+    isSplit: false,
+    txVFO: "VFOB",
+    rfLevel: 0,
+    agc: 6,
     attenuation: 0,
     preamp: 0,
     nb: false,
@@ -225,7 +228,10 @@ async function startServer() {
       rfpower: 0.5,
       vdd: 13.8,
       vfo: "VFOA",
-      splitVfo: false,
+      isSplit: false,
+      txVFO: "VFOB",
+      rfLevel: 0,
+      agc: 6,
       attenuation: 0,
       preamp: 0,
       nb: false,
@@ -273,7 +279,10 @@ async function startServer() {
   let mockNRLevel = 0.5;
   let mockTuner = 0;
   let mockRFPower = 0.5;
-  let mockSplitVfo = 0;
+  let mockRFLevel = 0;
+  let mockAGC = 6;
+  let mockSplit = 0;
+  let mockTxVFO = "VFOB";
 
   const rigCommandQueue: { cmd: string; useExtended: boolean; resolve: (val: string) => void; reject: (err: any) => void }[] = [];
   let isRigBusy = false;
@@ -315,6 +324,7 @@ async function startServer() {
           else if (cmd === "m") longCmd = "get_mode";
           else if (cmd === "t") longCmd = "get_ptt";
           else if (cmd === "v") longCmd = "get_vfo";
+          else if (cmd === "s") longCmd = "get_split_vfo";
           else if (cmd.startsWith("l")) longCmd = "get_level";
           else if (cmd.startsWith("u")) longCmd = "get_func";
           else longCmd = cmd;
@@ -324,7 +334,7 @@ async function startServer() {
           else if (cmd === "M ?") response = "AM CW USB LSB RTTY FM PKTUSB PKTLSB";
           else if (cmd === "t") response = "0";
           else if (cmd === "v") response = "VFOA";
-          else if (cmd === "get_split_vfo") response = mockSplitVfo.toString();
+          else if (cmd === "s") response = `${mockSplit}\n${mockTxVFO}`;
           else if (cmd.startsWith("G")) response = "RPRT 0";
           else if (cmd.startsWith("l STRENGTH")) response = (Math.random() * -100).toString();
           else if (cmd.startsWith("l SWR")) response = (1 + Math.random() * 0.5).toString();
@@ -332,6 +342,8 @@ async function startServer() {
           else if (cmd.startsWith("l VD_METER")) response = (13.5 + Math.random() * 0.6).toString();
           else if (cmd.startsWith("l RFPOWER_METER")) response = (mockRFPower * (0.9 + Math.random() * 0.2)).toString();
           else if (cmd.startsWith("l RFPOWER")) response = mockRFPower.toString();
+          else if (cmd.startsWith("l RF")) response = mockRFLevel.toString();
+          else if (cmd.startsWith("l AGC")) response = mockAGC.toString();
           else if (cmd.startsWith("l ATT")) response = mockAtt.toString();
           else if (cmd.startsWith("l PREAMP")) response = mockPreamp.toString();
           else if (cmd.startsWith("u NB")) response = mockNB.toString();
@@ -370,8 +382,18 @@ async function startServer() {
             mockRFPower = parseFloat(cmd.split(" ")[2]);
             response = "RPRT 0";
           }
-          else if (cmd.startsWith("set_split_vfo")) {
-            mockSplitVfo = parseInt(cmd.split(" ")[1]);
+          else if (cmd.startsWith("L RF")) {
+            mockRFLevel = parseFloat(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("L AGC")) {
+            mockAGC = parseInt(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("S ")) {
+            const parts = cmd.split(" ");
+            mockSplit = parseInt(parts[1]);
+            mockTxVFO = parts[2];
             response = "RPRT 0";
           }
           else response = "RPRT 0";
@@ -501,15 +523,17 @@ async function startServer() {
       const modeBw = await sendToRig("m", true);
       const [mode, bandwidth] = modeBw.split("\n");
       const rfpower = parseFloat(await sendToRig("l RFPOWER", true));
+      const rflevel = parseFloat(await sendToRig("l RF", true).catch(() => "0"));
+      const agc = parseInt(await sendToRig("l AGC", true).catch(() => "6"));
       const vfo = await sendToRig("v", true);
+      const splitInfo = await sendToRig("s", true);
+      const [isSplitStr, txVFO] = splitInfo.split("\n");
       const att = parseInt(await sendToRig("l ATT", true)) || 0;
       const preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
       const nb = (await sendToRig("u NB", true)) === "1";
       const nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
       const nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
-      const tuner = (await sendToRig("u TUNER", true).catch(() => "0")).startsWith("1");
-      const splitResp = await sendToRig("get_split_vfo", true).catch(() => "0");
-      const splitVfo = splitResp.startsWith("1");
+      const tuner = (await sendToRig("u TUNER", true).catch(() => "0")) === "1";
 
       lastStatus = {
         frequency,
@@ -521,15 +545,18 @@ async function startServer() {
         alc: parseFloat(alc),
         powerMeter: parseFloat(powerMeter),
         rfpower,
+        rfLevel: rflevel,
+        agc,
         vdd: parseFloat(vdd),
         vfo,
+        isSplit: isSplitStr === "1",
+        txVFO: txVFO || "VFOB",
         attenuation: att,
         preamp,
         nb,
         nr,
         nrLevel,
         tuner,
-        splitVfo,
         timestamp: now,
       };
 
@@ -634,42 +661,21 @@ async function startServer() {
       }
     });
 
+    socket.on("set-split-vfo", async ({ split, txVFO }) => {
+      try {
+        await sendToRig(`S ${split} ${txVFO}`);
+        pollRig();
+      } catch (err) {
+        socket.emit("rig-error", "Failed to set split VFO");
+      }
+    });
+
     socket.on("vfo-op", async (op) => {
       try {
         await sendToRig(`G ${op}`);
         pollRig();
       } catch (err) {
         socket.emit("rig-error", `Failed to execute VFO operation: ${op}`);
-      }
-    });
-
-    socket.on("set-split-vfo", async (state) => {
-      try {
-        const cmd = `set_split_vfo ${state ? "1" : "0"} VFOB`;
-        await sendToRig(cmd);
-        
-        // Retry mechanism for enabling
-        if (state) {
-          let retries = 3;
-          while (retries > 0) {
-            // Wait a bit for the command to take effect
-            await new Promise(r => setTimeout(r, 500));
-            // Check if split mode is actually enabled
-            const resp = await sendToRig("get_split_vfo", true).catch(() => "0");
-            const currentSplit = resp.startsWith("1");
-            if (currentSplit) {
-              console.log("Split mode enabled successfully.");
-              break;
-            }
-            console.log(`Split mode not enabled, retrying... (${retries} left)`);
-            await sendToRig(cmd);
-            retries--;
-          }
-        }
-        
-        pollRig();
-      } catch (err) {
-        socket.emit("rig-error", "Failed to set split VFO mode");
       }
     });
 

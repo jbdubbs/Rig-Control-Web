@@ -48,7 +48,10 @@ interface RigStatus {
   swr: number;
   rfpower: number;
   vfo: string;
-  splitVfo: boolean;
+  isSplit: boolean;
+  txVFO: string;
+  rfLevel: number;
+  agc: number;
   attenuation: number;
   preamp: number;
   nb: boolean;
@@ -71,6 +74,15 @@ const VFO_STEPS = [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10];
 
 const DNR_LEVELS = [0.05, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.55, 0.6, 0.7, 0.75, 0.8, 0.85, 0.95, 1.0];
 
+const AGC_VALUES = [0, 2, 3, 5, 6];
+const AGC_LABELS: Record<number, string> = {
+  0: "OFF",
+  2: "FAST",
+  3: "SLOW",
+  5: "MED",
+  6: "AUTO"
+};
+
 const DEFAULT_STATUS: RigStatus = {
   frequency: "14074000",
   mode: "USB",
@@ -80,7 +92,10 @@ const DEFAULT_STATUS: RigStatus = {
   swr: 1.0,
   rfpower: 0.5,
   vfo: "VFOA",
-  splitVfo: false,
+  isSplit: false,
+  txVFO: "VFOB",
+  rfLevel: 0,
+  agc: 6,
   attenuation: 0,
   preamp: 0,
   nb: false,
@@ -122,6 +137,8 @@ export default function App() {
   const [localMode, setLocalMode] = useState(() => localStorage.getItem("last-mode") || "USB");
   
   const [localRFPower, setLocalRFPower] = useState(() => parseFloat(localStorage.getItem("last-rfpower") || "0.5"));
+  const [localRFLevel, setLocalRFLevel] = useState(0);
+  const isDraggingRFLevel = useRef(false);
   const [localNRLevel, setLocalNRLevel] = useState(0.5);
   const isDraggingNR = useRef(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -129,6 +146,9 @@ export default function App() {
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [isCompact, setIsCompact] = useState(() => localStorage.getItem("is-compact") === "true");
+  const [isPhone, setIsPhone] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [phoneMeterTab, setPhoneMeterTab] = useState<'signal' | 'swr' | 'alc'>('signal');
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem("font-size");
     return saved ? parseInt(saved) : 16;
@@ -151,6 +171,24 @@ export default function App() {
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      const mobile = width < 768;
+      const compact = width >= 768 && width < 1280;
+      
+      setIsPhone(mobile);
+      if (mobile || compact) {
+        setIsCompact(true);
+      } else {
+        setIsCompact(false);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (socket) {
@@ -338,6 +376,12 @@ export default function App() {
       if (!isDraggingRF.current && newStatus.rfpower !== undefined && newStatus.rfpower !== null) {
         setLocalRFPower(newStatus.rfpower);
       }
+      if (!isDraggingRFLevel.current && newStatus.rfLevel !== undefined && newStatus.rfLevel !== null) {
+        setLocalRFLevel(newStatus.rfLevel);
+      }
+      if (newStatus.agc !== undefined && newStatus.agc !== null) {
+        setStatus(prev => ({ ...prev, agc: newStatus.agc }));
+      }
       if (!isDraggingNR.current && newStatus.nrLevel !== undefined && newStatus.nrLevel !== null) {
         setLocalNRLevel(newStatus.nrLevel);
       }
@@ -380,6 +424,16 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [localRFPower]);
+
+  useEffect(() => {
+    if (!isDraggingRFLevel.current) return;
+    const timer = setTimeout(() => {
+      handleSetLevel("RF", localRFLevel);
+      isDraggingRFLevel.current = false;
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [localRFLevel]);
 
   useEffect(() => {
     if (!isDraggingNR.current) return;
@@ -453,10 +507,15 @@ export default function App() {
     socket?.emit("set-vfo", vfo);
   };
 
-  const handleSetSplitVfo = (state: boolean) => {
-    skipPollsCount.current = 2;
-    setStatus(prev => ({ ...(prev || DEFAULT_STATUS), splitVfo: state }));
-    socket?.emit("set-split-vfo", state);
+  const handleToggleSplit = () => {
+    if (status.isSplit) {
+      const targetVFO = status.txVFO === "VFOA" ? "VFOB" : "VFOA";
+      socket?.emit("set-split-vfo", { split: 0, txVFO: status.txVFO });
+      handleSetVFO(targetVFO);
+    } else {
+      const txVFO = status.vfo === "VFOA" ? "VFOB" : "VFOA";
+      socket?.emit("set-split-vfo", { split: 1, txVFO });
+    }
   };
 
   const handlePollRateChange = (rate: number) => {
@@ -473,6 +532,8 @@ export default function App() {
 
   const handleSetLevel = (level: string, val: number) => {
     const key = level.toLowerCase() === "rfpower" ? "rfpower" : 
+                level.toLowerCase() === "rf" ? "rfLevel" :
+                level.toLowerCase() === "agc" ? "agc" :
                 level.toLowerCase() === "att" ? "attenuation" :
                 level.toLowerCase() === "preamp" ? "preamp" :
                 level.toLowerCase() === "nr" ? "nrLevel" : null;
@@ -489,12 +550,9 @@ export default function App() {
 
   const handleSendRaw = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rawCommand.trim()) return;
-    socket?.emit("send-raw", rawCommand);
-    // We don't clear it immediately so the user knows what they sent
-    // but we can clear it if preferred. Let's clear it for better UX.
-    // Actually, let's keep it and just clear on success or just leave it.
-    // Standard consoles usually clear.
+    if (!connected || !rawCommand.trim()) return;
+    const cmd = rawCommand.startsWith("+\\") ? rawCommand : `+\\${rawCommand}`;
+    socket?.emit("send-raw", cmd);
   };
 
   const formatFreq = (freq: string) => {
@@ -521,7 +579,7 @@ export default function App() {
         {/* Header / Connection */}
         <header className={cn(
           "bg-[#151619] rounded-xl border border-[#2a2b2e] shadow-2xl transition-all duration-300",
-          isCompact ? "p-3" : "p-6"
+          isPhone ? "p-3" : isCompact ? "p-4" : "p-6"
         )}>
           {isCompact ? (
             <div className="space-y-2">
@@ -529,24 +587,39 @@ export default function App() {
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2">
                     <div className={cn(
-                      "p-1.5 rounded-full",
+                      "rounded-full transition-all",
+                      isPhone ? "p-1.5" : "p-2",
                       connected ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
                     )}>
-                      <Radio size={16} />
+                      <Radio size={isPhone ? 16 : 24} />
                     </div>
-                    <h1 className="text-sm font-bold tracking-tighter uppercase italic">RigControl Web</h1>
+                    <h1 className={cn(
+                      "font-bold tracking-tighter uppercase italic transition-all",
+                      isPhone ? "text-sm" : "text-xl"
+                    )}>
+                      RigControl Web
+                    </h1>
                   </div>
-                  <div className="flex items-center gap-1 w-10 flex-none mt-1 ml-1">
+                  <div className={cn(
+                    "flex items-center gap-2 flex-none ml-1 transition-all",
+                    isPhone ? "mt-2" : "mt-3"
+                  )}>
                     <button 
                       onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
-                      className="w-4 h-4 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.625rem] hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      className={cn(
+                        "flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg hover:border-emerald-500 text-[#8e9299] transition-all",
+                        isPhone ? "w-10 h-10 text-xl" : "w-8 h-8 text-lg"
+                      )}
                       title="Decrease Font Size"
                     >
                       -
                     </button>
                     <button 
                       onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
-                      className="w-4 h-4 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.625rem] hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      className={cn(
+                        "flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg hover:border-emerald-500 text-[#8e9299] transition-all",
+                        isPhone ? "w-10 h-10 text-xl" : "w-8 h-8 text-lg"
+                      )}
                       title="Increase Font Size"
                     >
                       +
@@ -554,19 +627,24 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[0.5625rem] text-[#8e9299] uppercase">{host}:{port}</span>
+                  <span className={cn(
+                    "text-[#8e9299] uppercase transition-all",
+                    isPhone ? "text-[0.5625rem]" : "text-xs"
+                  )}>
+                    {host}:{port}
+                  </span>
                   <button 
                     onClick={() => setShowHeaderOptions(!showHeaderOptions)}
                     className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
                   >
-                    {showHeaderOptions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    {showHeaderOptions ? <ChevronUp size={isPhone ? 14 : 18} /> : <ChevronDown size={isPhone ? 14 : 18} />}
                   </button>
                   <button 
                     onClick={() => setIsCompact(false)}
                     className="p-1 hover:bg-white/5 rounded text-emerald-500"
                     title="Exit Compact Mode"
                   >
-                    <Maximize2 size={14} />
+                    <Maximize2 size={isPhone ? 14 : 18} />
                   </button>
                 </div>
               </div>
@@ -575,16 +653,19 @@ export default function App() {
                 <div className="pt-2 border-t border-[#2a2b2e] animate-in slide-in-from-top-2 duration-200 space-y-2">
                   <div className="flex items-end gap-2">
                     <div className="flex-1 flex flex-col gap-1">
-                      <label className="text-[0.5rem] uppercase text-[#8e9299]">Host</label>
+                      <label className={cn("uppercase text-[#8e9299]", isPhone ? "text-[0.5rem]" : "text-[0.625rem]")}>Host</label>
                       <input 
                         type="text" 
                         value={host}
                         onChange={(e) => setHost(e.target.value)}
-                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500"
+                        className={cn(
+                          "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 focus:outline-none focus:border-emerald-500 transition-all",
+                          isPhone ? "text-[0.625rem]" : "text-sm"
+                        )}
                       />
                     </div>
-                    <div className="w-16 flex flex-col gap-1">
-                      <label className="text-[0.5rem] uppercase text-[#8e9299]">Port</label>
+                    <div className={cn("flex flex-col gap-1", isPhone ? "w-16" : "w-24")}>
+                      <label className={cn("uppercase text-[#8e9299]", isPhone ? "text-[0.5rem]" : "text-[0.625rem]")}>Port</label>
                       <input 
                         type="number" 
                         value={(port === null || isNaN(port)) ? "" : port}
@@ -592,28 +673,37 @@ export default function App() {
                           const val = parseInt(e.target.value);
                           setPort(isNaN(val) ? NaN : val);
                         }}
-                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500"
+                        className={cn(
+                          "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 focus:outline-none focus:border-emerald-500 transition-all",
+                          isPhone ? "text-[0.625rem]" : "text-sm"
+                        )}
                       />
                     </div>
                     <button 
                       onClick={handleConnect}
                       className={cn(
-                         "w-24 py-1 rounded font-bold uppercase text-[0.5625rem] transition-all flex items-center justify-center gap-1 h-[22px]",
+                         "py-1 rounded font-bold uppercase transition-all flex items-center justify-center gap-1",
+                        isPhone ? "w-24 text-[0.5625rem] h-[22px]" : "w-32 text-xs h-[30px]",
                         connected ? "bg-red-500/20 text-red-500 border border-red-500/50" : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50"
                       )}
                     >
-                      <Power size={10} />
+                      <Power size={isPhone ? 10 : 14} />
                       {connected ? "Disconnect" : "Connect"}
                     </button>
                   </div>
                   
-                  <div className="flex items-center justify-center gap-4">
+                  <div className={cn("flex items-center justify-center", isPhone ? "gap-4" : "gap-8")}>
                     <div className="flex flex-col gap-1 w-1/3">
-                      <label className="text-[0.5rem] uppercase text-[#8e9299] text-center">Polling Rate</label>
+                      <label className={cn("uppercase text-[#8e9299] text-center", isPhone ? "text-[0.5rem]" : "text-[0.625rem]")}>Polling Rate</label>
                       <select 
                         value={pollRate}
                         onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
-                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-1 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer text-center"
+                        disabled={!connected}
+                        className={cn(
+                          "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-1 py-1 focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer text-center transition-all",
+                          isPhone ? "text-[0.625rem]" : "text-sm",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
                       >
                         <option value={250}>250ms</option>
                         <option value={500}>500ms</option>
@@ -628,26 +718,31 @@ export default function App() {
                         <div 
                           onClick={handleToggleAutoStart}
                           className={cn(
-                            "w-3 h-3 rounded border transition-all flex items-center justify-center",
+                            "rounded border transition-all flex items-center justify-center",
+                            isPhone ? "w-3 h-3" : "w-4 h-4",
                             autoStart ? "bg-emerald-500 border-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] group-hover:border-emerald-500/50"
                           )}
                         >
-                          {autoStart && <Check size={8} className="text-white" strokeWidth={4} />}
+                          {autoStart && <Check size={isPhone ? 8 : 10} className="text-white" strokeWidth={4} />}
                         </div>
-                        <span className="text-[0.5rem] uppercase text-[#8e9299] whitespace-nowrap">Auto Start Rigctld</span>
+                        <span className={cn("uppercase text-[#8e9299] whitespace-nowrap transition-all", isPhone ? "text-[0.5rem]" : "text-[0.625rem]")}>Auto Start Rigctld</span>
                       </label>
                       <div className="flex items-center gap-1">
                         <div className={cn(
-                          "w-1.5 h-1.5 rounded-full",
+                          "rounded-full transition-all",
+                          isPhone ? "w-1.5 h-1.5" : "w-2 h-2",
                           rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
                           rigctldProcessStatus === "error" ? "bg-red-500" : "bg-[#2a2b2e]"
                         )} />
                         <button 
                           onClick={() => setIsSettingsOpen(true)}
-                          className="p-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-colors"
+                          className={cn(
+                            "bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-all",
+                            isPhone ? "p-1" : "p-1.5"
+                          )}
                           title="Rigctld Settings"
                         >
-                          <Settings size={10} />
+                          <Settings size={isPhone ? 10 : 14} />
                         </button>
                       </div>
                     </div>
@@ -656,28 +751,28 @@ export default function App() {
               )}
             </div>
           ) : (
-            <div className="flex flex-col md:flex-row justify-between items-center w-full">
-              <div className="flex items-center gap-4 mb-4 md:mb-0">
+            <div className="flex flex-col xl:flex-row justify-between items-center w-full gap-6">
+              <div className="flex items-center gap-6 mb-4 xl:mb-0">
                 <div className={cn(
-                  "p-3 rounded-full",
+                  "p-4 rounded-full transition-all",
                   connected ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
                 )}>
-                  <Radio size={32} />
+                  <Radio size={40} />
                 </div>
-                <div>
-                  <h1 className="text-2xl font-bold tracking-tighter uppercase italic">RigControl Web</h1>
-                  <p className="text-xs text-[#8e9299] uppercase tracking-widest">Hamlib rigctld Interface</p>
-                  <div className="flex items-center gap-1 w-16 flex-none mt-2">
+                <div className="space-y-1">
+                  <h1 className="text-3xl font-bold tracking-tighter uppercase italic">RigControl Web</h1>
+                  <p className="text-sm text-[#8e9299] uppercase tracking-[0.2em]">Hamlib rigctld Interface</p>
+                  <div className="flex items-center gap-3 flex-none mt-3">
                     <button 
                       onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
-                      className="w-6 h-6 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-sm hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      className="w-10 h-10 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-xl hover:border-emerald-500 text-[#8e9299] transition-all"
                       title="Decrease Font Size"
                     >
                       -
                     </button>
                     <button 
                       onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
-                      className="w-6 h-6 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded text-sm hover:border-emerald-500 text-[#8e9299] transition-colors"
+                      className="w-10 h-10 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-xl hover:border-emerald-500 text-[#8e9299] transition-all"
                       title="Increase Font Size"
                     >
                       +
@@ -686,20 +781,20 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-4 w-full md:w-auto">
-                <div className="flex flex-wrap gap-4 items-center">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Host Address</label>
+              <div className="flex flex-col gap-6 w-full xl:w-auto">
+                <div className="flex flex-wrap gap-6 items-end justify-center xl:justify-end">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs uppercase text-[#8e9299] font-bold">Host Address</label>
                     <input 
                       type="text" 
                       value={host}
                       onChange={(e) => setHost(e.target.value)}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-1 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-2 text-base focus:outline-none focus:border-emerald-500 transition-all w-48"
                       placeholder="127.0.0.1"
                     />
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Port</label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs uppercase text-[#8e9299] font-bold">Port</label>
                     <input 
                       type="number" 
                       value={(port === null || isNaN(port)) ? "" : port}
@@ -707,64 +802,68 @@ export default function App() {
                         const val = parseInt(e.target.value);
                         setPort(isNaN(val) ? NaN : val);
                       }}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-1 text-sm w-24 focus:outline-none focus:border-emerald-500 transition-colors"
+                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-2 text-base w-28 focus:outline-none focus:border-emerald-500 transition-all"
                     />
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     {showInstallButton && (
                       <button 
                         onClick={handleInstallClick}
-                        className="px-4 py-2 rounded font-bold uppercase text-xs transition-all bg-blue-500/20 text-blue-400 border border-blue-500/50 hover:bg-blue-500 hover:text-white flex items-center gap-2"
+                        className="px-5 py-2.5 rounded-lg font-bold uppercase text-sm transition-all bg-blue-500/20 text-blue-400 border border-blue-500/50 hover:bg-blue-500 hover:text-white flex items-center gap-2"
                         title="Install to Desktop"
                       >
-                        <Download size={14} />
+                        <Download size={16} />
                         Install
                       </button>
                     )}
                     <button 
                       onClick={() => setShowSetupModal(true)}
-                      className="px-4 py-2 rounded font-bold uppercase text-xs transition-all bg-[#2a2b2e] text-[#8e9299] border border-[#3a3b3e] hover:bg-[#3a3b3e] hover:text-white flex items-center gap-2"
+                      className="px-5 py-2.5 rounded-lg font-bold uppercase text-sm transition-all bg-[#2a2b2e] text-[#8e9299] border border-[#3a3b3e] hover:bg-[#3a3b3e] hover:text-white flex items-center gap-2"
                     >
-                      <Server size={14} />
+                      <Server size={16} />
                       Portable
                     </button>
                     <button 
                       onClick={handleConnect}
                       className={cn(
-                        "px-6 py-2 rounded font-bold uppercase text-xs transition-all flex items-center gap-2",
+                        "px-8 py-2.5 rounded-lg font-bold uppercase text-sm transition-all flex items-center gap-2",
                         connected 
                           ? "bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500 hover:text-white"
                           : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white"
                       )}
                     >
-                      <Power size={14} />
+                      <Power size={16} />
                       {connected ? "Disconnect" : "Connect"}
                     </button>
                     {!connected && (
                       <button 
                         onClick={() => socket?.emit("connect-rig", { host: "mock", port: 0 })}
-                        className="px-4 py-2 rounded font-bold uppercase text-xs transition-all bg-amber-500/20 text-amber-500 border border-amber-500/50 hover:bg-amber-500 hover:text-white"
+                        className="px-5 py-2.5 rounded-lg font-bold uppercase text-sm transition-all bg-amber-500/20 text-amber-500 border border-amber-500/50 hover:bg-amber-500 hover:text-white"
                       >
                         Demo
                       </button>
                     )}
                     <button 
                       onClick={() => setIsCompact(true)}
-                      className="px-3 py-2 rounded font-bold uppercase text-xs transition-all bg-[#2a2b2e] text-[#8e9299] border border-[#3a3b3e] hover:bg-[#3a3b3e] hover:text-white flex items-center justify-center"
+                      className="px-4 py-2.5 rounded-lg font-bold uppercase text-sm transition-all bg-[#2a2b2e] text-[#8e9299] border border-[#3a3b3e] hover:bg-[#3a3b3e] hover:text-white flex items-center justify-center"
                       title="Enter Compact Mode"
                     >
-                      <Minimize2 size={14} />
+                      <Minimize2 size={16} />
                     </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Poll Rate</label>
+                <div className="flex items-center justify-center xl:justify-end gap-8">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs uppercase text-[#8e9299] font-bold">Poll Rate</label>
                     <select 
                       value={pollRate}
                       onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-1 text-sm focus:outline-none focus:border-emerald-500 transition-colors appearance-none cursor-pointer"
+                      disabled={!connected}
+                      className={cn(
+                        "bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-2 text-base focus:outline-none focus:border-emerald-500 transition-all appearance-none cursor-pointer w-32",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
                     >
                       <option value={250}>250 ms</option>
                       <option value={500}>500 ms</option>
@@ -775,31 +874,31 @@ export default function App() {
                     </select>
                   </div>
 
-                  <div className="flex items-center gap-3 pt-4">
-                    <label className="flex items-center gap-2 cursor-pointer group">
+                  <div className="flex items-center gap-4 pt-5">
+                    <label className="flex items-center gap-3 cursor-pointer group">
                       <div 
                         onClick={handleToggleAutoStart}
                         className={cn(
-                          "w-4 h-4 rounded border transition-all flex items-center justify-center",
+                          "w-5 h-5 rounded border transition-all flex items-center justify-center",
                           autoStart ? "bg-emerald-500 border-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] group-hover:border-emerald-500/50"
                         )}
                       >
-                        {autoStart && <Check size={10} className="text-white" strokeWidth={4} />}
+                        {autoStart && <Check size={12} className="text-white" strokeWidth={4} />}
                       </div>
-                      <span className="text-[0.625rem] uppercase text-[#8e9299] whitespace-nowrap">Auto Start Rigctld</span>
+                      <span className="text-xs uppercase text-[#8e9299] font-bold whitespace-nowrap">Auto Start Rigctld</span>
                     </label>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <div className={cn(
-                        "w-2 h-2 rounded-full",
+                        "w-2.5 h-2.5 rounded-full",
                         rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
                         rigctldProcessStatus === "error" ? "bg-red-500" : "bg-[#2a2b2e]"
                       )} />
                       <button 
                         onClick={() => setIsSettingsOpen(true)}
-                        className="p-1.5 bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-colors"
+                        className="p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg hover:border-emerald-500 text-[#8e9299] transition-all"
                         title="Rigctld Settings"
                       >
-                        <Settings size={14} />
+                        <Settings size={18} />
                       </button>
                     </div>
                   </div>
@@ -848,46 +947,454 @@ export default function App() {
         )}
 
         {/* Main Interface */}
-        {isCompact ? (
-          <div className="space-y-2 animate-in fade-in duration-300">
+        {isPhone ? (
+          <div className="space-y-3 animate-in fade-in duration-300">
             {/* Unified VFO & Mode/BW Box */}
             <div className={cn(
-              "bg-[#151619] p-3 rounded-xl border shadow-lg space-y-2",
-              status.splitVfo 
-                ? "border-amber-500/30" 
-                : status.vfo === "VFOA" ? "border-emerald-500/30" : "border-blue-500/30"
+              "bg-[#151619] p-4 rounded-xl border shadow-lg space-y-4",
+              status.vfo === "VFOA" ? "border-emerald-500/30" : "border-blue-500/30"
             )}>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <button 
                     onClick={() => handleSetVFO("VFOA")}
+                    disabled={!connected}
                     className={cn(
-                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
-                      status.vfo === "VFOA" 
-                        ? (status.splitVfo ? "bg-amber-500 text-white border border-amber-500" : "bg-emerald-500 text-white border border-emerald-500")
-                        : (status.splitVfo ? "bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500/20" : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20")
+                      "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.isSplit
+                        ? (status.txVFO === "VFOA" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
+                        : (status.vfo === "VFOA" 
+                          ? "bg-emerald-500 text-white border border-emerald-500" 
+                          : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20")
                     )}
                   >
                     VFO A
                   </button>
                   <button 
                     onClick={() => handleSetVFO("VFOB")}
+                    disabled={!connected}
                     className={cn(
-                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
-                      status.vfo === "VFOB" 
-                        ? (status.splitVfo ? "bg-red-500 text-white border border-red-500" : "bg-blue-500 text-white border border-blue-500")
-                        : (status.splitVfo ? "bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20" : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20")
+                      "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.isSplit
+                        ? (status.txVFO === "VFOB" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
+                        : (status.vfo === "VFOB" 
+                          ? "bg-blue-500 text-white border border-blue-500" 
+                          : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20")
                     )}
                   >
                     VFO B
                   </button>
                   <button 
-                    onClick={() => handleSetSplitVfo(!status.splitVfo)}
+                    onClick={handleToggleSplit}
+                    disabled={!connected}
                     className={cn(
-                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all border",
-                      status.splitVfo 
-                        ? "bg-red-500 text-white border-red-500" 
-                        : "bg-[#0a0a0a] text-[#8e9299] border-[#2a2b2e] hover:border-red-500/50"
+                      "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.isSplit 
+                        ? "bg-red-500 text-white border border-red-500" 
+                        : "bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20"
+                    )}
+                  >
+                    SPLIT
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select 
+                    value={vfoStep}
+                    onChange={(e) => setVfoStep(parseFloat(e.target.value))}
+                    disabled={!connected}
+                    className={cn(
+                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-xs px-3 py-2 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
+                      !connected && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="relative group flex items-baseline justify-center gap-2 py-2">
+                <input
+                  type="number"
+                  step={vfoStep}
+                  value={status.vfo === "VFOA" ? inputVfoA : inputVfoB}
+                  onChange={(e) => status.vfo === "VFOA" ? setInputVfoA(e.target.value) : setInputVfoB(e.target.value)}
+                  disabled={!connected}
+                  onBlur={() => {
+                    const val = parseFloat(status.vfo === "VFOA" ? inputVfoA : inputVfoB);
+                    if (!isNaN(val)) {
+                      handleSetFreq(Math.round(val * 1000000).toString());
+                    }
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                  className={cn(
+                    "w-full bg-white/5 text-5xl font-bold tracking-tighter font-mono text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none rounded-xl transition-all cursor-text py-3 px-4 border",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.isSplit
+                      ? (status.vfo === status.txVFO 
+                          ? "text-red-500 hover:bg-red-500/10 focus:bg-red-500/10 border-red-500/30 focus:border-red-500/50" 
+                          : "text-amber-500 hover:bg-amber-500/10 focus:bg-amber-500/10 border-amber-500/30 focus:border-amber-500/50")
+                      : (status.vfo === "VFOA" 
+                          ? "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50" 
+                          : "text-blue-500 hover:bg-blue-500/10 focus:bg-blue-500/10 border-[#2a2b2e] focus:border-blue-500/50")
+                  )}
+                />
+                <span className={cn(
+                  "text-lg font-bold",
+                  status.vfo === "VFOA" ? "text-emerald-500/50" : "text-blue-500/50"
+                )}>MHz</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <select 
+                  value={localMode}
+                  onChange={(e) => handleSetMode(e.target.value)}
+                  disabled={!connected}
+                  className={cn(
+                    "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm font-bold focus:outline-none focus:border-emerald-500",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  {availableModes.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <select 
+                  value={status?.bandwidth || "2400"}
+                  onChange={(e) => handleSetBw(parseInt(e.target.value))}
+                  disabled={!connected}
+                  className={cn(
+                    "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm font-bold focus:outline-none focus:border-emerald-500",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  {BANDWIDTHS.map(bw => <option key={bw} value={bw}>{bw}Hz</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Combined Meter Box for Phone */}
+            <div className="bg-[#151619] p-4 rounded-xl border border-[#2a2b2e] space-y-4">
+              <div className="flex items-center justify-between border-b border-[#2a2b2e] pb-3">
+                <div className="flex gap-2">
+                  {(['signal', 'swr', 'alc'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setPhoneMeterTab(m)}
+                      className={cn(
+                        "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
+                        phoneMeterTab === m ? "bg-emerald-500 text-white" : "text-[#8e9299] hover:bg-white/5"
+                      )}
+                    >
+                      {m === 'signal' ? (status.ptt ? 'POWER' : 'SIGNAL') : m}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-col items-end">
+                  {phoneMeterTab === 'signal' && (
+                    <span className={cn(
+                      "text-lg font-mono font-bold",
+                      status.ptt ? "text-red-500" : "text-emerald-500"
+                    )}>
+                      {status.ptt 
+                        ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
+                        : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
+                    </span>
+                  )}
+                  {phoneMeterTab === 'swr' && (
+                    <span className="text-lg font-mono font-bold text-amber-500">
+                      {(status.swr ?? 1).toFixed(2)}
+                    </span>
+                  )}
+                  {phoneMeterTab === 'alc' && (
+                    <span className="text-lg font-mono font-bold text-blue-500">
+                      {(status.alc ?? 0).toFixed(5)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="h-40">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={history}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
+                    <XAxis dataKey="time" hide />
+                    <YAxis 
+                      domain={phoneMeterTab === 'signal' ? (status.ptt ? [0, 1] : [-54, 60]) : phoneMeterTab === 'swr' ? [0, 5] : [0, 1]} 
+                      hide 
+                    />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.75}px` }}
+                      itemStyle={{ color: phoneMeterTab === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6' }}
+                      formatter={(val: number) => {
+                        if (phoneMeterTab === 'signal') {
+                          return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (val ?? 0), status.ptt ? "POWER" : "SIGNAL"];
+                        }
+                        return [(val ?? 0).toFixed(phoneMeterTab === 'swr' ? 2 : 5), phoneMeterTab.toUpperCase()];
+                      }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey={phoneMeterTab === 'signal' ? (status.ptt ? "powerMeter" : "smeter") : phoneMeterTab === 'swr' ? 'swrGraph' : 'alc'} 
+                      stroke={phoneMeterTab === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6'} 
+                      strokeWidth={2} 
+                      dot={false} 
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Controls Grid for Phone */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-[#151619] p-3 rounded-xl border border-[#2a2b2e] grid grid-cols-2 gap-3 h-full content-start">
+                <button 
+                  onClick={() => handleSetPTT(!status.ptt)}
+                  disabled={!connected}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                  )}
+                >
+                  <Mic size={24} />
+                  <span className="text-xs uppercase font-bold leading-none">PTT</span>
+                </button>
+                <button 
+                  onClick={() => {
+                    if (status.tuner) {
+                      handleSetFunc("TUNER", false);
+                    } else {
+                      handleVfoOp("TUNE");
+                    }
+                  }}
+                  disabled={!connected}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                  )}
+                >
+                  <RefreshCw size={24} className={cn(status.tuner && "animate-spin")} />
+                  <span className="text-xs uppercase font-bold leading-none">Tune</span>
+                </button>
+                <button 
+                  onClick={() => {
+                    const next = status.attenuation === 0 ? 6 : status.attenuation === 6 ? 12 : 0;
+                    handleSetLevel("ATT", next);
+                  }}
+                  disabled={!connected}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                  )}
+                >
+                  <Signal size={24} />
+                  <span className="text-xs uppercase font-bold leading-none">
+                    {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "-6" : "-12"}
+                  </span>
+                </button>
+                <button 
+                  onClick={() => {
+                    const next = status.preamp === 0 ? 10 : status.preamp === 10 ? 20 : 0;
+                    handleSetLevel("PREAMP", next);
+                  }}
+                  disabled={!connected}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                  )}
+                >
+                  <Zap size={24} />
+                  <span className="text-xs uppercase font-bold leading-none">
+                    {status.preamp === 0 ? "IPO" : status.preamp === 10 ? "AMP1" : "AMP2"}
+                  </span>
+                </button>
+                <button 
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className={cn(
+                    "col-span-2 flex items-center justify-center h-12 rounded-xl border border-[#2a2b2e] bg-[#0a0a0a] text-[#8e9299] hover:text-white transition-all gap-2",
+                    showAdvanced && "bg-white/5 border-white/20 text-white"
+                  )}
+                >
+                  <Settings size={16} />
+                  <span className="text-xs uppercase font-bold">{showAdvanced ? "Hide Advanced" : "Show Advanced"}</span>
+                </button>
+              </div>
+
+              <div className="bg-[#151619] p-4 rounded-xl border border-[#2a2b2e] flex flex-col justify-center gap-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
+                    <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0.05" 
+                    max="1" 
+                    step="0.05"
+                    value={localRFPower}
+                    disabled={!connected}
+                    onChange={(e) => {
+                      isDraggingRF.current = true;
+                      setLocalRFPower(parseFloat(e.target.value));
+                    }}
+                    className={cn(
+                      "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                      !connected && "opacity-50 cursor-not-allowed"
+                    )}
+                  />
+                </div>
+                
+                {showAdvanced && (
+                  <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs uppercase text-[#8e9299]">RF Level</span>
+                        <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="1" 
+                        step="0.1"
+                        value={localRFLevel}
+                        disabled={!connected}
+                        onChange={(e) => {
+                          isDraggingRFLevel.current = true;
+                          setLocalRFLevel(parseFloat(e.target.value));
+                        }}
+                        className={cn(
+                          "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
+                        <span className="text-sm text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="14" 
+                        step="1"
+                        value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
+                        disabled={!connected}
+                        onChange={(e) => {
+                          isDraggingNR.current = true;
+                          setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
+                        }}
+                        className={cn(
+                          "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {showAdvanced && (
+              <div className="grid grid-cols-3 gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <button 
+                  onClick={() => handleSetFunc("NB", !status.nb)}
+                  disabled={!connected}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
+                  )}
+                >
+                  <Activity size={20} />
+                  <span className="text-xs uppercase font-bold leading-none">NB</span>
+                </button>
+                <button 
+                  onClick={() => {
+                    const currentIndex = AGC_VALUES.indexOf(status.agc);
+                    const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
+                    handleSetLevel("AGC", AGC_VALUES[nextIndex]);
+                  }}
+                  disabled={!connected}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
+                  )}
+                >
+                  <Settings size={20} />
+                  <div className="flex flex-col items-center leading-none">
+                    <span className="text-xs uppercase font-bold">AGC</span>
+                    <span className="text-[0.625rem] font-bold opacity-80">{AGC_LABELS[status.agc] || "OFF"}</span>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => handleSetFunc("NR", !status.nr)}
+                  disabled={!connected}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
+                  )}
+                >
+                  <Volume2 size={20} />
+                  <span className="text-xs uppercase font-bold leading-none">DNR</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ) : isCompact ? (
+          <div className="space-y-2 animate-in fade-in duration-300">
+            {/* Unified VFO & Mode/BW Box */}
+            <div className={cn(
+              "bg-[#151619] p-3 rounded-xl border shadow-lg space-y-2",
+              status.vfo === "VFOA" ? "border-emerald-500/30" : "border-blue-500/30"
+            )}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => handleSetVFO("VFOA")}
+                    disabled={!connected}
+                    className={cn(
+                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.isSplit
+                        ? (status.txVFO === "VFOA" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
+                        : (status.vfo === "VFOA" 
+                          ? "bg-emerald-500 text-white border border-emerald-500" 
+                          : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20")
+                    )}
+                  >
+                    VFO A
+                  </button>
+                  <button 
+                    onClick={() => handleSetVFO("VFOB")}
+                    disabled={!connected}
+                    className={cn(
+                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.isSplit
+                        ? (status.txVFO === "VFOB" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
+                        : (status.vfo === "VFOB" 
+                          ? "bg-blue-500 text-white border border-blue-500" 
+                          : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20")
+                    )}
+                  >
+                    VFO B
+                  </button>
+                  <button 
+                    onClick={handleToggleSplit}
+                    disabled={!connected}
+                    className={cn(
+                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.isSplit 
+                        ? "bg-red-500 text-white border border-red-500" 
+                        : "bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20"
                     )}
                   >
                     SPLIT
@@ -895,7 +1402,11 @@ export default function App() {
                   <select 
                     value={vfoStep}
                     onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-2 py-1 focus:outline-none focus:border-emerald-500 text-[#8e9299]"
+                    disabled={!connected}
+                    className={cn(
+                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-2 py-1 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
+                      !connected && "opacity-50 cursor-not-allowed"
+                    )}
                   >
                     {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
                   </select>
@@ -904,14 +1415,22 @@ export default function App() {
                   <select 
                     value={localMode}
                     onChange={(e) => handleSetMode(e.target.value)}
-                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500"
+                    disabled={!connected}
+                    className={cn(
+                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500",
+                      !connected && "opacity-50 cursor-not-allowed"
+                    )}
                   >
                     {availableModes.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                   <select 
                     value={status?.bandwidth || "2400"}
                     onChange={(e) => handleSetBw(parseInt(e.target.value))}
-                    className="bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500"
+                    disabled={!connected}
+                    className={cn(
+                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500",
+                      !connected && "opacity-50 cursor-not-allowed"
+                    )}
                   >
                     {BANDWIDTHS.map(bw => <option key={bw} value={bw}>{bw}Hz</option>)}
                   </select>
@@ -924,6 +1443,7 @@ export default function App() {
                   step={vfoStep}
                   value={status.vfo === "VFOA" ? inputVfoA : inputVfoB}
                   onChange={(e) => status.vfo === "VFOA" ? setInputVfoA(e.target.value) : setInputVfoB(e.target.value)}
+                  disabled={!connected}
                   onBlur={() => {
                     const val = parseFloat(status.vfo === "VFOA" ? inputVfoA : inputVfoB);
                     if (!isNaN(val)) {
@@ -933,23 +1453,24 @@ export default function App() {
                   onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                   className={cn(
                     "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none rounded-lg transition-all cursor-text py-1 px-2 border",
-                    status.splitVfo
-                      ? (status.vfo === "VFOA" ? "text-amber-500 hover:bg-amber-500/10 focus:bg-amber-500/10 border-[#2a2b2e] focus:border-amber-500/50" : "text-red-500 hover:bg-red-500/10 focus:bg-red-500/10 border-[#2a2b2e] focus:border-red-500/50")
-                      : (status.vfo === "VFOA" ? "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50" : "text-blue-500 hover:bg-blue-500/10 focus:bg-blue-500/10 border-[#2a2b2e] focus:border-blue-500/50")
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.isSplit
+                      ? (status.vfo === status.txVFO 
+                          ? "text-red-500 hover:bg-red-500/10 focus:bg-red-500/10 border-red-500/30 focus:border-red-500/50" 
+                          : "text-amber-500 hover:bg-amber-500/10 focus:bg-amber-500/10 border-amber-500/30 focus:border-amber-500/50")
+                      : (status.vfo === "VFOA" 
+                          ? "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50" 
+                          : "text-blue-500 hover:bg-blue-500/10 focus:bg-blue-500/10 border-[#2a2b2e] focus:border-blue-500/50")
                   )}
                   title="Click to edit frequency"
                 />
                 <span className={cn(
                   "text-sm font-bold",
-                  status.splitVfo
-                    ? (status.vfo === "VFOA" ? "text-amber-500/50" : "text-red-500/50")
-                    : (status.vfo === "VFOA" ? "text-emerald-500/50" : "text-blue-500/50")
+                  status.vfo === "VFOA" ? "text-emerald-500/50" : "text-blue-500/50"
                 )}>MHz</span>
                 <Pencil size={12} className={cn(
                   "absolute right-12 top-1/2 -translate-y-1/2 transition-opacity pointer-events-none",
-                  status.splitVfo
-                    ? (status.vfo === "VFOA" ? "text-amber-500/30" : "text-red-500/30")
-                    : (status.vfo === "VFOA" ? "text-emerald-500/30" : "text-blue-500/30")
+                  status.vfo === "VFOA" ? "text-emerald-500/30" : "text-blue-500/30"
                 )} />
               </div>
             </div>
@@ -1074,16 +1595,18 @@ export default function App() {
 
             {/* Compact Controls & RF Power */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] grid grid-cols-3 gap-1">
+              <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] grid grid-cols-3 gap-2 h-full content-start">
                 <button 
                   onClick={() => handleSetPTT(!status.ptt)}
+                  disabled={!connected}
                   className={cn(
-                    "flex flex-col items-center justify-center p-2 rounded border transition-all gap-1",
+                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                    !connected && "opacity-50 cursor-not-allowed",
                     status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                   )}
                 >
-                  <Mic size={14} />
-                  <span className="text-[0.5rem] uppercase font-bold">PTT</span>
+                  <Mic size={16} />
+                  <span className="text-[0.7rem] uppercase font-bold leading-none">PTT</span>
                 </button>
                 <button 
                   onClick={() => {
@@ -1093,37 +1616,31 @@ export default function App() {
                       handleVfoOp("TUNE");
                     }
                   }}
+                  disabled={!connected}
                   className={cn(
-                    "flex flex-col items-center justify-center p-2 rounded border transition-all gap-1",
+                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                    !connected && "opacity-50 cursor-not-allowed",
                     status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                   )}
                 >
-                  <RefreshCw size={14} className={cn(status.tuner && "animate-spin")} />
-                  <span className="text-[0.5rem] uppercase font-bold">Tune</span>
-                </button>
-                <button 
-                  onClick={() => handleSetFunc("NB", !status.nb)}
-                  className={cn(
-                    "flex flex-col items-center justify-center p-2 rounded border transition-all gap-1",
-                    status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Activity size={14} />
-                  <span className="text-[0.5rem] uppercase font-bold">NB</span>
+                  <RefreshCw size={16} className={cn(status.tuner && "animate-spin")} />
+                  <span className="text-[0.7rem] uppercase font-bold leading-none">Tune</span>
                 </button>
                 <button 
                   onClick={() => {
                     const next = status.attenuation === 0 ? 6 : status.attenuation === 6 ? 12 : 0;
                     handleSetLevel("ATT", next);
                   }}
+                  disabled={!connected}
                   className={cn(
-                    "flex flex-col items-center justify-center p-2 rounded border transition-all gap-1",
+                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                    !connected && "opacity-50 cursor-not-allowed",
                     status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                   )}
                 >
-                  <Signal size={14} />
-                  <span className="text-[0.5rem] uppercase font-bold">
-                    {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "ATT -6" : "ATT -12"}
+                  <Signal size={16} />
+                  <span className="text-[0.7rem] uppercase font-bold leading-none">
+                    {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "-6" : "-12"}
                   </span>
                 </button>
                 <button 
@@ -1131,25 +1648,60 @@ export default function App() {
                     const next = status.preamp === 0 ? 10 : status.preamp === 10 ? 20 : 0;
                     handleSetLevel("PREAMP", next);
                   }}
+                  disabled={!connected}
                   className={cn(
-                    "flex flex-col items-center justify-center p-2 rounded border transition-all gap-1",
+                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                    !connected && "opacity-50 cursor-not-allowed",
                     status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                   )}
                 >
-                  <Zap size={14} />
-                  <span className="text-[0.5rem] uppercase font-bold">
+                  <Zap size={16} />
+                  <span className="text-[0.7rem] uppercase font-bold leading-none">
                     {status.preamp === 0 ? "IPO" : status.preamp === 10 ? "AMP1" : "AMP2"}
                   </span>
                 </button>
                 <button 
-                  onClick={() => handleSetFunc("NR", !status.nr)}
+                  onClick={() => handleSetFunc("NB", !status.nb)}
+                  disabled={!connected}
                   className={cn(
-                    "flex flex-col items-center justify-center p-2 rounded border transition-all gap-1",
+                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                  )}
+                >
+                  <Activity size={16} />
+                  <span className="text-[0.7rem] uppercase font-bold leading-none">NB</span>
+                </button>
+                <button 
+                  onClick={() => {
+                    const currentIndex = AGC_VALUES.indexOf(status.agc);
+                    const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
+                    handleSetLevel("AGC", AGC_VALUES[nextIndex]);
+                  }}
+                  disabled={!connected}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                    !connected && "opacity-50 cursor-not-allowed",
+                    status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                  )}
+                >
+                  <Settings size={16} />
+                  <div className="flex flex-col items-center leading-none">
+                    <span className="text-[0.7rem] uppercase font-bold">AGC</span>
+                    <span className="text-[0.5rem] font-bold opacity-80">{AGC_LABELS[status.agc] || "OFF"}</span>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => handleSetFunc("NR", !status.nr)}
+                  disabled={!connected}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                    !connected && "opacity-50 cursor-not-allowed",
                     status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                   )}
                 >
-                  <Volume2 size={14} />
-                  <span className="text-[0.5rem] uppercase font-bold">DNR</span>
+                  <Volume2 size={16} />
+                  <span className="text-[0.7rem] uppercase font-bold leading-none">DNR</span>
                 </button>
               </div>
 
@@ -1164,11 +1716,35 @@ export default function App() {
                   max="1" 
                   step="0.05"
                   value={localRFPower}
+                  disabled={!connected}
                   onChange={(e) => {
                     isDraggingRF.current = true;
                     setLocalRFPower(parseFloat(e.target.value));
                   }}
-                  className="w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer"
+                  className={cn(
+                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
+                />
+                <div className="flex justify-between items-center mt-3">
+                  <span className="text-[0.5625rem] uppercase text-[#8e9299]">RF Level</span>
+                  <span className="text-[0.625rem] text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.1"
+                  value={localRFLevel}
+                  disabled={!connected}
+                  onChange={(e) => {
+                    isDraggingRFLevel.current = true;
+                    setLocalRFLevel(parseFloat(e.target.value));
+                  }}
+                  className={cn(
+                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
                 />
                 <div className="flex justify-between items-center mt-3">
                   <span className="text-[0.5625rem] uppercase text-[#8e9299]">DNR Level</span>
@@ -1180,11 +1756,15 @@ export default function App() {
                   max="14" 
                   step="1"
                   value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
+                  disabled={!connected}
                   onChange={(e) => {
                     isDraggingNR.current = true;
                     setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
                   }}
-                  className="w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer"
+                  className={cn(
+                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
                 />
               </div>
             </div>
@@ -1199,25 +1779,36 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className={cn(
                 "bg-[#151619] p-6 rounded-xl border transition-all",
-                status.splitVfo
-                  ? "border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.1)]"
+                status.isSplit
+                  ? (status.txVFO === "VFOA" ? "border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.1)]" : "border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.1)]")
                   : (status.vfo === "VFOA" ? "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]" : "border-[#2a2b2e]")
               )}>
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2">
                     <span className={cn(
                       "text-[0.625rem] uppercase font-bold",
-                      status.splitVfo ? "text-amber-500" : "text-[#8e9299]"
+                      status.isSplit
+                        ? (status.txVFO === "VFOA" ? "text-red-500" : "text-amber-500")
+                        : "text-[#8e9299]"
                     )}>VFO A</span>
                     <select 
                       value={vfoStep}
                       onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]"
+                      disabled={!connected}
+                      className={cn(
+                        "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
                     >
                       {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
                     </select>
                   </div>
-                  {status.vfo === "VFOA" && <Activity size={12} className="text-emerald-500 animate-pulse" />}
+                  {(status.vfo === "VFOA" || (status.isSplit && status.txVFO === "VFOA")) && (
+                    <Activity size={12} className={cn(
+                      status.isSplit && status.txVFO === "VFOA" ? "text-red-500" : "text-emerald-500",
+                      "animate-pulse"
+                    )} />
+                  )}
                 </div>
                 <div className="relative group flex items-baseline gap-2">
                   <input
@@ -1226,6 +1817,7 @@ export default function App() {
                     step={vfoStep}
                     value={inputVfoA}
                     onChange={(e) => setInputVfoA(e.target.value)}
+                    disabled={!connected}
                     onBlur={() => {
                       const val = parseFloat(inputVfoA);
                       if (!isNaN(val)) {
@@ -1238,23 +1830,36 @@ export default function App() {
                       }
                     }}
                     className={cn(
-                      "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-emerald-500/10 focus:bg-emerald-500/10 rounded-lg transition-all cursor-text py-1 px-2 border border-[#2a2b2e] focus:border-emerald-500/50",
-                      status.splitVfo ? "text-amber-500" : "text-emerald-500"
+                      "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none rounded-lg transition-all cursor-text py-1 px-2 border",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.isSplit
+                        ? (status.txVFO === "VFOA" 
+                            ? "text-red-500 hover:bg-red-500/10 focus:bg-red-500/10 border-red-500/30 focus:border-red-500/50" 
+                            : "text-amber-500 hover:bg-amber-500/10 focus:bg-amber-500/10 border-amber-500/30 focus:border-amber-500/50")
+                        : "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50"
                     )}
                     title="Click to edit frequency"
                   />
                   <span className={cn(
                     "text-xs font-bold",
-                    status.splitVfo ? "text-amber-500/50" : "text-emerald-500/50"
+                    status.isSplit
+                      ? (status.txVFO === "VFOA" ? "text-red-500/50" : "text-amber-500/50")
+                      : "text-emerald-500/50"
                   )}>MHz</span>
                   <Pencil size={14} className={cn(
                     "absolute right-12 top-1/2 -translate-y-1/2 transition-opacity pointer-events-none",
-                    status.splitVfo ? "text-amber-500/30" : "text-emerald-500/30"
+                    status.isSplit
+                      ? (status.txVFO === "VFOA" ? "text-red-500/30" : "text-amber-500/30")
+                      : "text-emerald-500/30"
                   )} />
                 </div>
                 <button 
                   onClick={() => handleSetVFO("VFOA")}
-                  className="mt-4 w-full py-1 text-[0.625rem] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors"
+                  disabled={!connected}
+                  className={cn(
+                    "mt-4 w-full py-1 text-[0.625rem] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   Select VFO A
                 </button>
@@ -1262,23 +1867,27 @@ export default function App() {
 
               <div className={cn(
                 "bg-[#151619] p-6 rounded-xl border transition-all",
-                status.splitVfo
-                  ? "border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.1)]"
+                status.isSplit
+                  ? (status.txVFO === "VFOB" ? "border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.1)]" : "border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.1)]")
                   : (status?.vfo === "VFOB" ? "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]" : "border-[#2a2b2e]")
               )}>
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2">
                     <span className={cn(
                       "text-[0.625rem] uppercase font-bold",
-                      status.splitVfo ? "text-red-500" : "text-[#8e9299]"
+                      status.isSplit
+                        ? (status.txVFO === "VFOB" ? "text-red-500" : "text-amber-500")
+                        : "text-[#8e9299]"
                     )}>VFO B</span>
                     <button 
-                      onClick={() => handleSetSplitVfo(!status.splitVfo)}
+                      onClick={handleToggleSplit}
+                      disabled={!connected}
                       className={cn(
                         "px-2 py-0.5 rounded text-[0.5rem] font-bold uppercase transition-all border",
-                        status.splitVfo 
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.isSplit 
                           ? "bg-red-500 text-white border-red-500" 
-                          : "bg-[#0a0a0a] text-[#8e9299] border-[#2a2b2e] hover:border-red-500/50"
+                          : "bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/20"
                       )}
                     >
                       SPLIT
@@ -1286,12 +1895,21 @@ export default function App() {
                     <select 
                       value={vfoStep}
                       onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]"
+                      disabled={!connected}
+                      className={cn(
+                        "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
                     >
                       {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
                     </select>
                   </div>
-                  {status?.vfo === "VFOB" && <Activity size={12} className="text-emerald-500 animate-pulse" />}
+                  {(status?.vfo === "VFOB" || (status.isSplit && status.txVFO === "VFOB")) && (
+                    <Activity size={12} className={cn(
+                      status.isSplit && status.txVFO === "VFOB" ? "text-red-500" : "text-emerald-500",
+                      "animate-pulse"
+                    )} />
+                  )}
                 </div>
                 <div className="relative group flex items-baseline gap-2">
                   <input
@@ -1300,6 +1918,7 @@ export default function App() {
                     step={vfoStep}
                     value={inputVfoB}
                     onChange={(e) => setInputVfoB(e.target.value)}
+                    disabled={!connected}
                     onBlur={() => {
                       const val = parseFloat(inputVfoB);
                       if (!isNaN(val)) {
@@ -1312,23 +1931,36 @@ export default function App() {
                       }
                     }}
                     className={cn(
-                      "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-emerald-500/10 focus:bg-emerald-500/10 rounded-lg transition-all cursor-text py-1 px-2 border border-[#2a2b2e] focus:border-emerald-500/50",
-                      status.splitVfo ? "text-red-500" : "text-emerald-500"
+                      "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none rounded-lg transition-all cursor-text py-1 px-2 border",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.isSplit
+                        ? (status.txVFO === "VFOB" 
+                            ? "text-red-500 hover:bg-red-500/10 focus:bg-red-500/10 border-red-500/30 focus:border-red-500/50" 
+                            : "text-amber-500 hover:bg-amber-500/10 focus:bg-amber-500/10 border-amber-500/30 focus:border-amber-500/50")
+                        : "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50"
                     )}
                     title="Click to edit frequency"
                   />
                   <span className={cn(
                     "text-xs font-bold",
-                    status.splitVfo ? "text-red-500/50" : "text-emerald-500/50"
+                    status.isSplit
+                      ? (status.txVFO === "VFOB" ? "text-red-500/50" : "text-amber-500/50")
+                      : "text-emerald-500/50"
                   )}>MHz</span>
                   <Pencil size={14} className={cn(
                     "absolute right-12 top-1/2 -translate-y-1/2 transition-opacity pointer-events-none",
-                    status.splitVfo ? "text-red-500/30" : "text-emerald-500/30"
+                    status.isSplit
+                      ? (status.txVFO === "VFOB" ? "text-red-500/30" : "text-amber-500/30")
+                      : "text-emerald-500/30"
                   )} />
                 </div>
                 <button 
                   onClick={() => handleSetVFO("VFOB")}
-                  className="mt-4 w-full py-1 text-[0.625rem] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors"
+                  disabled={!connected}
+                  className={cn(
+                    "mt-4 w-full py-1 text-[0.625rem] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   Select VFO B
                 </button>
@@ -1339,8 +1971,10 @@ export default function App() {
             <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] grid grid-cols-2 md:grid-cols-4 gap-4">
               <button 
                 onClick={() => handleSetPTT(!status.ptt)}
+                disabled={!connected}
                 className={cn(
                   "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
+                  !connected && "opacity-50 cursor-not-allowed",
                   status.ptt 
                     ? "bg-red-500/20 border-red-500 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]" 
                     : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-[#8e9299]"
@@ -1358,8 +1992,10 @@ export default function App() {
                     handleVfoOp("TUNE");
                   }
                 }}
+                disabled={!connected}
                 className={cn(
                   "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2 group",
+                  !connected && "opacity-50 cursor-not-allowed",
                   status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                 )}
               >
@@ -1376,8 +2012,10 @@ export default function App() {
                   else next = 0;
                   handleSetLevel("ATT", next);
                 }}
+                disabled={!connected}
                 className={cn(
                   "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
+                  !connected && "opacity-50 cursor-not-allowed",
                   status.attenuation > 0 
                     ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
                     : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
@@ -1403,8 +2041,10 @@ export default function App() {
                   else next = 0;
                   handleSetLevel("PREAMP", next);
                 }}
+                disabled={!connected}
                 className={cn(
                   "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
+                  !connected && "opacity-50 cursor-not-allowed",
                   status.preamp > 0 
                     ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
                     : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
@@ -1423,8 +2063,10 @@ export default function App() {
 
               <button 
                 onClick={() => handleSetFunc("NB", !status.nb)}
+                disabled={!connected}
                 className={cn(
                   "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
+                  !connected && "opacity-50 cursor-not-allowed",
                   status.nb 
                     ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
                     : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
@@ -1441,8 +2083,10 @@ export default function App() {
 
               <button 
                 onClick={() => handleSetFunc("NR", !status.nr)}
+                disabled={!connected}
                 className={cn(
                   "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
+                  !connected && "opacity-50 cursor-not-allowed",
                   status.nr 
                     ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
                     : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
@@ -1453,6 +2097,30 @@ export default function App() {
                   <span className="text-[0.625rem] uppercase font-bold">DNR</span>
                   <span className="text-[0.5625rem] font-bold opacity-80">
                     {status.nr ? "ON" : "OFF"}
+                  </span>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => {
+                  const currentIndex = AGC_VALUES.indexOf(status.agc);
+                  const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
+                  handleSetLevel("AGC", AGC_VALUES[nextIndex]);
+                }}
+                disabled={!connected}
+                className={cn(
+                  "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
+                  !connected && "opacity-50 cursor-not-allowed",
+                  status.agc > 0 
+                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
+                    : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                )}
+              >
+                <Settings size={20} />
+                <div className="flex flex-col items-center">
+                  <span className="text-[0.625rem] uppercase font-bold">AGC</span>
+                  <span className="text-[0.5625rem] font-bold opacity-80">
+                    {AGC_LABELS[status.agc] || "OFF"}
                   </span>
                 </div>
               </button>
@@ -1468,7 +2136,11 @@ export default function App() {
                 <select 
                   value={localMode}
                   onChange={(e) => handleSetMode(e.target.value)}
-                  className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded p-2 text-sm focus:outline-none focus:border-emerald-500"
+                  disabled={!connected}
+                  className={cn(
+                    "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded p-2 text-sm focus:outline-none focus:border-emerald-500",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   {availableModes.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
@@ -1482,7 +2154,11 @@ export default function App() {
                 <select 
                   value={status?.bandwidth || "2400"}
                   onChange={(e) => handleSetBw(parseInt(e.target.value))}
-                  className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded p-2 text-sm focus:outline-none focus:border-emerald-500"
+                  disabled={!connected}
+                  className={cn(
+                    "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded p-2 text-sm focus:outline-none focus:border-emerald-500",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   {BANDWIDTHS.map(bw => <option key={bw} value={bw}>{bw} Hz</option>)}
                 </select>
@@ -1509,11 +2185,41 @@ export default function App() {
                   max="1" 
                   step="0.05"
                   value={localRFPower}
+                  disabled={!connected}
                   onChange={(e) => {
                     isDraggingRF.current = true;
                     setLocalRFPower(parseFloat(e.target.value));
                   }}
-                  className="w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer"
+                  className={cn(
+                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <Signal size={14} />
+                    <span className="text-[0.625rem] uppercase tracking-widest">RF Level</span>
+                  </div>
+                  <span className="text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.1"
+                  value={localRFLevel}
+                  disabled={!connected}
+                  onChange={(e) => {
+                    isDraggingRFLevel.current = true;
+                    setLocalRFLevel(parseFloat(e.target.value));
+                  }}
+                  className={cn(
+                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
                 />
               </div>
 
@@ -1531,11 +2237,15 @@ export default function App() {
                   max="14" 
                   step="1"
                   value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
+                  disabled={!connected}
                   onChange={(e) => {
                     isDraggingNR.current = true;
                     setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
                   }}
-                  className="w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer"
+                  className={cn(
+                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
                 />
               </div>
             </div>
@@ -1777,8 +2487,12 @@ export default function App() {
                   type="text" 
                   value={rawCommand}
                   onChange={(e) => setRawCommand(e.target.value)}
+                  disabled={!connected}
                   placeholder="Enter raw hamlib command (e.g. 'f', 'm', 'v', 't')..."
-                  className="flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 transition-colors placeholder:text-[#4a4b4e]"
+                  className={cn(
+                    "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 transition-colors placeholder:text-[#4a4b4e]",
+                    !connected && "opacity-50 cursor-not-allowed"
+                  )}
                 />
                 <button 
                   type="submit"
@@ -1793,19 +2507,21 @@ export default function App() {
         )}
 
         {/* Footer Status Bar */}
-        <footer className="bg-[#151619] px-6 py-3 rounded-xl border border-[#2a2b2e] flex justify-between items-center text-[0.625rem] uppercase tracking-widest text-[#8e9299]">
-          <div className="flex gap-6">
-            <span>Status: <span className={connected ? "text-emerald-500" : "text-red-500"}>{connected ? "Online" : "Offline"}</span></span>
-            {!isCompact && (
-              <span>Server: {connected ? `${host}:${port}` : "None"}</span>
-            )}
-          </div>
-          <div className="flex gap-6">
-            <span>Mode: <span className="text-white">{status.mode}</span></span>
-            <span>BW: <span className="text-white">{status.bandwidth} Hz</span></span>
-            <span>VFO: <span className="text-white">{status.vfo}</span></span>
-          </div>
-        </footer>
+        {!isPhone && (
+          <footer className="bg-[#151619] px-6 py-3 rounded-xl border border-[#2a2b2e] flex justify-between items-center text-[0.625rem] uppercase tracking-widest text-[#8e9299]">
+            <div className="flex gap-6">
+              <span>Status: <span className={connected ? "text-emerald-500" : "text-red-500"}>{connected ? "Online" : "Offline"}</span></span>
+              {!isCompact && (
+                <span>Server: {connected ? `${host}:${port}` : "None"}</span>
+              )}
+            </div>
+            <div className="flex gap-6">
+              <span>Mode: <span className="text-white">{status.mode}</span></span>
+              <span>BW: <span className="text-white">{status.bandwidth} Hz</span></span>
+              <span>VFO: <span className="text-white">{status.vfo}</span></span>
+            </div>
+          </footer>
+        )}
 
         {/* Portable Setup Modal */}
         {showSetupModal && (
