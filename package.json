@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
@@ -12,7 +12,7 @@
     "lint": "tsc --noEmit",
     "electron:dev": "ELECTRON_RUN=true electron -r tsx electron/main.ts",
     "electron:build": "npm run build && npm run build:electron && electron-builder",
-    "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.js --external:electron --external:vite --external:express --external:socket.io --external:lucide-react --external:motion --external:react --external:react-dom --external:recharts --external:socket.io-client --external:tailwind-merge --external:clsx --external:dotenv --external:@google/genai --external:@tailwindcss/vite --external:@vitejs/plugin-react --external:vite-plugin-pwa"
+    "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.cjs --external:electron --external:vite --external:express --external:socket.io --external:lucide-react --external:motion --external:react --external:react-dom --external:recharts --external:socket.io-client --external:tailwind-merge --external:clsx --external:dotenv --external:@google/genai --external:@tailwindcss/vite --external:@vitejs/plugin-react --external:vite-plugin-pwa"
   },
   "build": {
     "appId": "com.rigcontrol.web",
