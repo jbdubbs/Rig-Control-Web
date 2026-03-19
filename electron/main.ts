@@ -1,15 +1,18 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import isDev from 'electron-is-dev';
-import { startServer } from '../server.ts';
 
 if (!isDev) {
   process.env.NODE_ENV = 'production';
 }
+console.log(`Electron starting. isDev: ${isDev}, NODE_ENV: ${process.env.NODE_ENV}`);
+
+import { startServer } from '../server.ts';
 
 async function createWindow() {
-  // Start the backend server
-  await startServer();
+  // Start the backend server with the correct app path for static files
+  const appPath = isDev ? process.cwd() : app.getAppPath();
+  await startServer(appPath);
 
   const win = new BrowserWindow({
     width: 1200,

@@ -6,14 +6,19 @@ import path from "path";
 import { spawn, ChildProcess } from "child_process";
 import fs from "fs";
 
-export async function startServer() {
+export async function startServer(appPath?: string) {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer);
   const PORT = 3000;
 
-  const SETTINGS_FILE = path.join(process.cwd(), "settings.json");
-  const RADIOS_FILE = path.join(process.cwd(), "radios.json");
+  // Use appPath if provided (Electron production), otherwise fallback to cwd
+  const baseDir = appPath || process.cwd();
+  const SETTINGS_FILE = path.join(baseDir, "settings.json");
+  const RADIOS_FILE = path.join(baseDir, "radios.json");
+  
+  console.log(`Server initializing. Base directory: ${baseDir}`);
+  console.log(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
 
   let rigctldProcess: ChildProcess | null = null;
   let rigctldStatus: "running" | "stopped" | "error" = "stopped";
@@ -799,19 +804,49 @@ export async function startServer() {
     });
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+  if (process.env.NODE_ENV !== "production" && !process.versions.electron) {
+    try {
+      // Use a dynamic string to prevent bundlers from statically analyzing the import
+      const v = ["v", "i", "t", "e"].join("");
+      const { createServer: createViteServer } = await import(v);
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("Vite development middleware loaded.");
+    } catch (e) {
+      console.warn("Vite middleware not loaded:", e);
+    }
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    // In production or Electron, serve static files
+    let distPath;
+    if (process.versions.electron && appPath) {
+      // In Electron production, dist is relative to the app path
+      distPath = path.join(appPath, "dist");
+    } else {
+      distPath = path.join(process.cwd(), "dist");
+    }
+
+    console.log(`Serving static files from: ${distPath}`);
+
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        const indexPath = path.join(distPath, "index.html");
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          console.error(`File not found: ${indexPath}`);
+          res.status(404).send(`Not Found: index.html missing in ${distPath}`);
+        }
+      });
+    } else {
+      console.error(`Static directory not found: ${distPath}`);
+      app.get("*", (req, res) => {
+        res.status(404).send(`Static directory not found: ${distPath}. Current directory: ${process.cwd()}`);
+      });
+    }
   }
 
   return new Promise<void>((resolve) => {
@@ -822,6 +857,6 @@ export async function startServer() {
   });
 }
 
-if (process.env.NODE_ENV !== "production" && !process.env.ELECTRON_RUN) {
+if (process.env.NODE_ENV !== "production" && !process.env.ELECTRON_RUN && !process.versions.electron) {
   startServer();
 }
