@@ -3,6 +3,10 @@ import path from 'path';
 import isDev from 'electron-is-dev';
 import { startServer } from '../server.ts';
 
+if (!isDev) {
+  process.env.NODE_ENV = 'production';
+}
+
 async function createWindow() {
   // Start the backend server
   await startServer();

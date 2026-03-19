@@ -1,7 +1,6 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { createServer as createViteServer } from "vite";
 import net from "net";
 import path from "path";
 import { spawn, ChildProcess } from "child_process";
@@ -801,6 +800,7 @@ export async function startServer() {
   });
 
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
