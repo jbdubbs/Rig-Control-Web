@@ -591,11 +591,11 @@ export default function App() {
                       isPhone ? "p-1.5" : "p-2",
                       connected ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
                     )}>
-                      <Radio size={isPhone ? 16 : 24} />
+                      <Radio size={isPhone ? 20 : 24} />
                     </div>
                     <h1 className={cn(
                       "font-bold tracking-tighter uppercase italic transition-all",
-                      isPhone ? "text-sm" : "text-xl"
+                      isPhone ? "text-lg" : "text-xl"
                     )}>
                       RigControl Web
                     </h1>
@@ -629,7 +629,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <span className={cn(
                     "text-[#8e9299] uppercase transition-all",
-                    isPhone ? "text-[0.5625rem]" : "text-xs"
+                    isPhone ? "text-xs" : "text-xs"
                   )}>
                     {host}:{port}
                   </span>
@@ -637,14 +637,14 @@ export default function App() {
                     onClick={() => setShowHeaderOptions(!showHeaderOptions)}
                     className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
                   >
-                    {showHeaderOptions ? <ChevronUp size={isPhone ? 14 : 18} /> : <ChevronDown size={isPhone ? 14 : 18} />}
+                    {showHeaderOptions ? <ChevronUp size={isPhone ? 16 : 18} /> : <ChevronDown size={isPhone ? 16 : 18} />}
                   </button>
                   <button 
                     onClick={() => setIsCompact(false)}
                     className="p-1 hover:bg-white/5 rounded text-emerald-500"
                     title="Exit Compact Mode"
                   >
-                    <Maximize2 size={isPhone ? 14 : 18} />
+                    <Maximize2 size={isPhone ? 16 : 18} />
                   </button>
                 </div>
               </div>
@@ -653,19 +653,19 @@ export default function App() {
                 <div className="pt-2 border-t border-[#2a2b2e] animate-in slide-in-from-top-2 duration-200 space-y-2">
                   <div className="flex items-end gap-2">
                     <div className="flex-1 flex flex-col gap-1">
-                      <label className={cn("uppercase text-[#8e9299]", isPhone ? "text-[0.5rem]" : "text-[0.625rem]")}>Host</label>
+                      <label className={cn("uppercase text-[#8e9299]", isPhone ? "text-xs" : "text-[0.625rem]")}>Host</label>
                       <input 
                         type="text" 
                         value={host}
                         onChange={(e) => setHost(e.target.value)}
                         className={cn(
                           "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 focus:outline-none focus:border-emerald-500 transition-all",
-                          isPhone ? "text-[0.625rem]" : "text-sm"
+                          isPhone ? "text-sm" : "text-sm"
                         )}
                       />
                     </div>
-                    <div className={cn("flex flex-col gap-1", isPhone ? "w-16" : "w-24")}>
-                      <label className={cn("uppercase text-[#8e9299]", isPhone ? "text-[0.5rem]" : "text-[0.625rem]")}>Port</label>
+                    <div className={cn("flex flex-col gap-1", isPhone ? "w-20" : "w-24")}>
+                      <label className={cn("uppercase text-[#8e9299]", isPhone ? "text-xs" : "text-[0.625rem]")}>Port</label>
                       <input 
                         type="number" 
                         value={(port === null || isNaN(port)) ? "" : port}
@@ -675,7 +675,7 @@ export default function App() {
                         }}
                         className={cn(
                           "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 focus:outline-none focus:border-emerald-500 transition-all",
-                          isPhone ? "text-[0.625rem]" : "text-sm"
+                          isPhone ? "text-sm" : "text-sm"
                         )}
                       />
                     </div>
@@ -683,25 +683,25 @@ export default function App() {
                       onClick={handleConnect}
                       className={cn(
                          "py-1 rounded font-bold uppercase transition-all flex items-center justify-center gap-1",
-                        isPhone ? "w-24 text-[0.5625rem] h-[22px]" : "w-32 text-xs h-[30px]",
+                        isPhone ? "w-28 text-xs h-[32px]" : "w-32 text-xs h-[30px]",
                         connected ? "bg-red-500/20 text-red-500 border border-red-500/50" : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50"
                       )}
                     >
-                      <Power size={isPhone ? 10 : 14} />
+                      <Power size={isPhone ? 12 : 14} />
                       {connected ? "Disconnect" : "Connect"}
                     </button>
                   </div>
                   
-                  <div className={cn("flex items-center justify-center", isPhone ? "gap-4" : "gap-8")}>
+                  <div className={cn("flex items-center justify-center", isPhone ? "gap-6" : "gap-8")}>
                     <div className="flex flex-col gap-1 w-1/3">
-                      <label className={cn("uppercase text-[#8e9299] text-center", isPhone ? "text-[0.5rem]" : "text-[0.625rem]")}>Polling Rate</label>
+                      <label className={cn("uppercase text-[#8e9299] text-center", isPhone ? "text-xs" : "text-[0.625rem]")}>Polling Rate</label>
                       <select 
                         value={pollRate}
                         onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
                         disabled={!connected}
                         className={cn(
                           "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-1 py-1 focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer text-center transition-all",
-                          isPhone ? "text-[0.625rem]" : "text-sm",
+                          isPhone ? "text-sm" : "text-sm",
                           !connected && "opacity-50 cursor-not-allowed"
                         )}
                       >
@@ -719,13 +719,13 @@ export default function App() {
                           onClick={handleToggleAutoStart}
                           className={cn(
                             "rounded border transition-all flex items-center justify-center",
-                            isPhone ? "w-3 h-3" : "w-4 h-4",
+                            isPhone ? "w-4 h-4" : "w-4 h-4",
                             autoStart ? "bg-emerald-500 border-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] group-hover:border-emerald-500/50"
                           )}
                         >
-                          {autoStart && <Check size={isPhone ? 8 : 10} className="text-white" strokeWidth={4} />}
+                          {autoStart && <Check size={isPhone ? 10 : 10} className="text-white" strokeWidth={4} />}
                         </div>
-                        <span className={cn("uppercase text-[#8e9299] whitespace-nowrap transition-all", isPhone ? "text-[0.5rem]" : "text-[0.625rem]")}>Auto Start Rigctld</span>
+                        <span className={cn("uppercase text-[#8e9299] whitespace-nowrap transition-all", isPhone ? "text-xs" : "text-[0.625rem]")}>Auto Start Rigctld</span>
                       </label>
                       <div className="flex items-center gap-1">
                         <div className={cn(
@@ -738,11 +738,11 @@ export default function App() {
                           onClick={() => setIsSettingsOpen(true)}
                           className={cn(
                             "bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-all",
-                            isPhone ? "p-1" : "p-1.5"
+                            isPhone ? "p-1.5" : "p-1.5"
                           )}
                           title="Rigctld Settings"
                         >
-                          <Settings size={isPhone ? 10 : 14} />
+                          <Settings size={isPhone ? 14 : 14} />
                         </button>
                       </div>
                     </div>

@@ -7,7 +7,7 @@ import path from "path";
 import { spawn, ChildProcess } from "child_process";
 import fs from "fs";
 
-async function startServer() {
+export async function startServer() {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer);
@@ -819,4 +819,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (process.env.NODE_ENV !== "production" && !process.env.ELECTRON_RUN) {
+  startServer();
+}
