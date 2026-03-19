@@ -12,7 +12,8 @@ import { startServer } from '../server.ts';
 async function createWindow() {
   // Start the backend server with the correct app path for static files
   const appPath = isDev ? process.cwd() : app.getAppPath();
-  await startServer(appPath);
+  const userDataPath = isDev ? process.cwd() : app.getPath('userData');
+  await startServer(appPath, userDataPath);
 
   const win = new BrowserWindow({
     width: 1200,

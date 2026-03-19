@@ -6,18 +6,22 @@ import path from "path";
 import { spawn, ChildProcess } from "child_process";
 import fs from "fs";
 
-export async function startServer(appPath?: string) {
+export async function startServer(appPath?: string, userDataPath?: string) {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer);
   const PORT = 3000;
 
-  // Use appPath if provided (Electron production), otherwise fallback to cwd
+  // appPath is for read-only bundled assets (like radios.json and dist/)
+  // userDataPath is for writable user settings (settings.json)
   const baseDir = appPath || process.cwd();
-  const SETTINGS_FILE = path.join(baseDir, "settings.json");
+  const dataDir = userDataPath || process.cwd();
+  
+  const SETTINGS_FILE = path.join(dataDir, "settings.json");
   const RADIOS_FILE = path.join(baseDir, "radios.json");
   
-  console.log(`Server initializing. Base directory: ${baseDir}`);
+  console.log(`Server initializing. Base directory (assets): ${baseDir}`);
+  console.log(`Data directory (settings): ${dataDir}`);
   console.log(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
 
   let rigctldProcess: ChildProcess | null = null;
