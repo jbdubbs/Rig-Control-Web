@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron build",
     "lint": "tsc --noEmit",
-    "electron:dev": "ELECTRON_RUN=true concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron -r tsx electron/main.ts\"",
+    "electron:dev": "ELECTRON_RUN=true electron -r tsx electron/main.ts",
     "electron:build": "npm run build && npm run build:electron && electron-builder",
     "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.js --external:electron --external:vite --external:express --external:socket.io --external:lucide-react --external:motion --external:react --external:react-dom --external:recharts --external:socket.io-client --external:tailwind-merge --external:clsx --external:dotenv --external:@google/genai --external:@tailwindcss/vite --external:@vitejs/plugin-react --external:vite-plugin-pwa"
   },
