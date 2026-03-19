@@ -48,6 +48,7 @@ interface RigStatus {
   swr: number;
   rfpower: number;
   vfo: string;
+  splitVfo: boolean;
   attenuation: number;
   preamp: number;
   nb: boolean;
@@ -79,6 +80,7 @@ const DEFAULT_STATUS: RigStatus = {
   swr: 1.0,
   rfpower: 0.5,
   vfo: "VFOA",
+  splitVfo: false,
   attenuation: 0,
   preamp: 0,
   nb: false,
@@ -145,6 +147,10 @@ export default function App() {
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [radios, setRadios] = useState<{id: string, mfg: string, model: string}[]>([]);
+  const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error">("stopped");
+  const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
+  const logEndRef = useRef<HTMLDivElement>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
 
   useEffect(() => {
     if (socket) {
@@ -156,10 +162,26 @@ export default function App() {
         const unique = Array.from(new Map(list.map((r: any) => [r.id, r])).values()) as any[];
         setRadios(unique);
       });
+      socket.on("rigctld-status", (status: "running" | "stopped" | "error") => {
+        setRigctldProcessStatus(status);
+      });
+      socket.on("rigctld-log", (lines: string[]) => {
+        setRigctldLogs(prev => [...prev, ...lines].slice(-100));
+      });
+      socket.on("test-result", (result: { success: boolean, message: string }) => {
+        setTestResult(result);
+        setTimeout(() => setTestResult(null), 5000);
+      });
       socket.emit("get-settings");
       socket.emit("get-radios");
     }
   }, [socket]);
+
+  useEffect(() => {
+    if (logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [rigctldLogs]);
 
   const isSettingsValid = () => {
     return (
@@ -431,6 +453,12 @@ export default function App() {
     socket?.emit("set-vfo", vfo);
   };
 
+  const handleSetSplitVfo = (state: boolean) => {
+    skipPollsCount.current = 2;
+    setStatus(prev => ({ ...(prev || DEFAULT_STATUS), splitVfo: state }));
+    socket?.emit("set-split-vfo", state);
+  };
+
   const handlePollRateChange = (rate: number) => {
     setPollRate(rate);
     socket?.emit("set-poll-rate", rate);
@@ -608,13 +636,20 @@ export default function App() {
                         </div>
                         <span className="text-[0.5rem] uppercase text-[#8e9299] whitespace-nowrap">Auto Start Rigctld</span>
                       </label>
-                      <button 
-                        onClick={() => setIsSettingsOpen(true)}
-                        className="p-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-colors"
-                        title="Rigctld Settings"
-                      >
-                        <Settings size={10} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <div className={cn(
+                          "w-1.5 h-1.5 rounded-full",
+                          rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
+                          rigctldProcessStatus === "error" ? "bg-red-500" : "bg-[#2a2b2e]"
+                        )} />
+                        <button 
+                          onClick={() => setIsSettingsOpen(true)}
+                          className="p-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-colors"
+                          title="Rigctld Settings"
+                        >
+                          <Settings size={10} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -753,13 +788,20 @@ export default function App() {
                       </div>
                       <span className="text-[0.625rem] uppercase text-[#8e9299] whitespace-nowrap">Auto Start Rigctld</span>
                     </label>
-                    <button 
-                      onClick={() => setIsSettingsOpen(true)}
-                      className="p-1.5 bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-colors"
-                      title="Rigctld Settings"
-                    >
-                      <Settings size={14} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "w-2 h-2 rounded-full",
+                        rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
+                        rigctldProcessStatus === "error" ? "bg-red-500" : "bg-[#2a2b2e]"
+                      )} />
+                      <button 
+                        onClick={() => setIsSettingsOpen(true)}
+                        className="p-1.5 bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-colors"
+                        title="Rigctld Settings"
+                      >
+                        <Settings size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -811,7 +853,9 @@ export default function App() {
             {/* Unified VFO & Mode/BW Box */}
             <div className={cn(
               "bg-[#151619] p-3 rounded-xl border shadow-lg space-y-2",
-              status.vfo === "VFOA" ? "border-emerald-500/30" : "border-blue-500/30"
+              status.splitVfo 
+                ? "border-amber-500/30" 
+                : status.vfo === "VFOA" ? "border-emerald-500/30" : "border-blue-500/30"
             )}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -820,8 +864,8 @@ export default function App() {
                     className={cn(
                       "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
                       status.vfo === "VFOA" 
-                        ? "bg-emerald-500 text-white border border-emerald-500" 
-                        : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20"
+                        ? (status.splitVfo ? "bg-amber-500 text-white border border-amber-500" : "bg-emerald-500 text-white border border-emerald-500")
+                        : (status.splitVfo ? "bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500/20" : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20")
                     )}
                   >
                     VFO A
@@ -831,11 +875,22 @@ export default function App() {
                     className={cn(
                       "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
                       status.vfo === "VFOB" 
-                        ? "bg-blue-500 text-white border border-blue-500" 
-                        : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20"
+                        ? (status.splitVfo ? "bg-red-500 text-white border border-red-500" : "bg-blue-500 text-white border border-blue-500")
+                        : (status.splitVfo ? "bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20" : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20")
                     )}
                   >
                     VFO B
+                  </button>
+                  <button 
+                    onClick={() => handleSetSplitVfo(!status.splitVfo)}
+                    className={cn(
+                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all border",
+                      status.splitVfo 
+                        ? "bg-red-500 text-white border-red-500" 
+                        : "bg-[#0a0a0a] text-[#8e9299] border-[#2a2b2e] hover:border-red-500/50"
+                    )}
+                  >
+                    SPLIT
                   </button>
                   <select 
                     value={vfoStep}
@@ -878,19 +933,23 @@ export default function App() {
                   onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                   className={cn(
                     "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none rounded-lg transition-all cursor-text py-1 px-2 border",
-                    status.vfo === "VFOA" 
-                      ? "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50" 
-                      : "text-blue-500 hover:bg-blue-500/10 focus:bg-blue-500/10 border-[#2a2b2e] focus:border-blue-500/50"
+                    status.splitVfo
+                      ? (status.vfo === "VFOA" ? "text-amber-500 hover:bg-amber-500/10 focus:bg-amber-500/10 border-[#2a2b2e] focus:border-amber-500/50" : "text-red-500 hover:bg-red-500/10 focus:bg-red-500/10 border-[#2a2b2e] focus:border-red-500/50")
+                      : (status.vfo === "VFOA" ? "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50" : "text-blue-500 hover:bg-blue-500/10 focus:bg-blue-500/10 border-[#2a2b2e] focus:border-blue-500/50")
                   )}
                   title="Click to edit frequency"
                 />
                 <span className={cn(
                   "text-sm font-bold",
-                  status.vfo === "VFOA" ? "text-emerald-500/50" : "text-blue-500/50"
+                  status.splitVfo
+                    ? (status.vfo === "VFOA" ? "text-amber-500/50" : "text-red-500/50")
+                    : (status.vfo === "VFOA" ? "text-emerald-500/50" : "text-blue-500/50")
                 )}>MHz</span>
                 <Pencil size={12} className={cn(
                   "absolute right-12 top-1/2 -translate-y-1/2 transition-opacity pointer-events-none",
-                  status.vfo === "VFOA" ? "text-emerald-500/30" : "text-blue-500/30"
+                  status.splitVfo
+                    ? (status.vfo === "VFOA" ? "text-amber-500/30" : "text-red-500/30")
+                    : (status.vfo === "VFOA" ? "text-emerald-500/30" : "text-blue-500/30")
                 )} />
               </div>
             </div>
@@ -1140,11 +1199,16 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className={cn(
                 "bg-[#151619] p-6 rounded-xl border transition-all",
-                status.vfo === "VFOA" ? "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]" : "border-[#2a2b2e]"
+                status.splitVfo
+                  ? "border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.1)]"
+                  : (status.vfo === "VFOA" ? "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]" : "border-[#2a2b2e]")
               )}>
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[0.625rem] uppercase text-[#8e9299]">VFO A</span>
+                    <span className={cn(
+                      "text-[0.625rem] uppercase font-bold",
+                      status.splitVfo ? "text-amber-500" : "text-[#8e9299]"
+                    )}>VFO A</span>
                     <select 
                       value={vfoStep}
                       onChange={(e) => setVfoStep(parseFloat(e.target.value))}
@@ -1173,11 +1237,20 @@ export default function App() {
                         e.currentTarget.blur();
                       }
                     }}
-                    className="w-full bg-white/5 text-4xl font-bold tracking-tighter text-emerald-500 font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-emerald-500/10 focus:bg-emerald-500/10 rounded-lg transition-all cursor-text py-1 px-2 border border-[#2a2b2e] focus:border-emerald-500/50"
+                    className={cn(
+                      "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-emerald-500/10 focus:bg-emerald-500/10 rounded-lg transition-all cursor-text py-1 px-2 border border-[#2a2b2e] focus:border-emerald-500/50",
+                      status.splitVfo ? "text-amber-500" : "text-emerald-500"
+                    )}
                     title="Click to edit frequency"
                   />
-                  <span className="text-xs text-emerald-500/50 font-bold">MHz</span>
-                  <Pencil size={14} className="absolute right-12 top-1/2 -translate-y-1/2 text-emerald-500/30 transition-opacity pointer-events-none" />
+                  <span className={cn(
+                    "text-xs font-bold",
+                    status.splitVfo ? "text-amber-500/50" : "text-emerald-500/50"
+                  )}>MHz</span>
+                  <Pencil size={14} className={cn(
+                    "absolute right-12 top-1/2 -translate-y-1/2 transition-opacity pointer-events-none",
+                    status.splitVfo ? "text-amber-500/30" : "text-emerald-500/30"
+                  )} />
                 </div>
                 <button 
                   onClick={() => handleSetVFO("VFOA")}
@@ -1189,11 +1262,27 @@ export default function App() {
 
               <div className={cn(
                 "bg-[#151619] p-6 rounded-xl border transition-all",
-                status?.vfo === "VFOB" ? "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]" : "border-[#2a2b2e]"
+                status.splitVfo
+                  ? "border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.1)]"
+                  : (status?.vfo === "VFOB" ? "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]" : "border-[#2a2b2e]")
               )}>
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[0.625rem] uppercase text-[#8e9299]">VFO B</span>
+                    <span className={cn(
+                      "text-[0.625rem] uppercase font-bold",
+                      status.splitVfo ? "text-red-500" : "text-[#8e9299]"
+                    )}>VFO B</span>
+                    <button 
+                      onClick={() => handleSetSplitVfo(!status.splitVfo)}
+                      className={cn(
+                        "px-2 py-0.5 rounded text-[0.5rem] font-bold uppercase transition-all border",
+                        status.splitVfo 
+                          ? "bg-red-500 text-white border-red-500" 
+                          : "bg-[#0a0a0a] text-[#8e9299] border-[#2a2b2e] hover:border-red-500/50"
+                      )}
+                    >
+                      SPLIT
+                    </button>
                     <select 
                       value={vfoStep}
                       onChange={(e) => setVfoStep(parseFloat(e.target.value))}
@@ -1222,11 +1311,20 @@ export default function App() {
                         e.currentTarget.blur();
                       }
                     }}
-                    className="w-full bg-white/5 text-4xl font-bold tracking-tighter text-emerald-500 font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-emerald-500/10 focus:bg-emerald-500/10 rounded-lg transition-all cursor-text py-1 px-2 border border-[#2a2b2e] focus:border-emerald-500/50"
+                    className={cn(
+                      "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-emerald-500/10 focus:bg-emerald-500/10 rounded-lg transition-all cursor-text py-1 px-2 border border-[#2a2b2e] focus:border-emerald-500/50",
+                      status.splitVfo ? "text-red-500" : "text-emerald-500"
+                    )}
                     title="Click to edit frequency"
                   />
-                  <span className="text-xs text-emerald-500/50 font-bold">MHz</span>
-                  <Pencil size={14} className="absolute right-12 top-1/2 -translate-y-1/2 text-emerald-500/30 transition-opacity pointer-events-none" />
+                  <span className={cn(
+                    "text-xs font-bold",
+                    status.splitVfo ? "text-red-500/50" : "text-emerald-500/50"
+                  )}>MHz</span>
+                  <Pencil size={14} className={cn(
+                    "absolute right-12 top-1/2 -translate-y-1/2 transition-opacity pointer-events-none",
+                    status.splitVfo ? "text-red-500/30" : "text-emerald-500/30"
+                  )} />
                 </div>
                 <button 
                   onClick={() => handleSetVFO("VFOB")}
@@ -1890,13 +1988,85 @@ export default function App() {
                   />
                 </div>
 
-                <div className="pt-4">
+                <div className="pt-4 space-y-3">
+                  {testResult && (
+                    <div className={cn(
+                      "p-3 rounded-lg border text-[0.6875rem] animate-in slide-in-from-top-2",
+                      testResult.success ? "bg-emerald-500/10 border-emerald-500/50 text-emerald-400" : "bg-red-500/10 border-red-500/50 text-red-400"
+                    )}>
+                      <p className="font-bold uppercase mb-1">{testResult.success ? "Test Passed" : "Test Failed"}</p>
+                      <p className="opacity-80">{testResult.message}</p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between p-3 bg-[#0a0a0a] border border-[#2a2b2e] rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "w-2 h-2 rounded-full",
+                        rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
+                        rigctldProcessStatus === "error" ? "bg-red-500" : "bg-[#2a2b2e]"
+                      )} />
+                      <span className="text-[0.625rem] uppercase font-bold text-[#8e9299]">
+                        Status: {rigctldProcessStatus.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => socket?.emit("test-rigctld", rigctldSettings)}
+                        className="px-3 py-1 bg-blue-500/10 text-blue-500 border border-blue-500/50 rounded text-[0.625rem] font-bold uppercase hover:bg-blue-500 hover:text-white transition-all"
+                      >
+                        Test
+                      </button>
+                      {rigctldProcessStatus === "running" ? (
+                        <button 
+                          onClick={() => socket?.emit("stop-rigctld")}
+                          className="px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/50 rounded text-[0.625rem] font-bold uppercase hover:bg-red-500 hover:text-white transition-all"
+                        >
+                          Stop
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => socket?.emit("start-rigctld")}
+                          className="px-3 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/50 rounded text-[0.625rem] font-bold uppercase hover:bg-emerald-500 hover:text-white transition-all"
+                        >
+                          Start
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <button 
                     onClick={handleSaveSettings}
                     className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold uppercase text-xs transition-all shadow-lg shadow-emerald-500/20"
                   >
                     Save Settings
                   </button>
+                </div>
+
+                {/* Log View */}
+                <div className="space-y-2 pt-4 border-t border-[#2a2b2e]">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Process Logs</label>
+                    <button 
+                      onClick={() => setRigctldLogs([])}
+                      className="text-[0.5rem] uppercase font-bold text-[#8e9299] hover:text-white transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg p-3 h-32 overflow-y-auto custom-scrollbar font-mono text-[0.625rem] space-y-1">
+                    {rigctldLogs.length === 0 ? (
+                      <p className="text-[#4a4b4e] italic">No logs available...</p>
+                    ) : (
+                      rigctldLogs.map((log, i) => (
+                        <div key={i} className="text-[#8e9299] break-all">
+                          <span className="text-emerald-500/50 mr-2">[{i+1}]</span>
+                          {log}
+                        </div>
+                      ))
+                    )}
+                    <div ref={logEndRef} />
+                  </div>
                 </div>
               </div>
             </div>

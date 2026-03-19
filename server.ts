@@ -17,6 +17,8 @@ async function startServer() {
   const RADIOS_FILE = path.join(process.cwd(), "radios.json");
 
   let rigctldProcess: ChildProcess | null = null;
+  let rigctldStatus: "running" | "stopped" | "error" = "stopped";
+  let rigctldLogs: string[] = [];
   let autoStartEnabled = false;
   let rigctldSettings = {
     rigNumber: "",
@@ -44,11 +46,23 @@ async function startServer() {
     }, null, 2));
   };
 
+  const emitRigctldStatus = () => {
+    io.emit("rigctld-status", rigctldStatus);
+  };
+
+  const addLog = (data: string) => {
+    const lines = data.split("\n").filter(l => l.trim());
+    rigctldLogs = [...rigctldLogs, ...lines].slice(-100); // Keep last 100 lines
+    io.emit("rigctld-log", lines);
+  };
+
   const stopRigctld = () => {
     if (rigctldProcess) {
       console.log("Stopping rigctld...");
       rigctldProcess.kill();
       rigctldProcess = null;
+      rigctldStatus = "stopped";
+      emitRigctldStatus();
     }
   };
 
@@ -59,6 +73,8 @@ async function startServer() {
     
     if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
       console.error("Cannot start rigctld: missing settings");
+      rigctldStatus = "error";
+      emitRigctldStatus();
       return;
     }
 
@@ -72,22 +88,36 @@ async function startServer() {
       "-s", serialPortSpeed
     ], { detached: false });
 
+    rigctldStatus = "running";
+    emitRigctldStatus();
+    addLog("rigctld started");
+
     rigctldProcess.stdout?.on("data", (data) => {
-      console.log(`rigctld stdout: ${data}`);
+      const str = data.toString();
+      console.log(`rigctld stdout: ${str}`);
+      addLog(str);
     });
 
     rigctldProcess.stderr?.on("data", (data) => {
-      console.error(`rigctld stderr: ${data}`);
+      const str = data.toString();
+      console.error(`rigctld stderr: ${str}`);
+      addLog(str);
     });
 
     rigctldProcess.on("close", (code) => {
       console.log(`rigctld process exited with code ${code}`);
+      addLog(`rigctld exited with code ${code}`);
       rigctldProcess = null;
+      rigctldStatus = code === 0 ? "stopped" : "error";
+      emitRigctldStatus();
     });
 
     rigctldProcess.on("error", (err) => {
       console.error("Failed to start rigctld:", err);
+      addLog(`Error: ${err.message}`);
       rigctldProcess = null;
+      rigctldStatus = "error";
+      emitRigctldStatus();
     });
   };
 
@@ -173,6 +203,7 @@ async function startServer() {
     rfpower: 0.5,
     vdd: 13.8,
     vfo: "VFOA",
+    splitVfo: false,
     attenuation: 0,
     preamp: 0,
     nb: false,
@@ -194,6 +225,7 @@ async function startServer() {
       rfpower: 0.5,
       vdd: 13.8,
       vfo: "VFOA",
+      splitVfo: false,
       attenuation: 0,
       preamp: 0,
       nb: false,
@@ -241,6 +273,7 @@ async function startServer() {
   let mockNRLevel = 0.5;
   let mockTuner = 0;
   let mockRFPower = 0.5;
+  let mockSplitVfo = 0;
 
   const rigCommandQueue: { cmd: string; useExtended: boolean; resolve: (val: string) => void; reject: (err: any) => void }[] = [];
   let isRigBusy = false;
@@ -291,6 +324,7 @@ async function startServer() {
           else if (cmd === "M ?") response = "AM CW USB LSB RTTY FM PKTUSB PKTLSB";
           else if (cmd === "t") response = "0";
           else if (cmd === "v") response = "VFOA";
+          else if (cmd === "get_split_vfo") response = mockSplitVfo.toString();
           else if (cmd.startsWith("G")) response = "RPRT 0";
           else if (cmd.startsWith("l STRENGTH")) response = (Math.random() * -100).toString();
           else if (cmd.startsWith("l SWR")) response = (1 + Math.random() * 0.5).toString();
@@ -334,6 +368,10 @@ async function startServer() {
           }
           else if (cmd.startsWith("L RFPOWER")) {
             mockRFPower = parseFloat(cmd.split(" ")[2]);
+            response = "RPRT 0";
+          }
+          else if (cmd.startsWith("set_split_vfo")) {
+            mockSplitVfo = parseInt(cmd.split(" ")[1]);
             response = "RPRT 0";
           }
           else response = "RPRT 0";
@@ -470,6 +508,7 @@ async function startServer() {
       const nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
       const nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
       const tuner = (await sendToRig("u TUNER", true).catch(() => "0")) === "1";
+      const splitVfo = (await sendToRig("get_split_vfo", true).catch(() => "0")) === "1";
 
       lastStatus = {
         frequency,
@@ -489,6 +528,7 @@ async function startServer() {
         nr,
         nrLevel,
         tuner,
+        splitVfo,
         timestamp: now,
       };
 
@@ -602,6 +642,15 @@ async function startServer() {
       }
     });
 
+    socket.on("set-split-vfo", async (state) => {
+      try {
+        await sendToRig(`set_split_vfo ${state ? "1" : "0"}`);
+        pollRig();
+      } catch (err) {
+        socket.emit("rig-error", "Failed to set split VFO mode");
+      }
+    });
+
     socket.on("set-visible-meters", (meters: string[]) => {
       visibleMeters = meters;
     });
@@ -616,6 +665,8 @@ async function startServer() {
         settings: rigctldSettings,
         autoStart: autoStartEnabled
       });
+      emitRigctldStatus();
+      socket.emit("rigctld-log", rigctldLogs);
     });
 
     socket.on("save-settings", (data) => {
@@ -634,6 +685,63 @@ async function startServer() {
       } else {
         stopRigctld();
       }
+    });
+
+    socket.on("start-rigctld", () => {
+      startRigctld();
+    });
+
+    socket.on("stop-rigctld", () => {
+      stopRigctld();
+    });
+
+    socket.on("test-rigctld", async (data) => {
+      const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = data;
+      
+      addLog("Testing rigctld configuration...");
+      
+      // 1. Check if rigctld exists
+      const check = spawn("rigctld", ["-V"]);
+      check.on("error", () => {
+        socket.emit("test-result", { success: false, message: "rigctld binary not found in system PATH" });
+        addLog("Error: rigctld binary not found");
+      });
+      
+      check.on("close", (code) => {
+        if (code !== 0) return; // Error handled above
+        
+        // 2. Try to start it briefly
+        const testProc = spawn("rigctld", [
+          "-m", rigNumber,
+          "-r", serialPort,
+          "-t", portNumber,
+          "-T", ipAddress,
+          "-s", serialPortSpeed
+        ]);
+        
+        let errorMsg = "";
+        testProc.stderr?.on("data", (d) => errorMsg += d.toString());
+        
+        const timeout = setTimeout(() => {
+          testProc.kill();
+          socket.emit("test-result", { success: true, message: "Configuration looks valid (process started successfully)" });
+          addLog("Test: Success");
+        }, 2000);
+        
+        testProc.on("error", (err) => {
+          clearTimeout(timeout);
+          socket.emit("test-result", { success: false, message: `Failed to start: ${err.message}` });
+          addLog(`Test Failed: ${err.message}`);
+        });
+        
+        testProc.on("close", (c) => {
+          clearTimeout(timeout);
+          if (c !== null && c !== 0) {
+            socket.emit("test-result", { success: false, message: `Process exited with code ${c}. Error: ${errorMsg}` });
+            addLog(`Test Failed: ${errorMsg}`);
+          }
+        });
+      });
     });
 
     socket.on("get-radios", () => {
