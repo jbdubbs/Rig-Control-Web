@@ -507,8 +507,9 @@ async function startServer() {
       const nb = (await sendToRig("u NB", true)) === "1";
       const nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
       const nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
-      const tuner = (await sendToRig("u TUNER", true).catch(() => "0")) === "1";
-      const splitVfo = (await sendToRig("get_split_vfo", true).catch(() => "0")) === "1";
+      const tuner = (await sendToRig("u TUNER", true).catch(() => "0")).startsWith("1");
+      const splitResp = await sendToRig("get_split_vfo", true).catch(() => "0");
+      const splitVfo = splitResp.startsWith("1");
 
       lastStatus = {
         frequency,
@@ -644,7 +645,28 @@ async function startServer() {
 
     socket.on("set-split-vfo", async (state) => {
       try {
-        await sendToRig(`set_split_vfo ${state ? "1" : "0"}`);
+        const cmd = `set_split_vfo ${state ? "1" : "0"} VFOB`;
+        await sendToRig(cmd);
+        
+        // Retry mechanism for enabling
+        if (state) {
+          let retries = 3;
+          while (retries > 0) {
+            // Wait a bit for the command to take effect
+            await new Promise(r => setTimeout(r, 500));
+            // Check if split mode is actually enabled
+            const resp = await sendToRig("get_split_vfo", true).catch(() => "0");
+            const currentSplit = resp.startsWith("1");
+            if (currentSplit) {
+              console.log("Split mode enabled successfully.");
+              break;
+            }
+            console.log(`Split mode not enabled, retrying... (${retries} left)`);
+            await sendToRig(cmd);
+            retries--;
+          }
+        }
+        
         pollRig();
       } catch (err) {
         socket.emit("rig-error", "Failed to set split VFO mode");
