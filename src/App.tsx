@@ -167,7 +167,15 @@ export default function App() {
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [radios, setRadios] = useState<{id: string, mfg: string, model: string}[]>([]);
-  const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error">("stopped");
+  const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");
+  const [videoStatus, setVideoStatus] = useState<"playing" | "paused" | "stopped">("stopped");
+  const [videoDevices, setVideoDevices] = useState<string[]>([]);
+  const [videoSettings, setVideoSettings] = useState({
+    device: "",
+    resolution: "640x480",
+    framerate: "30"
+  });
+  const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
@@ -195,12 +203,21 @@ export default function App() {
       socket.on("settings-data", (data: any) => {
         setRigctldSettings(data.settings);
         setAutoStart(data.autoStart);
+        if (data.videoSettings) {
+          setVideoSettings(data.videoSettings);
+        }
+      });
+      socket.on("video-devices-list", (list: string[]) => {
+        setVideoDevices(list);
+      });
+      socket.on("video-status", (status: "playing" | "paused" | "stopped") => {
+        setVideoStatus(status);
       });
       socket.on("radios-list", (list: any) => {
         const unique = Array.from(new Map(list.map((r: any) => [r.id, r])).values()) as any[];
         setRadios(unique);
       });
-      socket.on("rigctld-status", (status: "running" | "stopped" | "error") => {
+      socket.on("rigctld-status", (status: "running" | "stopped" | "error" | "already_running") => {
         setRigctldProcessStatus(status);
       });
       socket.on("rigctld-log", (lines: string[]) => {
@@ -212,6 +229,7 @@ export default function App() {
       });
       socket.emit("get-settings");
       socket.emit("get-radios");
+      socket.emit("get-video-devices");
     }
   }, [socket]);
 
@@ -732,7 +750,7 @@ export default function App() {
                           "rounded-full transition-all",
                           isPhone ? "w-1.5 h-1.5" : "w-2 h-2",
                           rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
-                          rigctldProcessStatus === "error" ? "bg-red-500" : "bg-[#2a2b2e]"
+                          rigctldProcessStatus === "error" || rigctldProcessStatus === "already_running" ? "bg-red-500" : "bg-[#2a2b2e]"
                         )} />
                         <button 
                           onClick={() => setIsSettingsOpen(true)}
@@ -891,7 +909,7 @@ export default function App() {
                       <div className={cn(
                         "w-2.5 h-2.5 rounded-full",
                         rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
-                        rigctldProcessStatus === "error" ? "bg-red-500" : "bg-[#2a2b2e]"
+                        rigctldProcessStatus === "error" || rigctldProcessStatus === "already_running" ? "bg-red-500" : "bg-[#2a2b2e]"
                       )} />
                       <button 
                         onClick={() => setIsSettingsOpen(true)}
@@ -2164,6 +2182,50 @@ export default function App() {
                 </select>
               </div>
             </div>
+
+            {/* Video Feed Section */}
+            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                <div className="flex items-center gap-2 text-[#8e9299]">
+                  <Monitor size={14} />
+                  <span className="text-[0.625rem] uppercase tracking-widest font-bold">Video Feed</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-2 h-2 rounded-full",
+                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
+                    videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
+                  )} />
+                  <button 
+                    onClick={() => {
+                      setIsVideoSettingsOpen(true);
+                      socket?.emit("get-video-devices");
+                    }}
+                    className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
+                    title="Video Settings"
+                  >
+                    <Settings size={16} />
+                  </button>
+                </div>
+              </div>
+              <div className="relative aspect-video bg-black flex items-center justify-center">
+                {videoStatus === "playing" ? (
+                  <img 
+                    src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                    alt="Video Stream"
+                    className="w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
+                    <Monitor size={48} strokeWidth={1} />
+                    <span className="text-[0.625rem] uppercase font-bold tracking-widest">
+                      {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Right Column: Meters & Graphs */}
@@ -2623,7 +2685,141 @@ export default function App() {
             </div>
           </div>
         )}
-        {/* Rigctld Settings Modal */}
+        {/* Video Settings Modal */}
+      {isVideoSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#151619] w-full max-w-md rounded-2xl border border-[#2a2b2e] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
+                  <Monitor size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold tracking-tight uppercase italic">Video Settings</h2>
+                  <p className="text-[0.625rem] text-[#8e9299] font-bold uppercase tracking-widest">Configure System Camera</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsVideoSettingsOpen(false)}
+                className="p-2 hover:bg-[#2a2b2e] rounded-xl text-[#8e9299] transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Video Device</label>
+                  <select 
+                    value={videoSettings.device}
+                    onChange={(e) => {
+                      const newSettings = { ...videoSettings, device: e.target.value };
+                      setVideoSettings(newSettings);
+                      socket?.emit("update-video-settings", newSettings);
+                    }}
+                    className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all"
+                  >
+                    <option value="">Select Device</option>
+                    {videoDevices.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Resolution</label>
+                    <select 
+                      value={videoSettings.resolution}
+                      onChange={(e) => {
+                        const newSettings = { ...videoSettings, resolution: e.target.value };
+                        setVideoSettings(newSettings);
+                        socket?.emit("update-video-settings", newSettings);
+                      }}
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all"
+                    >
+                      <option value="320x240">320x240</option>
+                      <option value="640x480">640x480</option>
+                      <option value="800x600">800x600</option>
+                      <option value="1280x720">1280x720</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Framerate</label>
+                    <select 
+                      value={videoSettings.framerate}
+                      onChange={(e) => {
+                        const newSettings = { ...videoSettings, framerate: e.target.value };
+                        setVideoSettings(newSettings);
+                        socket?.emit("update-video-settings", newSettings);
+                      }}
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all"
+                    >
+                      <option value="5">5 fps</option>
+                      <option value="10">10 fps</option>
+                      <option value="15">15 fps</option>
+                      <option value="24">24 fps</option>
+                      <option value="30">30 fps</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => socket?.emit("control-video", "play")}
+                  disabled={!videoSettings.device || videoStatus === "playing"}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
+                    videoStatus === "playing" 
+                      ? "bg-emerald-500/20 text-emerald-500 cursor-not-allowed" 
+                      : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
+                  )}
+                >
+                  <Power size={16} />
+                  Play
+                </button>
+                <button 
+                  onClick={() => socket?.emit("control-video", "pause")}
+                  disabled={videoStatus !== "playing"}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
+                    videoStatus !== "playing"
+                      ? "bg-amber-500/20 text-amber-500 cursor-not-allowed"
+                      : "bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20"
+                  )}
+                >
+                  <Power size={16} className="rotate-90" />
+                  Pause
+                </button>
+                <button 
+                  onClick={() => socket?.emit("control-video", "stop")}
+                  disabled={videoStatus === "stopped"}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
+                    videoStatus === "stopped"
+                      ? "bg-red-500/20 text-red-500 cursor-not-allowed"
+                      : "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
+                  )}
+                >
+                  <X size={16} />
+                  Stop
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-4 bg-[#1a1b1e] border-t border-[#2a2b2e] text-center">
+              <button 
+                onClick={() => setIsVideoSettingsOpen(false)}
+                className="text-[0.625rem] uppercase font-bold text-[#8e9299] hover:text-white transition-all"
+              >
+                Close Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rigctld Settings Modal */}
         {isSettingsOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-[#151619] border border-[#2a2b2e] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -2705,6 +2901,19 @@ export default function App() {
                 </div>
 
                 <div className="pt-4 space-y-3">
+                  {rigctldProcessStatus === "already_running" && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-xl text-red-400 text-[0.6875rem] animate-in slide-in-from-top-2">
+                      <p className="font-bold uppercase mb-1">Process Conflict</p>
+                      <p className="opacity-80">rigctld is already running on the system. You must stop it or kill it to start a new instance from this app.</p>
+                      <button 
+                        onClick={() => socket?.emit("kill-existing-rigctld")}
+                        className="mt-2 w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold uppercase text-[0.625rem] transition-all"
+                      >
+                        Kill and Restart
+                      </button>
+                    </div>
+                  )}
+
                   {testResult && (
                     <div className={cn(
                       "p-3 rounded-lg border text-[0.6875rem] animate-in slide-in-from-top-2",
@@ -2720,7 +2929,7 @@ export default function App() {
                       <div className={cn(
                         "w-2 h-2 rounded-full",
                         rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
-                        rigctldProcessStatus === "error" ? "bg-red-500" : "bg-[#2a2b2e]"
+                        rigctldProcessStatus === "error" || rigctldProcessStatus === "already_running" ? "bg-red-500" : "bg-[#2a2b2e]"
                       )} />
                       <span className="text-[0.625rem] uppercase font-bold text-[#8e9299]">
                         Status: {rigctldProcessStatus.toUpperCase()}

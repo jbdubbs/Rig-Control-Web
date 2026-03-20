@@ -3,7 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import net from "net";
 import path from "path";
-import { spawn, ChildProcess } from "child_process";
+import { spawn, ChildProcess, exec } from "child_process";
 import fs from "fs";
 
 export async function startServer(appPath?: string, userDataPath?: string) {
@@ -25,9 +25,17 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   console.log(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
 
   let rigctldProcess: ChildProcess | null = null;
-  let rigctldStatus: "running" | "stopped" | "error" = "stopped";
+  let rigctldStatus: "running" | "stopped" | "error" | "already_running" = "stopped";
   let rigctldLogs: string[] = [];
   let autoStartEnabled = false;
+  
+  let videoProcess: ChildProcess | null = null;
+  let videoSettings = {
+    device: "",
+    resolution: "640x480",
+    framerate: "30"
+  };
+  let videoStatus: "playing" | "paused" | "stopped" = "stopped";
   let rigctldSettings = {
     rigNumber: "",
     serialPort: "",
@@ -42,6 +50,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
       rigctldSettings = { ...rigctldSettings, ...data.settings };
       autoStartEnabled = data.autoStart || false;
+      if (data.videoSettings) {
+        videoSettings = { ...videoSettings, ...data.videoSettings };
+      }
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
@@ -50,7 +61,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const saveSettings = () => {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
       settings: rigctldSettings,
-      autoStart: autoStartEnabled
+      autoStart: autoStartEnabled,
+      videoSettings: videoSettings
     }, null, 2));
   };
 
@@ -74,8 +86,176 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     }
   };
 
-  const startRigctld = () => {
-    stopRigctld();
+  const checkExistingRigctld = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      // Use pgrep on Linux/Mac, tasklist on Windows
+      const cmd = process.platform === "win32" ? 'tasklist /FI "IMAGENAME eq rigctld.exe"' : "pgrep rigctld";
+      exec(cmd, (err, stdout) => {
+        if (process.platform === "win32") {
+          resolve(stdout.toLowerCase().includes("rigctld.exe"));
+        } else {
+          resolve(!err && !!stdout.trim());
+        }
+      });
+    });
+  };
+
+  const listVideoDevices = (): Promise<string[]> => {
+    return new Promise((resolve) => {
+      let cmd = "";
+      if (process.platform === "linux") {
+        cmd = "v4l2-ctl --list-devices || ls /dev/video*";
+      } else if (process.platform === "win32") {
+        cmd = "ffmpeg -list_devices true -f dshow -i dummy 2>&1";
+      } else if (process.platform === "darwin") {
+        cmd = "ffmpeg -f avfoundation -list_devices true -i \"\" 2>&1";
+      }
+
+      if (!cmd) return resolve([]);
+
+      exec(cmd, (err, stdout, stderr) => {
+        const output = stdout + stderr;
+        const devices: string[] = [];
+        
+        if (process.platform === "linux") {
+          const lines = output.split("\n");
+          lines.forEach(line => {
+            if (line.includes("/dev/video")) {
+              const match = line.match(/\/dev\/video\d+/);
+              if (match && !devices.includes(match[0])) {
+                devices.push(match[0]);
+              }
+            }
+          });
+        } else if (process.platform === "win32") {
+          const lines = output.split("\n");
+          let inDirectShow = false;
+          lines.forEach(line => {
+            if (line.includes("DirectShow video devices")) inDirectShow = true;
+            if (line.includes("DirectShow audio devices")) inDirectShow = false;
+            if (inDirectShow && line.includes("\"")) {
+              const match = line.match(/"([^"]+)"/);
+              if (match) devices.push(match[1]);
+            }
+          });
+        } else if (process.platform === "darwin") {
+          const lines = output.split("\n");
+          let inVideo = false;
+          lines.forEach(line => {
+            if (line.includes("AVFoundation video devices")) inVideo = true;
+            if (line.includes("AVFoundation audio devices")) inVideo = false;
+            if (inVideo && line.match(/\[\d+\]/)) {
+              const parts = line.split("]");
+              if (parts.length > 1) devices.push(parts[1].trim());
+            }
+          });
+        }
+        
+        resolve(devices);
+      });
+    });
+  };
+
+  const stopVideo = () => {
+    if (videoProcess) {
+      videoProcess.kill('SIGKILL');
+      videoProcess = null;
+    }
+    videoStatus = "stopped";
+    io.emit("video-status", videoStatus);
+  };
+
+  const startVideo = () => {
+    stopVideo();
+    if (!videoSettings.device) return;
+
+    let inputFormat = "";
+    let inputDevice = videoSettings.device;
+    
+    if (process.platform === "linux") {
+      inputFormat = "v4l2";
+    } else if (process.platform === "win32") {
+      inputFormat = "dshow";
+      inputDevice = `video=${videoSettings.device}`;
+    } else if (process.platform === "darwin") {
+      inputFormat = "avfoundation";
+    }
+
+    const args = [
+      "-f", inputFormat,
+      "-framerate", videoSettings.framerate,
+      "-video_size", videoSettings.resolution,
+      "-i", inputDevice,
+      "-f", "mpjpeg",
+      "-q:v", "5",
+      "pipe:1"
+    ];
+
+    console.log(`Starting video stream: ffmpeg ${args.join(" ")}`);
+    videoProcess = spawn("ffmpeg", args);
+    videoStatus = "playing";
+    io.emit("video-status", videoStatus);
+
+    videoProcess.on("error", (err) => {
+      console.error("Video process error:", err);
+      stopVideo();
+    });
+
+    videoProcess.on("exit", () => {
+      console.log("Video process exited");
+      videoStatus = "stopped";
+      io.emit("video-status", videoStatus);
+    });
+  };
+
+  // Express route for MJPEG stream
+  app.get("/api/video-stream", (req, res) => {
+    if (videoStatus !== "playing" || !videoProcess) {
+      return res.status(404).send("Stream not active");
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'multipart/x-mixed-replace; boundary=ffmpeg',
+      'Cache-Control': 'no-cache',
+      'Connection': 'close',
+      'Pragma': 'no-cache'
+    });
+
+    const onData = (data: Buffer) => {
+      res.write(data);
+    };
+
+    videoProcess.stdout?.on("data", onData);
+
+    req.on("close", () => {
+      videoProcess?.stdout?.removeListener("data", onData);
+    });
+  });
+
+  const killExistingRigctld = (): Promise<void> => {
+    return new Promise((resolve) => {
+      const cmd = process.platform === "win32" ? "taskkill /F /IM rigctld.exe" : "pkill -9 rigctld";
+      exec(cmd, () => {
+        // We resolve regardless of error (e.g. if process wasn't found)
+        resolve();
+      });
+    });
+  };
+
+  const startRigctld = async () => {
+    if (rigctldProcess) {
+      stopRigctld();
+    }
+
+    // Check if rigctld is already running on the system (not by us)
+    const isAlreadyRunning = await checkExistingRigctld();
+    if (isAlreadyRunning) {
+      console.warn("rigctld is already running on the system");
+      rigctldStatus = "already_running";
+      emitRigctldStatus();
+      addLog("Error: rigctld is already running on the system. Please stop it or use the 'Kill and Restart' option.");
+      return;
+    }
     
     const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = rigctldSettings;
     
@@ -699,10 +879,35 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     socket.on("get-settings", () => {
       socket.emit("settings-data", {
         settings: rigctldSettings,
-        autoStart: autoStartEnabled
+        autoStart: autoStartEnabled,
+        videoSettings: videoSettings
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
+      socket.emit("video-status", videoStatus);
+    });
+
+    socket.on("get-video-devices", async () => {
+      const devices = await listVideoDevices();
+      socket.emit("video-devices-list", devices);
+    });
+
+    socket.on("update-video-settings", (settings: any) => {
+      videoSettings = { ...videoSettings, ...settings };
+      saveSettings();
+    });
+
+    socket.on("control-video", (action: "play" | "pause" | "stop") => {
+      if (action === "play") {
+        startVideo();
+      } else if (action === "pause") {
+        // MJPEG doesn't really pause well, we just stop it for now
+        stopVideo();
+        videoStatus = "paused";
+        io.emit("video-status", videoStatus);
+      } else if (action === "stop") {
+        stopVideo();
+      }
     });
 
     socket.on("save-settings", (data) => {
@@ -724,6 +929,13 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("start-rigctld", () => {
+      startRigctld();
+    });
+
+    socket.on("kill-existing-rigctld", async () => {
+      addLog("Killing existing rigctld process...");
+      await killExistingRigctld();
+      addLog("Existing rigctld killed. Starting new process...");
       startRigctld();
     });
 
