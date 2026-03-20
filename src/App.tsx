@@ -179,6 +179,15 @@ export default function App() {
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
+  const [isVideoCollapsed, setIsVideoCollapsed] = useState(true);
+  const videoSettingsInitialized = useRef(false);
+
+  useEffect(() => {
+    if (videoSettings.device && !videoSettingsInitialized.current) {
+      setIsVideoCollapsed(false);
+      videoSettingsInitialized.current = true;
+    }
+  }, [videoSettings.device]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -1091,7 +1100,58 @@ export default function App() {
               </div>
             </div>
 
-            {/* Combined Meter Box for Phone */}
+            {/* Video Feed Section */}
+            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col shadow-lg">
+              <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                <div className="flex items-center gap-2 text-[#8e9299]">
+                  <Monitor size={12} />
+                  <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Video Feed</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-2 h-2 rounded-full",
+                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
+                    videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
+                  )} />
+                  <button 
+                    onClick={() => {
+                      setIsVideoSettingsOpen(true);
+                      socket?.emit("get-video-devices");
+                    }}
+                    className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
+                    title="Video Settings"
+                  >
+                    <Settings size={14} />
+                  </button>
+                  <button 
+                    onClick={() => setIsVideoCollapsed(!isVideoCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isVideoCollapsed ? "Expand Video Feed" : "Collapse Video Feed"}
+                  >
+                    {isVideoCollapsed ? <ChevronDown size={isPhone ? 16 : 18} /> : <ChevronUp size={isPhone ? 16 : 18} />}
+                  </button>
+                </div>
+              </div>
+              {!isVideoCollapsed && (
+                <div className="relative aspect-video bg-black flex items-center justify-center">
+                  {videoStatus === "playing" ? (
+                    <img 
+                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                      alt="Video Stream"
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
+                      <Monitor size={32} strokeWidth={1} />
+                      <span className="text-[0.5rem] uppercase font-bold tracking-widest">
+                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="bg-[#151619] p-4 rounded-xl border border-[#2a2b2e] space-y-4">
               <div className="flex items-center justify-between border-b border-[#2a2b2e] pb-3">
                 <div className="flex gap-2">
@@ -1493,7 +1553,58 @@ export default function App() {
               </div>
             </div>
 
-            {/* Split Meter Boxes */}
+            {/* Video Feed Section */}
+            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col shadow-lg">
+              <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                <div className="flex items-center gap-2 text-[#8e9299]">
+                  <Monitor size={12} />
+                  <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Video Feed</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-2 h-2 rounded-full",
+                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
+                    videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
+                  )} />
+                  <button 
+                    onClick={() => {
+                      setIsVideoSettingsOpen(true);
+                      socket?.emit("get-video-devices");
+                    }}
+                    className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
+                    title="Video Settings"
+                  >
+                    <Settings size={14} />
+                  </button>
+                  <button 
+                    onClick={() => setIsVideoCollapsed(!isVideoCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isVideoCollapsed ? "Expand Video Feed" : "Collapse Video Feed"}
+                  >
+                    {isVideoCollapsed ? <ChevronDown size={isPhone ? 16 : 18} /> : <ChevronUp size={isPhone ? 16 : 18} />}
+                  </button>
+                </div>
+              </div>
+              {!isVideoCollapsed && (
+                <div className="relative aspect-video bg-black flex items-center justify-center">
+                  {videoStatus === "playing" ? (
+                    <img 
+                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                      alt="Video Stream"
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
+                      <Monitor size={32} strokeWidth={1} />
+                      <span className="text-[0.5rem] uppercase font-bold tracking-widest">
+                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               {/* Left Box: S-METER */}
               <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] space-y-1">
@@ -2206,25 +2317,34 @@ export default function App() {
                   >
                     <Settings size={16} />
                   </button>
+                  <button 
+                    onClick={() => setIsVideoCollapsed(!isVideoCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isVideoCollapsed ? "Expand Video Feed" : "Collapse Video Feed"}
+                  >
+                    {isVideoCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                  </button>
                 </div>
               </div>
-              <div className="relative aspect-video bg-black flex items-center justify-center">
-                {videoStatus === "playing" ? (
-                  <img 
-                    src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
-                    alt="Video Stream"
-                    className="w-full h-full object-contain"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
-                    <Monitor size={48} strokeWidth={1} />
-                    <span className="text-[0.625rem] uppercase font-bold tracking-widest">
-                      {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
-                    </span>
-                  </div>
-                )}
-              </div>
+              {!isVideoCollapsed && (
+                <div className="relative aspect-video bg-black flex items-center justify-center">
+                  {videoStatus === "playing" ? (
+                    <img 
+                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                      alt="Video Stream"
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
+                      <Monitor size={48} strokeWidth={1} />
+                      <span className="text-[0.625rem] uppercase font-bold tracking-widest">
+                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
