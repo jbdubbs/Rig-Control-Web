@@ -187,6 +187,11 @@ export default function App() {
     inputMuted: true,
     outputMuted: false
   });
+  const clientAudioSettingsRef = useRef(clientAudioSettings);
+  useEffect(() => {
+    clientAudioSettingsRef.current = clientAudioSettings;
+  }, [clientAudioSettings]);
+
   const [audioDevices, setAudioDevices] = useState<{ inputs: string[], outputs: string[] }>({ inputs: [], outputs: [] });
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
@@ -275,7 +280,7 @@ export default function App() {
   const nextStartTimeRef = useRef(0);
 
   const handleIncomingAudio = (data: ArrayBuffer) => {
-    if (clientAudioSettings.outputMuted) return;
+    if (clientAudioSettingsRef.current.outputMuted) return;
     
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -316,7 +321,7 @@ export default function App() {
           const processor = ctx.createScriptProcessor(4096, 1, 1);
           
           processor.onaudioprocess = (e) => {
-            if (clientAudioSettings.inputMuted) return;
+            if (clientAudioSettingsRef.current.inputMuted) return;
             const inputData = e.inputBuffer.getChannelData(0);
             const int16 = new Int16Array(inputData.length);
             for (let i = 0; i < inputData.length; i++) {
@@ -378,16 +383,19 @@ export default function App() {
         </div>
         <button
           onClick={() => {
-            const newSettings = { ...clientAudioSettings, outputMuted: !clientAudioSettings.outputMuted };
-            setClientAudioSettings(newSettings);
+            const newClientSettings = { ...clientAudioSettings, outputMuted: !clientAudioSettings.outputMuted };
+            setClientAudioSettings(newClientSettings);
+            const newBackendSettings = { ...audioSettings, inputMuted: !audioSettings.inputMuted };
+            setAudioSettings(newBackendSettings);
+            socket?.emit("update-audio-settings", newBackendSettings);
           }}
           className={cn(
             "mt-5 p-2 rounded border transition-colors",
-            clientAudioSettings.outputMuted ? "bg-red-500/20 border-red-500/50 text-red-400" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
+            clientAudioSettings.outputMuted || audioSettings.inputMuted ? "bg-red-500/20 border-red-500/50 text-red-400" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
           )}
-          title={clientAudioSettings.outputMuted ? "Unmute Client Output" : "Mute Client Output"}
+          title={clientAudioSettings.outputMuted || audioSettings.inputMuted ? "Unmute Backend Audio Input" : "Mute Backend Audio Input"}
         >
-          {clientAudioSettings.outputMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          {clientAudioSettings.outputMuted || audioSettings.inputMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
       </div>
 
@@ -411,16 +419,19 @@ export default function App() {
         </div>
         <button
           onClick={() => {
-            const newSettings = { ...clientAudioSettings, inputMuted: !clientAudioSettings.inputMuted };
-            setClientAudioSettings(newSettings);
+            const newClientSettings = { ...clientAudioSettings, inputMuted: !clientAudioSettings.inputMuted };
+            setClientAudioSettings(newClientSettings);
+            const newBackendSettings = { ...audioSettings, outputMuted: !audioSettings.outputMuted };
+            setAudioSettings(newBackendSettings);
+            socket?.emit("update-audio-settings", newBackendSettings);
           }}
           className={cn(
             "mt-5 p-2 rounded border transition-colors",
-            clientAudioSettings.inputMuted ? "bg-red-500/20 border-red-500/50 text-red-400" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
+            clientAudioSettings.inputMuted || audioSettings.outputMuted ? "bg-red-500/20 border-red-500/50 text-red-400" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
           )}
-          title={clientAudioSettings.inputMuted ? "Unmute Client Input" : "Mute Client Input"}
+          title={clientAudioSettings.inputMuted || audioSettings.outputMuted ? "Unmute Backend Audio Output" : "Mute Backend Audio Output"}
         >
-          {clientAudioSettings.inputMuted ? <MicOff size={16} /> : <Mic size={16} />}
+          {clientAudioSettings.inputMuted || audioSettings.outputMuted ? <MicOff size={16} /> : <Mic size={16} />}
         </button>
       </div>
     </div>
