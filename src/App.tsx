@@ -21,6 +21,8 @@ import {
   Minimize2,
   Pencil,
   Volume2,
+  VolumeX,
+  MicOff,
   Check
 } from "lucide-react";
 import { 
@@ -175,6 +177,17 @@ export default function App() {
     resolution: "640x480",
     framerate: "30"
   });
+  const [audioSettings, setAudioSettings] = useState({
+    inputDevice: "",
+    outputDevice: "",
+    inputMuted: false,
+    outputMuted: false
+  });
+  const [clientAudioSettings, setClientAudioSettings] = useState({
+    inputMuted: true,
+    outputMuted: false
+  });
+  const [audioDevices, setAudioDevices] = useState<{ inputs: string[], outputs: string[] }>({ inputs: [], outputs: [] });
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -215,12 +228,21 @@ export default function App() {
         if (data.videoSettings) {
           setVideoSettings(data.videoSettings);
         }
+        if (data.audioSettings) {
+          setAudioSettings(data.audioSettings);
+        }
       });
       socket.on("video-devices-list", (list: string[]) => {
         setVideoDevices(list);
       });
+      socket.on("audio-devices-list", (list: { inputs: string[], outputs: string[] }) => {
+        setAudioDevices(list);
+      });
       socket.on("video-status", (status: "playing" | "paused" | "stopped") => {
         setVideoStatus(status);
+      });
+      socket.on("audio-data-from-backend", (data: ArrayBuffer) => {
+        handleIncomingAudio(data);
       });
       socket.on("radios-list", (list: any) => {
         const unique = Array.from(new Map(list.map((r: any) => [r.id, r])).values()) as any[];
@@ -239,6 +261,7 @@ export default function App() {
       socket.emit("get-settings");
       socket.emit("get-radios");
       socket.emit("get-video-devices");
+      socket.emit("get-audio-devices");
     }
   }, [socket]);
 
@@ -247,6 +270,161 @@ export default function App() {
       logEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [rigctldLogs]);
+
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const nextStartTimeRef = useRef(0);
+
+  const handleIncomingAudio = (data: ArrayBuffer) => {
+    if (clientAudioSettings.outputMuted) return;
+    
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      nextStartTimeRef.current = audioContextRef.current.currentTime;
+    }
+
+    const ctx = audioContextRef.current;
+    const int16 = new Int16Array(data);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+      float32[i] = int16[i] / 32768.0;
+    }
+
+    const buffer = ctx.createBuffer(1, float32.length, 16000);
+    buffer.getChannelData(0).set(float32);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+
+    const startTime = Math.max(ctx.currentTime, nextStartTimeRef.current);
+    source.start(startTime);
+    nextStartTimeRef.current = startTime + buffer.duration;
+  };
+
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+
+  useEffect(() => {
+    const setupClientAudio = async () => {
+      if (!clientAudioSettings.inputMuted) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaStreamRef.current = stream;
+          
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+          const source = ctx.createMediaStreamSource(stream);
+          const processor = ctx.createScriptProcessor(4096, 1, 1);
+          
+          processor.onaudioprocess = (e) => {
+            if (clientAudioSettings.inputMuted) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+            const int16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              int16[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
+            }
+            socket?.emit("audio-data-to-backend", int16.buffer);
+          };
+          
+          source.connect(processor);
+          processor.connect(ctx.destination);
+          processorRef.current = processor;
+        } catch (err) {
+          console.error("Failed to access microphone:", err);
+          setClientAudioSettings(prev => ({ ...prev, inputMuted: true }));
+        }
+      } else {
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach(t => t.stop());
+          mediaStreamRef.current = null;
+        }
+        if (processorRef.current) {
+          processorRef.current.disconnect();
+          processorRef.current = null;
+        }
+      }
+    };
+
+    setupClientAudio();
+
+    return () => {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+      if (processorRef.current) {
+        processorRef.current.disconnect();
+      }
+    };
+  }, [clientAudioSettings.inputMuted, socket]);
+
+  const AudioControls = () => (
+    <div className="mt-2 space-y-2 px-4 pb-4">
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Backend Audio Input (to Client)</label>
+          <select
+            value={audioSettings.inputDevice}
+            onChange={(e) => {
+              const newSettings = { ...audioSettings, inputDevice: e.target.value };
+              setAudioSettings(newSettings);
+              socket?.emit("update-audio-settings", newSettings);
+            }}
+            className="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500/50"
+          >
+            <option value="">Select Input Device</option>
+            {audioDevices.inputs.map(d => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={() => {
+            const newSettings = { ...clientAudioSettings, outputMuted: !clientAudioSettings.outputMuted };
+            setClientAudioSettings(newSettings);
+          }}
+          className={cn(
+            "mt-5 p-2 rounded border transition-colors",
+            clientAudioSettings.outputMuted ? "bg-red-500/20 border-red-500/50 text-red-400" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
+          )}
+          title={clientAudioSettings.outputMuted ? "Unmute Client Output" : "Mute Client Output"}
+        >
+          {clientAudioSettings.outputMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Backend Audio Output (from Client)</label>
+          <select
+            value={audioSettings.outputDevice}
+            onChange={(e) => {
+              const newSettings = { ...audioSettings, outputDevice: e.target.value };
+              setAudioSettings(newSettings);
+              socket?.emit("update-audio-settings", newSettings);
+            }}
+            className="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500/50"
+          >
+            <option value="">Select Output Device</option>
+            {audioDevices.outputs.map(d => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={() => {
+            const newSettings = { ...clientAudioSettings, inputMuted: !clientAudioSettings.inputMuted };
+            setClientAudioSettings(newSettings);
+          }}
+          className={cn(
+            "mt-5 p-2 rounded border transition-colors",
+            clientAudioSettings.inputMuted ? "bg-red-500/20 border-red-500/50 text-red-400" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
+          )}
+          title={clientAudioSettings.inputMuted ? "Unmute Client Input" : "Mute Client Input"}
+        >
+          {clientAudioSettings.inputMuted ? <MicOff size={16} /> : <Mic size={16} />}
+        </button>
+      </div>
+    </div>
+  );
 
   const isSettingsValid = () => {
     return (
@@ -1133,23 +1311,26 @@ export default function App() {
                 </div>
               </div>
               {!isVideoCollapsed && (
-                <div className="relative aspect-video bg-black flex items-center justify-center">
-                  {videoStatus === "playing" ? (
-                    <img 
-                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
-                      alt="Video Stream"
-                      className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
-                      <Monitor size={32} strokeWidth={1} />
-                      <span className="text-[0.5rem] uppercase font-bold tracking-widest">
-                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                <>
+                  <div className="relative aspect-video bg-black flex items-center justify-center">
+                    {videoStatus === "playing" ? (
+                      <img 
+                        src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                        alt="Video Stream"
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
+                        <Monitor size={32} strokeWidth={1} />
+                        <span className="text-[0.5rem] uppercase font-bold tracking-widest">
+                          {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <AudioControls />
+                </>
               )}
             </div>
             <div className="bg-[#151619] p-4 rounded-xl border border-[#2a2b2e] space-y-4">
@@ -1586,23 +1767,26 @@ export default function App() {
                 </div>
               </div>
               {!isVideoCollapsed && (
-                <div className="relative aspect-video bg-black flex items-center justify-center">
-                  {videoStatus === "playing" ? (
-                    <img 
-                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
-                      alt="Video Stream"
-                      className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
-                      <Monitor size={32} strokeWidth={1} />
-                      <span className="text-[0.5rem] uppercase font-bold tracking-widest">
-                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                <>
+                  <div className="relative aspect-video bg-black flex items-center justify-center">
+                    {videoStatus === "playing" ? (
+                      <img 
+                        src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                        alt="Video Stream"
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
+                        <Monitor size={32} strokeWidth={1} />
+                        <span className="text-[0.5rem] uppercase font-bold tracking-widest">
+                          {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <AudioControls />
+                </>
               )}
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -2327,23 +2511,26 @@ export default function App() {
                 </div>
               </div>
               {!isVideoCollapsed && (
-                <div className="relative aspect-video bg-black flex items-center justify-center">
-                  {videoStatus === "playing" ? (
-                    <img 
-                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
-                      alt="Video Stream"
-                      className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
-                      <Monitor size={48} strokeWidth={1} />
-                      <span className="text-[0.625rem] uppercase font-bold tracking-widest">
-                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                <>
+                  <div className="relative aspect-video bg-black flex items-center justify-center">
+                    {videoStatus === "playing" ? (
+                      <img 
+                        src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                        alt="Video Stream"
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
+                        <Monitor size={48} strokeWidth={1} />
+                        <span className="text-[0.625rem] uppercase font-bold tracking-widest">
+                          {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <AudioControls />
+                </>
               )}
             </div>
           </div>
