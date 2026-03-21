@@ -311,9 +311,12 @@ export default function App() {
 
   useEffect(() => {
     const setupClientAudio = async () => {
+      console.log("setupClientAudio triggered, inputMuted:", clientAudioSettings.inputMuted);
       if (!clientAudioSettings.inputMuted) {
         try {
+          console.log("Requesting microphone permission...");
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          console.log("Microphone permission granted, stream obtained.");
           mediaStreamRef.current = stream;
           
           const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -383,11 +386,17 @@ export default function App() {
         </div>
         <button
           onClick={() => {
-            const newClientSettings = { ...clientAudioSettings, outputMuted: !clientAudioSettings.outputMuted };
-            setClientAudioSettings(newClientSettings);
-            const newBackendSettings = { ...audioSettings, inputMuted: !audioSettings.inputMuted };
-            setAudioSettings(newBackendSettings);
-            socket?.emit("update-audio-settings", newBackendSettings);
+            setClientAudioSettings(prev => {
+              const newVal = !prev.outputMuted;
+              console.log("Toggling client output mute to:", newVal);
+              return { ...prev, outputMuted: newVal };
+            });
+            setAudioSettings(prev => {
+              const newVal = !prev.inputMuted;
+              console.log("Toggling backend input mute to:", newVal);
+              return { ...prev, inputMuted: newVal };
+            });
+            socket?.emit("update-audio-settings", { ...audioSettings, inputMuted: !audioSettings.inputMuted });
           }}
           className={cn(
             "mt-5 p-2 rounded border transition-colors",
@@ -419,11 +428,17 @@ export default function App() {
         </div>
         <button
           onClick={() => {
-            const newClientSettings = { ...clientAudioSettings, inputMuted: !clientAudioSettings.inputMuted };
-            setClientAudioSettings(newClientSettings);
-            const newBackendSettings = { ...audioSettings, outputMuted: !audioSettings.outputMuted };
-            setAudioSettings(newBackendSettings);
-            socket?.emit("update-audio-settings", newBackendSettings);
+            setClientAudioSettings(prev => {
+              const newVal = !prev.inputMuted;
+              console.log("Toggling client input mute to:", newVal);
+              return { ...prev, inputMuted: newVal };
+            });
+            setAudioSettings(prev => {
+              const newVal = !prev.outputMuted;
+              console.log("Toggling backend output mute to:", newVal);
+              return { ...prev, outputMuted: newVal };
+            });
+            socket?.emit("update-audio-settings", { ...audioSettings, outputMuted: !audioSettings.outputMuted });
           }}
           className={cn(
             "mt-5 p-2 rounded border transition-colors",
