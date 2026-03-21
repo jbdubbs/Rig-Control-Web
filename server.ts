@@ -67,7 +67,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     let inputDevice = audioSettings.inputDevice;
 
     if (process.platform === "linux") {
-      inputFormat = "alsa";
+      inputFormat = "pulse";
     } else if (process.platform === "win32") {
       inputFormat = "dshow";
       inputDevice = `audio=${audioSettings.inputDevice}`;
@@ -106,7 +106,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     let outputDevice = audioSettings.outputDevice;
 
     if (process.platform === "linux") {
-      outputFormat = "alsa";
+      outputFormat = "pulse";
     } else if (process.platform === "win32") {
       outputFormat = "dshow";
       outputDevice = `audio=${audioSettings.outputDevice}`;
@@ -205,7 +205,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     return new Promise((resolve) => {
       let cmd = "";
       if (process.platform === "linux") {
-        cmd = "arecord -L && aplay -L";
+        cmd = "pactl list short sources && echo --- && pactl list short sinks";
       } else if (process.platform === "win32") {
         cmd = "ffmpeg -list_devices true -f dshow -i dummy 2>&1";
       } else if (process.platform === "darwin") {
@@ -220,17 +220,23 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         const outputs: string[] = [];
         
         if (process.platform === "linux") {
-          const lines = output.split("\n");
-          let isAplay = false;
-          lines.forEach(line => {
-            if (line.includes("aplay -L")) isAplay = true;
-            if (line.match(/^[a-zA-Z0-9_-]+/) && !line.includes(" ")) {
-              const device = line.trim();
-              if (isAplay) {
-                if (!outputs.includes(device)) outputs.push(device);
-              } else {
-                if (!inputs.includes(device)) inputs.push(device);
-              }
+          const sections = output.split("---");
+          const inputLines = sections[0] ? sections[0].split("\n") : [];
+          const outputLines = sections[1] ? sections[1].split("\n") : [];
+
+          inputLines.forEach(line => {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length > 1) {
+              const name = parts[1];
+              if (name && !inputs.includes(name)) inputs.push(name);
+            }
+          });
+
+          outputLines.forEach(line => {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length > 1) {
+              const name = parts[1];
+              if (name && !outputs.includes(name)) outputs.push(name);
             }
           });
         } else if (process.platform === "win32") {
