@@ -1,4 +1,5 @@
 # RigControl Web
+![RigControl Web Screenshot](public/screenshot.png)
 
 A modern, full-stack web application and desktop client designed to control amateur radio equipment via Hamlib's `rigctld`. It features a real-time dashboard with frequency, mode, and meter displays, and can automatically manage a local `rigctld` process.
 
