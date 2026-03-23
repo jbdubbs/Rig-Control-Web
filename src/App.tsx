@@ -265,13 +265,22 @@ export default function App() {
     );
   };
 
-  const handleSaveSettings = () => {
-    socket?.emit("save-settings", rigctldSettings);
-    localStorage.setItem("rig-host", host);
-    localStorage.setItem("rig-port", port.toString());
-    localStorage.setItem("rig-poll-rate", pollRate.toString());
-    setIsSettingsOpen(false);
-  };
+  const isFirstMount = useRef(true);
+  useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      socket?.emit("save-settings", rigctldSettings);
+      localStorage.setItem("rig-host", host);
+      if (!isNaN(port)) {
+        localStorage.setItem("rig-port", port.toString());
+      }
+      localStorage.setItem("rig-poll-rate", pollRate.toString());
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [rigctldSettings, host, port, pollRate, socket]);
 
   const isDraggingRF = useRef(false);
   const isChangingMode = useRef(false);
@@ -2569,7 +2578,7 @@ export default function App() {
 
         {/* Portable Setup Modal */}
         {showSetupModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
             <div className="bg-[#151619] border border-[#2a2b2e] rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
               <div className="p-6 border-b border-[#2a2b2e] flex justify-between items-center bg-[#1a1b1e]">
                 <div className="flex items-center gap-3">
@@ -2669,7 +2678,7 @@ export default function App() {
         )}
         {/* Video Settings Modal */}
       {isVideoSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
           <div className="bg-[#151619] w-full max-w-md rounded-2xl border border-[#2a2b2e] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
               <div className="flex items-center gap-3">
@@ -2803,7 +2812,7 @@ export default function App() {
 
       {/* Rigctld Settings Modal */}
         {isSettingsOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
             <div className="bg-[#151619] border border-[#2a2b2e] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
               <div className="p-4 border-b border-[#2a2b2e] flex justify-between items-center bg-[#1a1b1e]">
                 <div className="flex items-center gap-2">
@@ -2990,12 +2999,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  <button 
-                    onClick={handleSaveSettings}
-                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold uppercase text-xs transition-all shadow-lg shadow-emerald-500/20"
-                  >
-                    Save Settings
-                  </button>
+                  <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl text-[0.625rem] text-blue-400/80 italic text-center">
+                    Settings are saved automatically as you type.
+                  </div>
                 </div>
 
                 {/* Log View */}
