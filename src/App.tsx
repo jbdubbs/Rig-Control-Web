@@ -1346,7 +1346,7 @@ export default function App() {
                   </div>
                 </div>
                 {!isCompactSMeterCollapsed && (
-                  <div className="p-2 h-20">
+                  <div className="p-2 flex-1 min-h-[80px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={history}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
