@@ -21,8 +21,6 @@ import {
   Minimize2,
   Pencil,
   Volume2,
-  VolumeX,
-  MicOff,
   Check
 } from "lucide-react";
 import { 
@@ -113,8 +111,8 @@ const DEFAULT_STATUS: RigStatus = {
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
-  const [host, setHost] = useState("127.0.0.1");
-  const [port, setPort] = useState(4532);
+  const [host, setHost] = useState(() => localStorage.getItem("rig-host") || "127.0.0.1");
+  const [port, setPort] = useState(() => parseInt(localStorage.getItem("rig-port") || "4532"));
   const [status, setStatus] = useState<RigStatus>(() => {
     try {
       const saved = localStorage.getItem("last-rig-status");
@@ -126,7 +124,7 @@ export default function App() {
     return DEFAULT_STATUS;
   });
   const [history, setHistory] = useState<any[]>([]);
-  const [pollRate, setPollRate] = useState(2000);
+  const [pollRate, setPollRate] = useState(() => parseInt(localStorage.getItem("rig-poll-rate") || "2000"));
   const [vfoA, setVfoA] = useState(() => localStorage.getItem("last-vfoA") || "14074000");
   const [vfoB, setVfoB] = useState(() => localStorage.getItem("last-vfoB") || "7074000");
   const [error, setError] = useState<string | null>(null);
@@ -151,15 +149,8 @@ export default function App() {
   const [isPhone, setIsPhone] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [phoneMeterTab, setPhoneMeterTab] = useState<'signal' | 'swr' | 'alc'>('signal');
-  const [fontSize, setFontSize] = useState(() => {
-    const saved = localStorage.getItem("font-size");
-    return saved ? parseInt(saved) : 16;
-  });
   const [activeMeter, setActiveMeter] = useState<'signal' | 'swr' | 'alc' | 'vdd'>('signal');
-  const effectiveRightMeter = (isCompact && activeMeter === 'signal') ? 'swr' : activeMeter;
   const [activeVFO, setActiveVFO] = useState<'A' | 'B'>('A');
-  const [showHeaderOptions, setShowHeaderOptions] = useState(false);
-  const [autoStart, setAutoStart] = useState(false);
   const [rigctldSettings, setRigctldSettings] = useState({
     rigNumber: "",
     serialPort: "",
@@ -177,27 +168,26 @@ export default function App() {
     resolution: "640x480",
     framerate: "30"
   });
-  const [audioSettings, setAudioSettings] = useState({
-    inputDevice: "",
-    outputDevice: "",
-    inputMuted: false,
-    outputMuted: false
-  });
-  const [clientAudioSettings, setClientAudioSettings] = useState({
-    inputMuted: true,
-    outputMuted: false
-  });
-  const clientAudioSettingsRef = useRef(clientAudioSettings);
-  useEffect(() => {
-    clientAudioSettingsRef.current = clientAudioSettings;
-  }, [clientAudioSettings]);
-
-  const [audioDevices, setAudioDevices] = useState<{ inputs: string[], outputs: string[] }>({ inputs: [], outputs: [] });
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
   const [isVideoCollapsed, setIsVideoCollapsed] = useState(true);
+  const [isPhoneMeterCollapsed, setIsPhoneMeterCollapsed] = useState(false);
+  const [isPhoneQuickControlsCollapsed, setIsPhoneQuickControlsCollapsed] = useState(false);
+  const [isPhoneRFPowerCollapsed, setIsPhoneRFPowerCollapsed] = useState(false);
+  const [isCompactSMeterCollapsed, setIsCompactSMeterCollapsed] = useState(false);
+  const [isCompactOtherMeterCollapsed, setIsCompactOtherMeterCollapsed] = useState(false);
+  const [isCompactControlsCollapsed, setIsCompactControlsCollapsed] = useState(false);
+  const [isCompactRFPowerCollapsed, setIsCompactRFPowerCollapsed] = useState(false);
+  const [isDesktopControlsCollapsed, setIsDesktopControlsCollapsed] = useState(false);
+  const [isDesktopModeCollapsed, setIsDesktopModeCollapsed] = useState(false);
+  const [isDesktopBwCollapsed, setIsDesktopBwCollapsed] = useState(false);
+  const [isDesktopRFPowerCollapsed, setIsDesktopRFPowerCollapsed] = useState(false);
+  const [isDesktopSMeterCollapsed, setIsDesktopSMeterCollapsed] = useState(false);
+  const [isDesktopSWRCollapsed, setIsDesktopSWRCollapsed] = useState(false);
+  const [isDesktopALCCollapsed, setIsDesktopALCCollapsed] = useState(false);
+  const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(false);
   const videoSettingsInitialized = useRef(false);
 
   useEffect(() => {
@@ -229,25 +219,15 @@ export default function App() {
     if (socket) {
       socket.on("settings-data", (data: any) => {
         setRigctldSettings(data.settings);
-        setAutoStart(data.autoStart);
         if (data.videoSettings) {
           setVideoSettings(data.videoSettings);
-        }
-        if (data.audioSettings) {
-          setAudioSettings(data.audioSettings);
         }
       });
       socket.on("video-devices-list", (list: string[]) => {
         setVideoDevices(list);
       });
-      socket.on("audio-devices-list", (list: { inputs: string[], outputs: string[] }) => {
-        setAudioDevices(list);
-      });
       socket.on("video-status", (status: "playing" | "paused" | "stopped") => {
         setVideoStatus(status);
-      });
-      socket.on("audio-data-from-backend", (data: ArrayBuffer) => {
-        handleIncomingAudio(data);
       });
       socket.on("radios-list", (list: any) => {
         const unique = Array.from(new Map(list.map((r: any) => [r.id, r])).values()) as any[];
@@ -266,7 +246,6 @@ export default function App() {
       socket.emit("get-settings");
       socket.emit("get-radios");
       socket.emit("get-video-devices");
-      socket.emit("get-audio-devices");
     }
   }, [socket]);
 
@@ -275,182 +254,6 @@ export default function App() {
       logEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [rigctldLogs]);
-
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const nextStartTimeRef = useRef(0);
-
-  const handleIncomingAudio = (data: ArrayBuffer) => {
-    if (clientAudioSettingsRef.current.outputMuted) return;
-    
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      nextStartTimeRef.current = audioContextRef.current.currentTime;
-    }
-
-    const ctx = audioContextRef.current;
-    const int16 = new Int16Array(data);
-    const float32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) {
-      float32[i] = int16[i] / 32768.0;
-    }
-
-    const buffer = ctx.createBuffer(1, float32.length, 16000);
-    buffer.getChannelData(0).set(float32);
-
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-
-    const startTime = Math.max(ctx.currentTime, nextStartTimeRef.current);
-    source.start(startTime);
-    nextStartTimeRef.current = startTime + buffer.duration;
-  };
-
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-
-  useEffect(() => {
-    const setupClientAudio = async () => {
-      console.log("setupClientAudio triggered, inputMuted:", clientAudioSettings.inputMuted);
-      if (!clientAudioSettings.inputMuted) {
-        try {
-          console.log("Requesting microphone permission...");
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          console.log("Microphone permission granted, stream obtained.");
-          mediaStreamRef.current = stream;
-          
-          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-          const source = ctx.createMediaStreamSource(stream);
-          const processor = ctx.createScriptProcessor(4096, 1, 1);
-          
-          processor.onaudioprocess = (e) => {
-            if (clientAudioSettingsRef.current.inputMuted) return;
-            const inputData = e.inputBuffer.getChannelData(0);
-            const int16 = new Int16Array(inputData.length);
-            for (let i = 0; i < inputData.length; i++) {
-              int16[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
-            }
-            socket?.emit("audio-data-to-backend", int16.buffer);
-          };
-          
-          source.connect(processor);
-          processor.connect(ctx.destination);
-          processorRef.current = processor;
-        } catch (err) {
-          console.error("Failed to access microphone:", err);
-          setClientAudioSettings(prev => ({ ...prev, inputMuted: true }));
-        }
-      } else {
-        if (mediaStreamRef.current) {
-          mediaStreamRef.current.getTracks().forEach(t => t.stop());
-          mediaStreamRef.current = null;
-        }
-        if (processorRef.current) {
-          processorRef.current.disconnect();
-          processorRef.current = null;
-        }
-      }
-    };
-
-    setupClientAudio();
-
-    return () => {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(t => t.stop());
-      }
-      if (processorRef.current) {
-        processorRef.current.disconnect();
-      }
-    };
-  }, [clientAudioSettings.inputMuted, socket]);
-
-  const AudioControls = () => (
-    <div className="mt-2 space-y-2 px-4 pb-4">
-      <div className="flex items-center gap-2">
-        <div className="flex-1">
-          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Backend Audio Input (to Client)</label>
-          <select
-            value={audioSettings.inputDevice}
-            onChange={(e) => {
-              const newSettings = { ...audioSettings, inputDevice: e.target.value };
-              setAudioSettings(newSettings);
-              socket?.emit("update-audio-settings", newSettings);
-            }}
-            className="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500/50"
-          >
-            <option value="">Select Input Device</option>
-            {audioDevices.inputs.map(d => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        </div>
-        <button
-          onClick={() => {
-            setClientAudioSettings(prev => {
-              const newVal = !prev.outputMuted;
-              console.log("Toggling client output mute to:", newVal);
-              return { ...prev, outputMuted: newVal };
-            });
-            setAudioSettings(prev => {
-              const newVal = !prev.inputMuted;
-              console.log("Toggling backend input mute to:", newVal);
-              return { ...prev, inputMuted: newVal };
-            });
-            socket?.emit("update-audio-settings", { ...audioSettings, inputMuted: !audioSettings.inputMuted });
-          }}
-          className={cn(
-            "mt-5 p-2 rounded border transition-colors",
-            clientAudioSettings.outputMuted || audioSettings.inputMuted ? "bg-red-500/20 border-red-500/50 text-red-400" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
-          )}
-          title={clientAudioSettings.outputMuted || audioSettings.inputMuted ? "Unmute Backend Audio Input" : "Mute Backend Audio Input"}
-        >
-          {clientAudioSettings.outputMuted || audioSettings.inputMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-        </button>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <div className="flex-1">
-          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Backend Audio Output (from Client)</label>
-          <select
-            value={audioSettings.outputDevice}
-            onChange={(e) => {
-              const newSettings = { ...audioSettings, outputDevice: e.target.value };
-              setAudioSettings(newSettings);
-              socket?.emit("update-audio-settings", newSettings);
-            }}
-            className="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500/50"
-          >
-            <option value="">Select Output Device</option>
-            {audioDevices.outputs.map(d => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        </div>
-        <button
-          onClick={() => {
-            setClientAudioSettings(prev => {
-              const newVal = !prev.inputMuted;
-              console.log("Toggling client input mute to:", newVal);
-              return { ...prev, inputMuted: newVal };
-            });
-            setAudioSettings(prev => {
-              const newVal = !prev.outputMuted;
-              console.log("Toggling backend output mute to:", newVal);
-              return { ...prev, outputMuted: newVal };
-            });
-            socket?.emit("update-audio-settings", { ...audioSettings, outputMuted: !audioSettings.outputMuted });
-          }}
-          className={cn(
-            "mt-5 p-2 rounded border transition-colors",
-            clientAudioSettings.inputMuted || audioSettings.outputMuted ? "bg-red-500/20 border-red-500/50 text-red-400" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
-          )}
-          title={clientAudioSettings.inputMuted || audioSettings.outputMuted ? "Unmute Backend Audio Output" : "Mute Backend Audio Output"}
-        >
-          {clientAudioSettings.inputMuted || audioSettings.outputMuted ? <MicOff size={16} /> : <Mic size={16} />}
-        </button>
-      </div>
-    </div>
-  );
 
   const isSettingsValid = () => {
     return (
@@ -464,17 +267,10 @@ export default function App() {
 
   const handleSaveSettings = () => {
     socket?.emit("save-settings", rigctldSettings);
+    localStorage.setItem("rig-host", host);
+    localStorage.setItem("rig-port", port.toString());
+    localStorage.setItem("rig-poll-rate", pollRate.toString());
     setIsSettingsOpen(false);
-  };
-
-  const handleToggleAutoStart = () => {
-    if (!autoStart && !isSettingsValid()) {
-      setIsSettingsOpen(true);
-      return;
-    }
-    const newValue = !autoStart;
-    setAutoStart(newValue);
-    socket?.emit("toggle-auto-start", newValue);
   };
 
   const isDraggingRF = useRef(false);
@@ -516,25 +312,20 @@ export default function App() {
   }, [isCompact]);
 
   useEffect(() => {
-    localStorage.setItem("font-size", fontSize.toString());
-    document.documentElement.style.fontSize = `${fontSize}px`;
-  }, [fontSize]);
-
-  useEffect(() => {
     if (!socket) return;
     const visible = [];
     const isPtt = status?.ptt || false;
     if (isCompact) {
-      if (effectiveRightMeter === 'swr' && isPtt) visible.push('swr');
-      if (effectiveRightMeter === 'alc' && isPtt) visible.push('alc');
-      if (effectiveRightMeter === 'vdd') visible.push('vdd');
+      if (activeMeter === 'swr' && isPtt) visible.push('swr');
+      if (activeMeter === 'alc' && isPtt) visible.push('alc');
+      if (activeMeter === 'vdd') visible.push('vdd');
     } else {
       if (isPtt) {
-        visible.push('swr', 'alc');
+        visible.push('swr', 'alc', 'vdd');
       }
     }
     socket.emit("set-visible-meters", visible);
-  }, [socket, isCompact, effectiveRightMeter, status?.ptt]);
+  }, [socket, isCompact, activeMeter, status?.ptt]);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
@@ -805,338 +596,38 @@ export default function App() {
     )}>
       <div className={cn(
         "mx-auto space-y-4",
-        isCompact ? "max-w-[640px]" : "max-w-6xl space-y-6"
+        isCompact ? "w-full" : "max-w-6xl space-y-6"
       )}>
         {/* Header / Connection */}
-        <header className={cn(
-          "bg-[#151619] rounded-xl border border-[#2a2b2e] shadow-2xl transition-all duration-300",
-          isPhone ? "p-3" : isCompact ? "p-4" : "p-6"
-        )}>
-          {isCompact ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <div className={cn(
-                      "rounded-full transition-all",
-                      isPhone ? "p-1.5" : "p-2",
-                      connected ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
-                    )}>
-                      <Radio size={isPhone ? 20 : 24} />
-                    </div>
-                    <h1 className={cn(
-                      "font-bold tracking-tighter uppercase italic transition-all",
-                      isPhone ? "text-lg" : "text-xl"
-                    )}>
-                      RigControl Web
-                    </h1>
-                  </div>
-                  <div className={cn(
-                    "flex items-center gap-2 flex-none ml-1 transition-all",
-                    isPhone ? "mt-2" : "mt-3"
-                  )}>
-                    <button 
-                      onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
-                      className={cn(
-                        "flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg hover:border-emerald-500 text-[#8e9299] transition-all",
-                        isPhone ? "w-10 h-10 text-xl" : "w-8 h-8 text-lg"
-                      )}
-                      title="Decrease Font Size"
-                    >
-                      -
-                    </button>
-                    <button 
-                      onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
-                      className={cn(
-                        "flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg hover:border-emerald-500 text-[#8e9299] transition-all",
-                        isPhone ? "w-10 h-10 text-xl" : "w-8 h-8 text-lg"
-                      )}
-                      title="Increase Font Size"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "text-[#8e9299] uppercase transition-all",
-                    isPhone ? "text-xs" : "text-xs"
-                  )}>
-                    {host}:{port}
-                  </span>
-                  <button 
-                    onClick={() => setShowHeaderOptions(!showHeaderOptions)}
-                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
-                  >
-                    {showHeaderOptions ? <ChevronUp size={isPhone ? 16 : 18} /> : <ChevronDown size={isPhone ? 16 : 18} />}
-                  </button>
-                  <button 
-                    onClick={() => setIsCompact(false)}
-                    className="p-1 hover:bg-white/5 rounded text-emerald-500"
-                    title="Exit Compact Mode"
-                  >
-                    <Maximize2 size={isPhone ? 16 : 18} />
-                  </button>
-                </div>
-              </div>
-
-              {showHeaderOptions && (
-                <div className="pt-2 border-t border-[#2a2b2e] animate-in slide-in-from-top-2 duration-200 space-y-2">
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1 flex flex-col gap-1">
-                      <label className={cn("uppercase text-[#8e9299]", isPhone ? "text-xs" : "text-[0.625rem]")}>Host</label>
-                      <input 
-                        type="text" 
-                        value={host}
-                        onChange={(e) => setHost(e.target.value)}
-                        className={cn(
-                          "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 focus:outline-none focus:border-emerald-500 transition-all",
-                          isPhone ? "text-sm" : "text-sm"
-                        )}
-                      />
-                    </div>
-                    <div className={cn("flex flex-col gap-1", isPhone ? "w-20" : "w-24")}>
-                      <label className={cn("uppercase text-[#8e9299]", isPhone ? "text-xs" : "text-[0.625rem]")}>Port</label>
-                      <input 
-                        type="number" 
-                        value={(port === null || isNaN(port)) ? "" : port}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          setPort(isNaN(val) ? NaN : val);
-                        }}
-                        className={cn(
-                          "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 focus:outline-none focus:border-emerald-500 transition-all",
-                          isPhone ? "text-sm" : "text-sm"
-                        )}
-                      />
-                    </div>
-                    <button 
-                      onClick={handleConnect}
-                      className={cn(
-                         "py-1 rounded font-bold uppercase transition-all flex items-center justify-center gap-1",
-                        isPhone ? "w-28 text-xs h-[32px]" : "w-32 text-xs h-[30px]",
-                        connected ? "bg-red-500/20 text-red-500 border border-red-500/50" : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50"
-                      )}
-                    >
-                      <Power size={isPhone ? 12 : 14} />
-                      {connected ? "Disconnect" : "Connect"}
-                    </button>
-                  </div>
-                  
-                  <div className={cn("flex items-center justify-center", isPhone ? "gap-6" : "gap-8")}>
-                    <div className="flex flex-col gap-1 w-1/3">
-                      <label className={cn("uppercase text-[#8e9299] text-center", isPhone ? "text-xs" : "text-[0.625rem]")}>Polling Rate</label>
-                      <select 
-                        value={pollRate}
-                        onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
-                        disabled={!connected}
-                        className={cn(
-                          "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-1 py-1 focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer text-center transition-all",
-                          isPhone ? "text-sm" : "text-sm",
-                          !connected && "opacity-50 cursor-not-allowed"
-                        )}
-                      >
-                        <option value={250}>250ms</option>
-                        <option value={500}>500ms</option>
-                        <option value={1000}>1000ms</option>
-                        <option value={1500}>1500ms</option>
-                        <option value={2000}>2000ms</option>
-                        <option value={5000}>5000ms</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2 pt-3">
-                      <label className="flex items-center gap-1.5 cursor-pointer group">
-                        <div 
-                          onClick={handleToggleAutoStart}
-                          className={cn(
-                            "rounded border transition-all flex items-center justify-center",
-                            isPhone ? "w-4 h-4" : "w-4 h-4",
-                            autoStart ? "bg-emerald-500 border-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] group-hover:border-emerald-500/50"
-                          )}
-                        >
-                          {autoStart && <Check size={isPhone ? 10 : 10} className="text-white" strokeWidth={4} />}
-                        </div>
-                        <span className={cn("uppercase text-[#8e9299] whitespace-nowrap transition-all", isPhone ? "text-xs" : "text-[0.625rem]")}>Auto Start Rigctld</span>
-                      </label>
-                      <div className="flex items-center gap-1">
-                        <div className={cn(
-                          "rounded-full transition-all",
-                          isPhone ? "w-1.5 h-1.5" : "w-2 h-2",
-                          rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
-                          rigctldProcessStatus === "error" || rigctldProcessStatus === "already_running" ? "bg-red-500" : "bg-[#2a2b2e]"
-                        )} />
-                        <button 
-                          onClick={() => setIsSettingsOpen(true)}
-                          className={cn(
-                            "bg-[#0a0a0a] border border-[#2a2b2e] rounded hover:border-emerald-500 text-[#8e9299] transition-all",
-                            isPhone ? "p-1.5" : "p-1.5"
-                          )}
-                          title="Rigctld Settings"
-                        >
-                          <Settings size={isPhone ? 14 : 14} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+        <header className="bg-[#151619] rounded-xl border border-[#2a2b2e] shadow-2xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Signal size={24} className="text-emerald-500" />
+            <h1 className="text-xl font-bold tracking-tighter uppercase italic">RigControl Web</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={handleConnect}
+              className={cn(
+                "px-6 py-2 rounded-lg font-bold uppercase text-sm transition-all flex items-center gap-2",
+                connected 
+                  ? "bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500 hover:text-white"
+                  : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white"
               )}
-            </div>
-          ) : (
-            <div className="flex flex-col xl:flex-row justify-between items-center w-full gap-6">
-              <div className="flex items-center gap-6 mb-4 xl:mb-0">
-                <div className={cn(
-                  "p-4 rounded-full transition-all",
-                  connected ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
-                )}>
-                  <Radio size={40} />
-                </div>
-                <div className="space-y-1">
-                  <h1 className="text-3xl font-bold tracking-tighter uppercase italic">RigControl Web</h1>
-                  <p className="text-sm text-[#8e9299] uppercase tracking-[0.2em]">Hamlib rigctld Interface</p>
-                  <div className="flex items-center gap-3 flex-none mt-3">
-                    <button 
-                      onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
-                      className="w-10 h-10 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-xl hover:border-emerald-500 text-[#8e9299] transition-all"
-                      title="Decrease Font Size"
-                    >
-                      -
-                    </button>
-                    <button 
-                      onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
-                      className="w-10 h-10 flex items-center justify-center bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-xl hover:border-emerald-500 text-[#8e9299] transition-all"
-                      title="Increase Font Size"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-6 w-full xl:w-auto">
-                <div className="flex flex-wrap gap-6 items-end justify-center xl:justify-end">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs uppercase text-[#8e9299] font-bold">Host Address</label>
-                    <input 
-                      type="text" 
-                      value={host}
-                      onChange={(e) => setHost(e.target.value)}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-2 text-base focus:outline-none focus:border-emerald-500 transition-all w-48"
-                      placeholder="127.0.0.1"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs uppercase text-[#8e9299] font-bold">Port</label>
-                    <input 
-                      type="number" 
-                      value={(port === null || isNaN(port)) ? "" : port}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        setPort(isNaN(val) ? NaN : val);
-                      }}
-                      className="bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-2 text-base w-28 focus:outline-none focus:border-emerald-500 transition-all"
-                    />
-                  </div>
-                  <div className="flex gap-3">
-                    {showInstallButton && (
-                      <button 
-                        onClick={handleInstallClick}
-                        className="px-5 py-2.5 rounded-lg font-bold uppercase text-sm transition-all bg-blue-500/20 text-blue-400 border border-blue-500/50 hover:bg-blue-500 hover:text-white flex items-center gap-2"
-                        title="Install to Desktop"
-                      >
-                        <Download size={16} />
-                        Install
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => setShowSetupModal(true)}
-                      className="px-5 py-2.5 rounded-lg font-bold uppercase text-sm transition-all bg-[#2a2b2e] text-[#8e9299] border border-[#3a3b3e] hover:bg-[#3a3b3e] hover:text-white flex items-center gap-2"
-                    >
-                      <Server size={16} />
-                      Portable
-                    </button>
-                    <button 
-                      onClick={handleConnect}
-                      className={cn(
-                        "px-8 py-2.5 rounded-lg font-bold uppercase text-sm transition-all flex items-center gap-2",
-                        connected 
-                          ? "bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500 hover:text-white"
-                          : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white"
-                      )}
-                    >
-                      <Power size={16} />
-                      {connected ? "Disconnect" : "Connect"}
-                    </button>
-                    {!connected && (
-                      <button 
-                        onClick={() => socket?.emit("connect-rig", { host: "mock", port: 0 })}
-                        className="px-5 py-2.5 rounded-lg font-bold uppercase text-sm transition-all bg-amber-500/20 text-amber-500 border border-amber-500/50 hover:bg-amber-500 hover:text-white"
-                      >
-                        Demo
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => setIsCompact(true)}
-                      className="px-4 py-2.5 rounded-lg font-bold uppercase text-sm transition-all bg-[#2a2b2e] text-[#8e9299] border border-[#3a3b3e] hover:bg-[#3a3b3e] hover:text-white flex items-center justify-center"
-                      title="Enter Compact Mode"
-                    >
-                      <Minimize2 size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-center xl:justify-end gap-8">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs uppercase text-[#8e9299] font-bold">Poll Rate</label>
-                    <select 
-                      value={pollRate}
-                      onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
-                      disabled={!connected}
-                      className={cn(
-                        "bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-2 text-base focus:outline-none focus:border-emerald-500 transition-all appearance-none cursor-pointer w-32",
-                        !connected && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <option value={250}>250 ms</option>
-                      <option value={500}>500 ms</option>
-                      <option value={1000}>1000 ms</option>
-                      <option value={1500}>1500 ms</option>
-                      <option value={2000}>2000 ms</option>
-                      <option value={5000}>5000 ms</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center gap-4 pt-5">
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                      <div 
-                        onClick={handleToggleAutoStart}
-                        className={cn(
-                          "w-5 h-5 rounded border transition-all flex items-center justify-center",
-                          autoStart ? "bg-emerald-500 border-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] group-hover:border-emerald-500/50"
-                        )}
-                      >
-                        {autoStart && <Check size={12} className="text-white" strokeWidth={4} />}
-                      </div>
-                      <span className="text-xs uppercase text-[#8e9299] font-bold whitespace-nowrap">Auto Start Rigctld</span>
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "w-2.5 h-2.5 rounded-full",
-                        rigctldProcessStatus === "running" ? "bg-emerald-500 animate-pulse" : 
-                        rigctldProcessStatus === "error" || rigctldProcessStatus === "already_running" ? "bg-red-500" : "bg-[#2a2b2e]"
-                      )} />
-                      <button 
-                        onClick={() => setIsSettingsOpen(true)}
-                        className="p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg hover:border-emerald-500 text-[#8e9299] transition-all"
-                        title="Rigctld Settings"
-                      >
-                        <Settings size={18} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+            >
+              <Power size={16} />
+              {connected ? "Disconnect" : "Connect"}
+            </button>
+            <button 
+              onClick={() => setIsSettingsOpen(true)}
+              className={cn(
+                "p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg transition-all",
+                rigctldProcessStatus === "running" ? "text-emerald-500 border-emerald-500/50" : "text-red-500 border-red-500/50"
+              )}
+              title="Rigctld Settings"
+            >
+              <Settings size={20} />
+            </button>
+          </div>
         </header>
 
         {error && (
@@ -1337,26 +828,23 @@ export default function App() {
                 </div>
               </div>
               {!isVideoCollapsed && (
-                <>
-                  <div className="relative aspect-video bg-black flex items-center justify-center">
-                    {videoStatus === "playing" ? (
-                      <img 
-                        src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
-                        alt="Video Stream"
-                        className="w-full h-full object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
-                        <Monitor size={32} strokeWidth={1} />
-                        <span className="text-[0.5rem] uppercase font-bold tracking-widest">
-                          {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <AudioControls />
-                </>
+                <div className="relative aspect-video bg-black flex items-center justify-center">
+                  {videoStatus === "playing" ? (
+                    <img 
+                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                      alt="Video Stream"
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
+                      <Monitor size={32} strokeWidth={1} />
+                      <span className="text-[0.5rem] uppercase font-bold tracking-widest">
+                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                      </span>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             <div className="bg-[#151619] p-4 rounded-xl border border-[#2a2b2e] space-y-4">
@@ -1375,181 +863,199 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <div className="flex flex-col items-end">
-                  {phoneMeterTab === 'signal' && (
-                    <span className={cn(
-                      "text-lg font-mono font-bold",
-                      status.ptt ? "text-red-500" : "text-emerald-500"
-                    )}>
-                      {status.ptt 
-                        ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
-                        : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
-                    </span>
-                  )}
-                  {phoneMeterTab === 'swr' && (
-                    <span className="text-lg font-mono font-bold text-amber-500">
-                      {(status.swr ?? 1).toFixed(2)}
-                    </span>
-                  )}
-                  {phoneMeterTab === 'alc' && (
-                    <span className="text-lg font-mono font-bold text-blue-500">
-                      {(status.alc ?? 0).toFixed(5)}
-                    </span>
-                  )}
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-end">
+                    {phoneMeterTab === 'signal' && (
+                      <span className={cn(
+                        "text-lg font-mono font-bold",
+                        status.ptt ? "text-red-500" : "text-emerald-500"
+                      )}>
+                        {status.ptt 
+                          ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
+                          : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
+                      </span>
+                    )}
+                    {phoneMeterTab === 'swr' && (
+                      <span className="text-lg font-mono font-bold text-amber-500">
+                        {(status.swr ?? 1).toFixed(2)}
+                      </span>
+                    )}
+                    {phoneMeterTab === 'alc' && (
+                      <span className="text-lg font-mono font-bold text-blue-500">
+                        {(status.alc ?? 0).toFixed(5)}
+                      </span>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => setIsPhoneMeterCollapsed(!isPhoneMeterCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isPhoneMeterCollapsed ? "Expand Meters" : "Collapse Meters"}
+                  >
+                    {isPhoneMeterCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                  </button>
                 </div>
               </div>
-              <div className="h-40">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={history}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
-                    <XAxis dataKey="time" hide />
-                    <YAxis 
-                      domain={phoneMeterTab === 'signal' ? (status.ptt ? [0, 1] : [-54, 60]) : phoneMeterTab === 'swr' ? [0, 5] : [0, 1]} 
-                      hide 
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.75}px` }}
-                      itemStyle={{ color: phoneMeterTab === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6' }}
-                      formatter={(val: number) => {
-                        if (phoneMeterTab === 'signal') {
-                          return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (val ?? 0), status.ptt ? "POWER" : "SIGNAL"];
-                        }
-                        return [(val ?? 0).toFixed(phoneMeterTab === 'swr' ? 2 : 5), phoneMeterTab.toUpperCase()];
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey={phoneMeterTab === 'signal' ? (status.ptt ? "powerMeter" : "smeter") : phoneMeterTab === 'swr' ? 'swrGraph' : 'alc'} 
-                      stroke={phoneMeterTab === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6'} 
-                      strokeWidth={2} 
-                      dot={false} 
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              {!isPhoneMeterCollapsed && (
+                <div className="h-40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={history}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
+                      <XAxis dataKey="time" hide />
+                      <YAxis 
+                        domain={phoneMeterTab === 'signal' ? (status.ptt ? [0, 1] : [-54, 60]) : phoneMeterTab === 'swr' ? [0, 5] : [0, 1]} 
+                        hide 
+                      />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '12px' }}
+                        itemStyle={{ color: phoneMeterTab === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6' }}
+                        formatter={(val: number) => {
+                          if (phoneMeterTab === 'signal') {
+                            return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (val ?? 0), status.ptt ? "POWER" : "SIGNAL"];
+                          }
+                          return [(val ?? 0).toFixed(phoneMeterTab === 'swr' ? 2 : 5), phoneMeterTab.toUpperCase()];
+                        }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey={phoneMeterTab === 'signal' ? (status.ptt ? "powerMeter" : "smeter") : phoneMeterTab === 'swr' ? 'swrGraph' : 'alc'} 
+                        stroke={phoneMeterTab === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6'} 
+                        strokeWidth={2} 
+                        dot={false} 
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
 
             {/* Controls Grid for Phone */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[#151619] p-3 rounded-xl border border-[#2a2b2e] grid grid-cols-2 gap-3 h-full content-start">
-                <button 
-                  onClick={() => handleSetPTT(!status.ptt)}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Mic size={24} />
-                  <span className="text-xs uppercase font-bold leading-none">PTT</span>
-                </button>
-                <button 
-                  onClick={() => {
-                    if (status.tuner) {
-                      handleSetFunc("TUNER", false);
-                    } else {
-                      handleVfoOp("TUNE");
-                    }
-                  }}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
-                  )}
-                >
-                  <RefreshCw size={24} className={cn(status.tuner && "animate-spin")} />
-                  <span className="text-xs uppercase font-bold leading-none">Tune</span>
-                </button>
-                <button 
-                  onClick={() => {
-                    const next = status.attenuation === 0 ? 6 : status.attenuation === 6 ? 12 : 0;
-                    handleSetLevel("ATT", next);
-                  }}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Signal size={24} />
-                  <span className="text-xs uppercase font-bold leading-none">
-                    {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "-6" : "-12"}
-                  </span>
-                </button>
-                <button 
-                  onClick={() => {
-                    const next = status.preamp === 0 ? 10 : status.preamp === 10 ? 20 : 0;
-                    handleSetLevel("PREAMP", next);
-                  }}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Zap size={24} />
-                  <span className="text-xs uppercase font-bold leading-none">
-                    {status.preamp === 0 ? "IPO" : status.preamp === 10 ? "AMP1" : "AMP2"}
-                  </span>
-                </button>
-                <button 
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className={cn(
-                    "col-span-2 flex items-center justify-center h-12 rounded-xl border border-[#2a2b2e] bg-[#0a0a0a] text-[#8e9299] hover:text-white transition-all gap-2",
-                    showAdvanced && "bg-white/5 border-white/20 text-white"
-                  )}
-                >
-                  <Settings size={16} />
-                  <span className="text-xs uppercase font-bold">{showAdvanced ? "Hide Advanced" : "Show Advanced"}</span>
-                </button>
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
+                <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <Zap size={12} />
+                    <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Quick Controls</span>
+                  </div>
+                  <button 
+                    onClick={() => setIsPhoneQuickControlsCollapsed(!isPhoneQuickControlsCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isPhoneQuickControlsCollapsed ? "Expand Quick Controls" : "Collapse Quick Controls"}
+                  >
+                    {isPhoneQuickControlsCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                  </button>
+                </div>
+                {!isPhoneQuickControlsCollapsed && (
+                  <div className="p-3 grid grid-cols-2 gap-3 h-full content-start">
+                    <button 
+                      onClick={() => handleSetPTT(!status.ptt)}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Mic size={24} />
+                      <span className="text-xs uppercase font-bold leading-none">PTT</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (status.tuner) {
+                          handleSetFunc("TUNER", false);
+                        } else {
+                          handleVfoOp("TUNE");
+                        }
+                      }}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                      )}
+                    >
+                      <RefreshCw size={24} className={cn(status.tuner && "animate-spin")} />
+                      <span className="text-xs uppercase font-bold leading-none">Tune</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const next = status.attenuation === 0 ? 6 : status.attenuation === 6 ? 12 : 0;
+                        handleSetLevel("ATT", next);
+                      }}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Signal size={24} />
+                      <span className="text-xs uppercase font-bold leading-none">
+                        {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "-6" : "-12"}
+                      </span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const next = status.preamp === 0 ? 10 : status.preamp === 10 ? 20 : 0;
+                        handleSetLevel("PREAMP", next);
+                      }}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Zap size={24} />
+                      <span className="text-xs uppercase font-bold leading-none">
+                        {status.preamp === 0 ? "IPO" : status.preamp === 10 ? "AMP1" : "AMP2"}
+                      </span>
+                    </button>
+                    <button 
+                      onClick={() => setShowAdvanced(!showAdvanced)}
+                      className={cn(
+                        "col-span-2 flex items-center justify-center h-12 rounded-xl border border-[#2a2b2e] bg-[#0a0a0a] text-[#8e9299] hover:text-white transition-all gap-2",
+                        showAdvanced && "bg-white/5 border-white/20 text-white"
+                      )}
+                    >
+                      <Settings size={16} />
+                      <span className="text-xs uppercase font-bold">{showAdvanced ? "LESS CONTROLS" : "MORE CONTROLS"}</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="bg-[#151619] p-4 rounded-xl border border-[#2a2b2e] flex flex-col justify-center gap-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
-                    <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
+                <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <Gauge size={12} />
+                    <span className="text-[0.5625rem] uppercase tracking-widest font-bold">RF Power</span>
                   </div>
-                  <input 
-                    type="range" 
-                    min="0.05" 
-                    max="1" 
-                    step="0.05"
-                    value={localRFPower}
-                    disabled={!connected}
-                    onChange={(e) => {
-                      isDraggingRF.current = true;
-                      setLocalRFPower(parseFloat(e.target.value));
-                    }}
-                    className={cn(
-                      "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                      !connected && "opacity-50 cursor-not-allowed"
-                    )}
-                  />
+                  <button 
+                    onClick={() => setIsPhoneRFPowerCollapsed(!isPhoneRFPowerCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isPhoneRFPowerCollapsed ? "Expand RF Power" : "Collapse RF Power"}
+                  >
+                    {isPhoneRFPowerCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                  </button>
                 </div>
-                
-                {showAdvanced && (
-                  <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                {!isPhoneRFPowerCollapsed && (
+                  <div className="p-4 flex flex-col justify-center gap-4">
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs uppercase text-[#8e9299]">RF Level</span>
-                        <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
+                        <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
+                        <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
                       </div>
                       <input 
                         type="range" 
-                        min="0" 
+                        min="0.05" 
                         max="1" 
-                        step="0.1"
-                        value={localRFLevel}
+                        step="0.05"
+                        value={localRFPower}
                         disabled={!connected}
                         onChange={(e) => {
-                          isDraggingRFLevel.current = true;
-                          setLocalRFLevel(parseFloat(e.target.value));
+                          isDraggingRF.current = true;
+                          setLocalRFPower(parseFloat(e.target.value));
                         }}
                         className={cn(
                           "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
@@ -1557,34 +1063,59 @@ export default function App() {
                         )}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
-                        <span className="text-sm text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                    
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs uppercase text-[#8e9299]">RF Level</span>
+                          <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max="1" 
+                          step="0.1"
+                          value={localRFLevel}
+                          disabled={!connected}
+                          onChange={(e) => {
+                            isDraggingRFLevel.current = true;
+                            setLocalRFLevel(parseFloat(e.target.value));
+                          }}
+                          className={cn(
+                            "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                            !connected && "opacity-50 cursor-not-allowed"
+                          )}
+                        />
                       </div>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="14" 
-                        step="1"
-                        value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
-                        disabled={!connected}
-                        onChange={(e) => {
-                          isDraggingNR.current = true;
-                          setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
-                        }}
-                        className={cn(
-                          "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                          !connected && "opacity-50 cursor-not-allowed"
-                        )}
-                      />
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
+                          <span className="text-sm text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max="14" 
+                          step="1"
+                          value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
+                          disabled={!connected}
+                          onChange={(e) => {
+                            isDraggingNR.current = true;
+                            setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
+                          }}
+                          className={cn(
+                            "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                            !connected && "opacity-50 cursor-not-allowed"
+                          )}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
             </div>
 
-            {showAdvanced && (
+            {showAdvanced && !isPhoneQuickControlsCollapsed && (
               <div className="grid grid-cols-3 gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
                 <button 
                   onClick={() => handleSetFunc("NB", !status.nb)}
@@ -1645,7 +1176,7 @@ export default function App() {
                     onClick={() => handleSetVFO("VFOA")}
                     disabled={!connected}
                     className={cn(
-                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                      "px-3 py-1 rounded text-xs font-bold uppercase transition-all",
                       !connected && "opacity-50 cursor-not-allowed",
                       status.isSplit
                         ? (status.txVFO === "VFOA" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
@@ -1660,7 +1191,7 @@ export default function App() {
                     onClick={() => handleSetVFO("VFOB")}
                     disabled={!connected}
                     className={cn(
-                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                      "px-3 py-1 rounded text-xs font-bold uppercase transition-all",
                       !connected && "opacity-50 cursor-not-allowed",
                       status.isSplit
                         ? (status.txVFO === "VFOB" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
@@ -1675,7 +1206,7 @@ export default function App() {
                     onClick={handleToggleSplit}
                     disabled={!connected}
                     className={cn(
-                      "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                      "px-3 py-1 rounded text-xs font-bold uppercase transition-all",
                       !connected && "opacity-50 cursor-not-allowed",
                       status.isSplit 
                         ? "bg-red-500 text-white border border-red-500" 
@@ -1689,7 +1220,7 @@ export default function App() {
                     onChange={(e) => setVfoStep(parseFloat(e.target.value))}
                     disabled={!connected}
                     className={cn(
-                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-2 py-1 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
+                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-xs px-2 py-1 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
                       !connected && "opacity-50 cursor-not-allowed"
                     )}
                   >
@@ -1702,7 +1233,7 @@ export default function App() {
                     onChange={(e) => handleSetMode(e.target.value)}
                     disabled={!connected}
                     className={cn(
-                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500",
+                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-xs focus:outline-none focus:border-emerald-500",
                       !connected && "opacity-50 cursor-not-allowed"
                     )}
                   >
@@ -1713,7 +1244,7 @@ export default function App() {
                     onChange={(e) => handleSetBw(parseInt(e.target.value))}
                     disabled={!connected}
                     className={cn(
-                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-[0.625rem] focus:outline-none focus:border-emerald-500",
+                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded px-2 py-1 text-xs focus:outline-none focus:border-emerald-500",
                       !connected && "opacity-50 cursor-not-allowed"
                     )}
                   >
@@ -1760,40 +1291,143 @@ export default function App() {
               </div>
             </div>
 
-            {/* Video Feed Section */}
-            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col shadow-lg">
-              <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
-                <div className="flex items-center gap-2 text-[#8e9299]">
-                  <Monitor size={12} />
-                  <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Video Feed</span>
+            <div className="grid grid-cols-2 gap-2">
+              {/* Combined Meter Box */}
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
+                <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                  <div className="flex gap-1">
+                    {(['signal', 'swr', 'alc', 'vdd'] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setActiveMeter(m)}
+                        className={cn(
+                          "px-2 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                          activeMeter === m ? "bg-emerald-500 text-white" : "text-[#8e9299] hover:bg-white/5"
+                        )}
+                      >
+                        {m === 'signal' ? (status.ptt ? 'power' : 'signal') : m}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      "text-xs font-mono font-bold",
+                      activeMeter === 'signal' ? (status.ptt ? "text-red-500" : "text-emerald-500") :
+                      activeMeter === 'swr' ? "text-amber-500" :
+                      activeMeter === 'alc' ? "text-blue-500" : "text-emerald-500"
+                    )}>
+                      {activeMeter === 'signal' ? (
+                        status.ptt 
+                          ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
+                          : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`
+                      ) : activeMeter === 'swr' ? (
+                        (status.swr ?? 1).toFixed(2)
+                      ) : activeMeter === 'alc' ? (
+                        (status.alc ?? 0).toFixed(5)
+                      ) : (
+                        `${(status.vdd ?? 0).toFixed(1)}V`
+                      )}
+                    </span>
+                    <button 
+                      onClick={() => setIsCompactSMeterCollapsed(!isCompactSMeterCollapsed)}
+                      className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
+                    >
+                      {isCompactSMeterCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-2 h-2 rounded-full",
-                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
-                    videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
-                  )} />
-                  <button 
-                    onClick={() => {
-                      setIsVideoSettingsOpen(true);
-                      socket?.emit("get-video-devices");
-                    }}
-                    className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
-                    title="Video Settings"
-                  >
-                    <Settings size={14} />
-                  </button>
-                  <button 
-                    onClick={() => setIsVideoCollapsed(!isVideoCollapsed)}
-                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
-                    title={isVideoCollapsed ? "Expand Video Feed" : "Collapse Video Feed"}
-                  >
-                    {isVideoCollapsed ? <ChevronDown size={isPhone ? 16 : 18} /> : <ChevronUp size={isPhone ? 16 : 18} />}
-                  </button>
-                </div>
+                {!isCompactSMeterCollapsed && (
+                  <div className="p-2 h-20">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={history}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
+                        <XAxis dataKey="time" hide />
+                        <YAxis 
+                          domain={
+                            activeMeter === 'signal' ? (status.ptt ? [0, 1] : [-54, 60]) :
+                            activeMeter === 'swr' ? [0, 5] :
+                            activeMeter === 'vdd' ? [11, 16] : [0, 1]
+                          } 
+                          hide={activeMeter !== 'swr' && activeMeter !== 'vdd'}
+                          ticks={activeMeter === 'swr' ? [0, 1, 2, 3, 4, 5] : activeMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
+                          width={15}
+                          style={{ fontSize: '6px', fill: '#4a4b4e' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '8px' }}
+                          itemStyle={{ 
+                            color: activeMeter === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') :
+                                   activeMeter === 'swr' ? '#f59e0b' :
+                                   activeMeter === 'alc' ? '#3b82f6' : '#10b981'
+                          }}
+                          formatter={(val: number, name: string, props: any) => {
+                            if (activeMeter === 'signal') {
+                              return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (val ?? 0), status.ptt ? "POWER" : "SIGNAL"];
+                            }
+                            if (activeMeter === 'swr') {
+                              return [(props.payload?.swr ?? 1).toFixed(2), 'SWR'];
+                            }
+                            if (activeMeter === 'vdd') {
+                              return [`${(val ?? 0).toFixed(1)}V`, 'VDD'];
+                            }
+                            return [(val ?? 0).toFixed(activeMeter === 'alc' ? 5 : 2), activeMeter.toUpperCase()];
+                          }}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey={
+                            activeMeter === 'signal' ? (status.ptt ? "powerMeter" : "smeter") :
+                            activeMeter === 'swr' ? 'swrGraph' : activeMeter
+                          } 
+                          stroke={
+                            activeMeter === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") :
+                            activeMeter === 'swr' ? '#f59e0b' :
+                            activeMeter === 'alc' ? '#3b82f6' : '#10b981'
+                          } 
+                          strokeWidth={1.5} 
+                          dot={false} 
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
-              {!isVideoCollapsed && (
-                <>
+
+              {/* Video Feed Section (Moved into grid) */}
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col shadow-lg">
+                <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <Monitor size={12} />
+                    <span className="text-xs uppercase tracking-widest font-bold">Video Feed</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "w-2 h-2 rounded-full",
+                      videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
+                      videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
+                    )} />
+                    <button 
+                      onClick={() => {
+                        setIsVideoSettingsOpen(true);
+                        socket?.emit("get-video-devices");
+                      }}
+                      className="p-1 hover:bg-[#2a2b2e] rounded text-[#8e9299] transition-all"
+                      title="Video Settings"
+                    >
+                      <Settings size={12} />
+                    </button>
+                    <button 
+                      onClick={() => setIsVideoCollapsed(!isVideoCollapsed)}
+                      className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
+                    >
+                      {isVideoCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                    </button>
+                  </div>
+                </div>
+                {!isVideoCollapsed && (
                   <div className="relative aspect-video bg-black flex items-center justify-center">
                     {videoStatus === "playing" ? (
                       <img 
@@ -1803,308 +1437,217 @@ export default function App() {
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
-                        <Monitor size={32} strokeWidth={1} />
+                      <div className="flex flex-col items-center gap-2 text-[#3a3b3e]">
+                        <Monitor size={24} strokeWidth={1} />
                         <span className="text-[0.5rem] uppercase font-bold tracking-widest">
-                          {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                          {videoStatus === "paused" ? "Paused" : "Stopped"}
                         </span>
                       </div>
                     )}
                   </div>
-                  <AudioControls />
-                </>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {/* Left Box: S-METER */}
-              <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] space-y-1">
-                <div className="flex items-center justify-between border-b border-[#2a2b2e] pb-1">
-                  <span className={cn(
-                    "text-[0.5625rem] font-bold uppercase",
-                    status.ptt ? "text-red-500" : "text-[#8e9299]"
-                  )}>
-                    {status.ptt ? "POWER OUT" : "S-METER"}
-                  </span>
-                  <span className={cn(
-                    "text-[0.5625rem] font-mono font-bold",
-                    status.ptt ? "text-red-500" : "text-emerald-500"
-                  )}>
-                    {status.ptt 
-                      ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
-                      : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
-                  </span>
-                </div>
-                <div className="h-16">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={history}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
-                      <XAxis dataKey="time" hide />
-                      <YAxis domain={status.ptt ? [0, 1] : [-54, 60]} hide />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.5}px` }}
-                        itemStyle={{ color: status.ptt ? '#ef4444' : '#10b981' }}
-                        formatter={(val: number) => [
-                          status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (val ?? 0),
-                          status.ptt ? "POWER" : "SIGNAL"
-                        ]}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey={status.ptt ? "powerMeter" : "smeter"} 
-                        stroke={status.ptt ? "#ef4444" : "#10b981"} 
-                        strokeWidth={1.5} 
-                        dot={false} 
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Right Box: SWR/ALC/VDD */}
-              <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] space-y-1">
-                <div className="flex items-center justify-between border-b border-[#2a2b2e] pb-1">
-                  <div className="flex gap-1">
-                    {(['swr', 'alc', 'vdd'] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setActiveMeter(m)}
-                        className={cn(
-                          "px-2 py-0.5 rounded text-[0.5rem] font-bold uppercase transition-all",
-                          effectiveRightMeter === m ? "bg-emerald-500 text-white" : "text-[#8e9299] hover:bg-white/5"
-                        )}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex flex-col items-end gap-0">
-                    {effectiveRightMeter !== 'vdd' && (
-                      <>
-                        <span className="text-[0.5rem] font-mono font-bold leading-tight" style={{ color: '#f59e0b' }}>
-                          SWR {(status.swr ?? 1).toFixed(2)}
-                        </span>
-                        <span className="text-[0.5rem] font-mono font-bold leading-tight" style={{ color: '#3b82f6' }}>
-                          ALC {(status.alc ?? 0).toFixed(5)}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="h-16">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={history}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
-                      <XAxis dataKey="time" hide />
-                      <YAxis 
-                        domain={effectiveRightMeter === 'swr' ? [0, 5] : effectiveRightMeter === 'vdd' ? [11, 16] : [0, 1]} 
-                        hide={effectiveRightMeter !== 'swr' && effectiveRightMeter !== 'vdd'}
-                        ticks={effectiveRightMeter === 'swr' ? [0, 1, 2, 3, 4, 5] : effectiveRightMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
-                        width={15}
-                        style={{ fontSize: `${fontSize * 0.375}px`, fill: '#4a4b4e' }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.5}px` }}
-                        itemStyle={{ color: effectiveRightMeter === 'swr' ? '#f59e0b' : effectiveRightMeter === 'vdd' ? '#10b981' : '#3b82f6' }}
-                        formatter={(val: number, name: string, props: any) => {
-                          if (effectiveRightMeter === 'swr') {
-                            return [(props.payload?.swr ?? 1).toFixed(2), 'SWR'];
-                          }
-                          if (effectiveRightMeter === 'vdd') {
-                            return [`${(val ?? 0).toFixed(1)}V`, 'VDD'];
-                          }
-                          return [(val ?? 0).toFixed(effectiveRightMeter === 'alc' ? 5 : 2), effectiveRightMeter.toUpperCase()];
-                        }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey={effectiveRightMeter === 'swr' ? 'swrGraph' : effectiveRightMeter} 
-                        stroke={effectiveRightMeter === 'swr' ? '#f59e0b' : effectiveRightMeter === 'vdd' ? '#10b981' : '#3b82f6'} 
-                        strokeWidth={1.5} 
-                        dot={false} 
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                )}
               </div>
             </div>
 
             {/* Compact Controls & RF Power */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] grid grid-cols-3 gap-2 h-full content-start">
-                <button 
-                  onClick={() => handleSetPTT(!status.ptt)}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Mic size={16} />
-                  <span className="text-[0.7rem] uppercase font-bold leading-none">PTT</span>
-                </button>
-                <button 
-                  onClick={() => {
-                    if (status.tuner) {
-                      handleSetFunc("TUNER", false);
-                    } else {
-                      handleVfoOp("TUNE");
-                    }
-                  }}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
-                  )}
-                >
-                  <RefreshCw size={16} className={cn(status.tuner && "animate-spin")} />
-                  <span className="text-[0.7rem] uppercase font-bold leading-none">Tune</span>
-                </button>
-                <button 
-                  onClick={() => {
-                    const next = status.attenuation === 0 ? 6 : status.attenuation === 6 ? 12 : 0;
-                    handleSetLevel("ATT", next);
-                  }}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Signal size={16} />
-                  <span className="text-[0.7rem] uppercase font-bold leading-none">
-                    {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "-6" : "-12"}
-                  </span>
-                </button>
-                <button 
-                  onClick={() => {
-                    const next = status.preamp === 0 ? 10 : status.preamp === 10 ? 20 : 0;
-                    handleSetLevel("PREAMP", next);
-                  }}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Zap size={16} />
-                  <span className="text-[0.7rem] uppercase font-bold leading-none">
-                    {status.preamp === 0 ? "IPO" : status.preamp === 10 ? "AMP1" : "AMP2"}
-                  </span>
-                </button>
-                <button 
-                  onClick={() => handleSetFunc("NB", !status.nb)}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Activity size={16} />
-                  <span className="text-[0.7rem] uppercase font-bold leading-none">NB</span>
-                </button>
-                <button 
-                  onClick={() => {
-                    const currentIndex = AGC_VALUES.indexOf(status.agc);
-                    const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
-                    handleSetLevel("AGC", AGC_VALUES[nextIndex]);
-                  }}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Settings size={16} />
-                  <div className="flex flex-col items-center leading-none">
-                    <span className="text-[0.7rem] uppercase font-bold">AGC</span>
-                    <span className="text-[0.5rem] font-bold opacity-80">{AGC_LABELS[status.agc] || "OFF"}</span>
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
+                <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                  <span className="text-xs font-bold uppercase text-[#8e9299]">Controls</span>
+                  <button 
+                    onClick={() => setIsCompactControlsCollapsed(!isCompactControlsCollapsed)}
+                    className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
+                  >
+                    {isCompactControlsCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  </button>
+                </div>
+                {!isCompactControlsCollapsed && (
+                  <div className="p-2 grid grid-cols-3 gap-2 h-full content-start">
+                    <button 
+                      onClick={() => handleSetPTT(!status.ptt)}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Mic size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">PTT</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (status.tuner) {
+                          handleSetFunc("TUNER", false);
+                        } else {
+                          handleVfoOp("TUNE");
+                        }
+                      }}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                      )}
+                    >
+                      <RefreshCw size={16} className={cn(status.tuner && "animate-spin")} />
+                      <span className="text-xs uppercase font-bold leading-none">Tune</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const next = status.attenuation === 0 ? 6 : status.attenuation === 6 ? 12 : 0;
+                        handleSetLevel("ATT", next);
+                      }}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Signal size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">
+                        {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "-6" : "-12"}
+                      </span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const next = status.preamp === 0 ? 10 : status.preamp === 10 ? 20 : 0;
+                        handleSetLevel("PREAMP", next);
+                      }}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Zap size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">
+                        {status.preamp === 0 ? "IPO" : status.preamp === 10 ? "AMP1" : "AMP2"}
+                      </span>
+                    </button>
+                    <button 
+                      onClick={() => handleSetFunc("NB", !status.nb)}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Activity size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">NB</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const currentIndex = AGC_VALUES.indexOf(status.agc);
+                        const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
+                        handleSetLevel("AGC", AGC_VALUES[nextIndex]);
+                      }}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Settings size={16} />
+                      <div className="flex flex-col items-center leading-none">
+                        <span className="text-xs uppercase font-bold">AGC</span>
+                        <span className="text-[0.625rem] font-bold opacity-80">{AGC_LABELS[status.agc] || "OFF"}</span>
+                      </div>
+                    </button>
+                    <button 
+                      onClick={() => handleSetFunc("NR", !status.nr)}
+                      disabled={!connected}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Volume2 size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">DNR</span>
+                    </button>
                   </div>
-                </button>
-                <button 
-                  onClick={() => handleSetFunc("NR", !status.nr)}
-                  disabled={!connected}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                  )}
-                >
-                  <Volume2 size={16} />
-                  <span className="text-[0.7rem] uppercase font-bold leading-none">DNR</span>
-                </button>
+                )}
               </div>
 
-              <div className="bg-[#151619] p-2 rounded-xl border border-[#2a2b2e] flex flex-col justify-center gap-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-[0.5625rem] uppercase text-[#8e9299]">RF Power</span>
-                  <span className="text-[0.625rem] text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
+                <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                  <span className="text-xs uppercase text-[#8e9299] font-bold">Power & Levels</span>
+                  <button 
+                    onClick={() => setIsCompactRFPowerCollapsed(!isCompactRFPowerCollapsed)}
+                    className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
+                  >
+                    {isCompactRFPowerCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  </button>
                 </div>
-                <input 
-                  type="range" 
-                  min="0.05" 
-                  max="1" 
-                  step="0.05"
-                  value={localRFPower}
-                  disabled={!connected}
-                  onChange={(e) => {
-                    isDraggingRF.current = true;
-                    setLocalRFPower(parseFloat(e.target.value));
-                  }}
-                  className={cn(
-                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                />
-                <div className="flex justify-between items-center mt-3">
-                  <span className="text-[0.5625rem] uppercase text-[#8e9299]">RF Level</span>
-                  <span className="text-[0.625rem] text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="1" 
-                  step="0.1"
-                  value={localRFLevel}
-                  disabled={!connected}
-                  onChange={(e) => {
-                    isDraggingRFLevel.current = true;
-                    setLocalRFLevel(parseFloat(e.target.value));
-                  }}
-                  className={cn(
-                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                />
-                <div className="flex justify-between items-center mt-3">
-                  <span className="text-[0.5625rem] uppercase text-[#8e9299]">DNR Level</span>
-                  <span className="text-[0.625rem] text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="14" 
-                  step="1"
-                  value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
-                  disabled={!connected}
-                  onChange={(e) => {
-                    isDraggingNR.current = true;
-                    setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
-                  }}
-                  className={cn(
-                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                />
+                {!isCompactRFPowerCollapsed && (
+                  <div className="p-2 flex flex-col justify-center gap-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
+                      <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0.05" 
+                      max="1" 
+                      step="0.05"
+                      value={localRFPower}
+                      disabled={!connected}
+                      onChange={(e) => {
+                        isDraggingRF.current = true;
+                        setLocalRFPower(parseFloat(e.target.value));
+                      }}
+                      className={cn(
+                        "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
+                    />
+                    <div className="flex justify-between items-center mt-3">
+                      <span className="text-xs uppercase text-[#8e9299]">RF Level</span>
+                      <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="1" 
+                      step="0.1"
+                      value={localRFLevel}
+                      disabled={!connected}
+                      onChange={(e) => {
+                        isDraggingRFLevel.current = true;
+                        setLocalRFLevel(parseFloat(e.target.value));
+                      }}
+                      className={cn(
+                        "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
+                    />
+                    <div className="flex justify-between items-center mt-3">
+                      <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
+                      <span className="text-sm text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="14" 
+                      step="1"
+                      value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
+                      disabled={!connected}
+                      onChange={(e) => {
+                        isDraggingNR.current = true;
+                        setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
+                      }}
+                      className={cn(
+                        "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2307,200 +1850,243 @@ export default function App() {
             </div>
 
             {/* Main Controls Grid */}
-            <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] grid grid-cols-2 md:grid-cols-4 gap-4">
-              <button 
-                onClick={() => handleSetPTT(!status.ptt)}
-                disabled={!connected}
-                className={cn(
-                  "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
-                  !connected && "opacity-50 cursor-not-allowed",
-                  status.ptt 
-                    ? "bg-red-500/20 border-red-500 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]" 
-                    : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-[#8e9299]"
-                )}
-              >
-                <Mic size={20} />
-                <span className="text-[0.625rem] uppercase font-bold">PTT</span>
-              </button>
-
-              <button 
-                onClick={() => {
-                  if (status.tuner) {
-                    handleSetFunc("TUNER", false);
-                  } else {
-                    handleVfoOp("TUNE");
-                  }
-                }}
-                disabled={!connected}
-                className={cn(
-                  "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2 group",
-                  !connected && "opacity-50 cursor-not-allowed",
-                  status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
-                )}
-              >
-                <RefreshCw size={20} className={cn("transition-transform", status.tuner ? "animate-spin" : "group-active:rotate-180")} />
-                <span className="text-[0.625rem] uppercase font-bold">Tune</span>
-              </button>
-
-              <button 
-                onClick={() => {
-                  const current = status.attenuation;
-                  let next = 0;
-                  if (current === 0) next = 6;
-                  else if (current === 6) next = 12;
-                  else next = 0;
-                  handleSetLevel("ATT", next);
-                }}
-                disabled={!connected}
-                className={cn(
-                  "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
-                  !connected && "opacity-50 cursor-not-allowed",
-                  status.attenuation > 0 
-                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
-                    : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
-                )}
-              >
-                <Signal size={20} />
-                <div className="flex flex-col items-center">
-                  <span className="text-[0.625rem] uppercase font-bold">Atten</span>
-                  <span className="text-[0.5625rem] font-bold opacity-80">
-                    {status.attenuation === 0 ? "OFF" : 
-                     status.attenuation === 6 ? "-6dB" : 
-                     status.attenuation === 12 ? "-12dB" : "OFF"}
-                  </span>
+            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                <div className="flex items-center gap-2 text-[#8e9299]">
+                  <Settings size={14} />
+                  <span className="text-[0.625rem] uppercase tracking-widest font-bold">Quick Controls</span>
                 </div>
-              </button>
+                <button 
+                  onClick={() => setIsDesktopControlsCollapsed(!isDesktopControlsCollapsed)}
+                  className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                  title={isDesktopControlsCollapsed ? "Expand Controls" : "Collapse Controls"}
+                >
+                  {isDesktopControlsCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                </button>
+              </div>
+              {!isDesktopControlsCollapsed && (
+                <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <button 
+                    onClick={() => handleSetPTT(!status.ptt)}
+                    disabled={!connected}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.ptt 
+                        ? "bg-red-500/20 border-red-500 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]" 
+                        : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-[#8e9299]"
+                    )}
+                  >
+                    <Mic size={20} />
+                    <span className="text-[0.625rem] uppercase font-bold">PTT</span>
+                  </button>
 
-              <button 
-                onClick={() => {
-                  const current = status.preamp;
-                  let next = 0;
-                  if (current === 0) next = 10;
-                  else if (current === 10) next = 20;
-                  else next = 0;
-                  handleSetLevel("PREAMP", next);
-                }}
-                disabled={!connected}
-                className={cn(
-                  "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
-                  !connected && "opacity-50 cursor-not-allowed",
-                  status.preamp > 0 
-                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
-                    : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
-                )}
-              >
-                <Zap size={20} />
-                <div className="flex flex-col items-center">
-                  <span className="text-[0.625rem] uppercase font-bold">Preamp</span>
-                  <span className="text-[0.5625rem] font-bold opacity-80">
-                    {status.preamp === 0 ? "IPO" : 
-                     status.preamp === 10 ? "AMP1" : 
-                     status.preamp === 20 ? "AMP2" : "IPO"}
-                  </span>
-                </div>
-              </button>
+                  <button 
+                    onClick={() => {
+                      if (status.tuner) {
+                        handleSetFunc("TUNER", false);
+                      } else {
+                        handleVfoOp("TUNE");
+                      }
+                    }}
+                    disabled={!connected}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2 group",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                    )}
+                  >
+                    <RefreshCw size={20} className={cn("transition-transform", status.tuner ? "animate-spin" : "group-active:rotate-180")} />
+                    <span className="text-[0.625rem] uppercase font-bold">Tune</span>
+                  </button>
 
-              <button 
-                onClick={() => handleSetFunc("NB", !status.nb)}
-                disabled={!connected}
-                className={cn(
-                  "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
-                  !connected && "opacity-50 cursor-not-allowed",
-                  status.nb 
-                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
-                    : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
-                )}
-              >
-                <Activity size={20} />
-                <div className="flex flex-col items-center">
-                  <span className="text-[0.625rem] uppercase font-bold">NB</span>
-                  <span className="text-[0.5625rem] font-bold opacity-80">
-                    {status.nb ? "ON" : "OFF"}
-                  </span>
-                </div>
-              </button>
+                  <button 
+                    onClick={() => {
+                      const current = status.attenuation;
+                      let next = 0;
+                      if (current === 0) next = 6;
+                      else if (current === 6) next = 12;
+                      else next = 0;
+                      handleSetLevel("ATT", next);
+                    }}
+                    disabled={!connected}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.attenuation > 0 
+                        ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
+                        : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                    )}
+                  >
+                    <Signal size={20} />
+                    <div className="flex flex-col items-center">
+                      <span className="text-[0.625rem] uppercase font-bold">Atten</span>
+                      <span className="text-[0.5625rem] font-bold opacity-80">
+                        {status.attenuation === 0 ? "OFF" : 
+                         status.attenuation === 6 ? "-6dB" : 
+                         status.attenuation === 12 ? "-12dB" : "OFF"}
+                      </span>
+                    </div>
+                  </button>
 
-              <button 
-                onClick={() => handleSetFunc("NR", !status.nr)}
-                disabled={!connected}
-                className={cn(
-                  "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
-                  !connected && "opacity-50 cursor-not-allowed",
-                  status.nr 
-                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
-                    : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
-                )}
-              >
-                <Volume2 size={20} />
-                <div className="flex flex-col items-center">
-                  <span className="text-[0.625rem] uppercase font-bold">DNR</span>
-                  <span className="text-[0.5625rem] font-bold opacity-80">
-                    {status.nr ? "ON" : "OFF"}
-                  </span>
-                </div>
-              </button>
+                  <button 
+                    onClick={() => {
+                      const current = status.preamp;
+                      let next = 0;
+                      if (current === 0) next = 10;
+                      else if (current === 10) next = 20;
+                      else next = 0;
+                      handleSetLevel("PREAMP", next);
+                    }}
+                    disabled={!connected}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.preamp > 0 
+                        ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
+                        : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                    )}
+                  >
+                    <Zap size={20} />
+                    <div className="flex flex-col items-center">
+                      <span className="text-[0.625rem] uppercase font-bold">Preamp</span>
+                      <span className="text-[0.5625rem] font-bold opacity-80">
+                        {status.preamp === 0 ? "IPO" : 
+                         status.preamp === 10 ? "AMP1" : 
+                         status.preamp === 20 ? "AMP2" : "IPO"}
+                      </span>
+                    </div>
+                  </button>
 
-              <button 
-                onClick={() => {
-                  const currentIndex = AGC_VALUES.indexOf(status.agc);
-                  const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
-                  handleSetLevel("AGC", AGC_VALUES[nextIndex]);
-                }}
-                disabled={!connected}
-                className={cn(
-                  "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
-                  !connected && "opacity-50 cursor-not-allowed",
-                  status.agc > 0 
-                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
-                    : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
-                )}
-              >
-                <Settings size={20} />
-                <div className="flex flex-col items-center">
-                  <span className="text-[0.625rem] uppercase font-bold">AGC</span>
-                  <span className="text-[0.5625rem] font-bold opacity-80">
-                    {AGC_LABELS[status.agc] || "OFF"}
-                  </span>
+                  <button 
+                    onClick={() => handleSetFunc("NB", !status.nb)}
+                    disabled={!connected}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.nb 
+                        ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
+                        : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                    )}
+                  >
+                    <Activity size={20} />
+                    <div className="flex flex-col items-center">
+                      <span className="text-[0.625rem] uppercase font-bold">NB</span>
+                      <span className="text-[0.5625rem] font-bold opacity-80">
+                        {status.nb ? "ON" : "OFF"}
+                      </span>
+                    </div>
+                  </button>
+
+                  <button 
+                    onClick={() => handleSetFunc("NR", !status.nr)}
+                    disabled={!connected}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.nr 
+                        ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
+                        : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                    )}
+                  >
+                    <Volume2 size={20} />
+                    <div className="flex flex-col items-center">
+                      <span className="text-[0.625rem] uppercase font-bold">DNR</span>
+                      <span className="text-[0.5625rem] font-bold opacity-80">
+                        {status.nr ? "ON" : "OFF"}
+                      </span>
+                    </div>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      const currentIndex = AGC_VALUES.indexOf(status.agc);
+                      const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
+                      handleSetLevel("AGC", AGC_VALUES[nextIndex]);
+                    }}
+                    disabled={!connected}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
+                      !connected && "opacity-50 cursor-not-allowed",
+                      status.agc > 0 
+                        ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
+                        : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                    )}
+                  >
+                    <Settings size={20} />
+                    <div className="flex flex-col items-center">
+                      <span className="text-[0.625rem] uppercase font-bold">AGC</span>
+                      <span className="text-[0.5625rem] font-bold opacity-80">
+                        {AGC_LABELS[status.agc] || "OFF"}
+                      </span>
+                    </div>
+                  </button>
                 </div>
-              </button>
+              )}
             </div>
 
             {/* Mode & Bandwidth */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] space-y-4">
-                <div className="flex items-center gap-2 text-[#8e9299]">
-                  <Waves size={14} />
-                  <span className="text-[0.625rem] uppercase tracking-widest">Mode Selection</span>
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
+                <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <Waves size={14} />
+                    <span className="text-[0.625rem] uppercase tracking-widest font-bold">Mode Selection</span>
+                  </div>
+                  <button 
+                    onClick={() => setIsDesktopModeCollapsed(!isDesktopModeCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isDesktopModeCollapsed ? "Expand Mode Selection" : "Collapse Mode Selection"}
+                  >
+                    {isDesktopModeCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                  </button>
                 </div>
-                <select 
-                  value={localMode}
-                  onChange={(e) => handleSetMode(e.target.value)}
-                  disabled={!connected}
-                  className={cn(
-                    "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded p-2 text-sm focus:outline-none focus:border-emerald-500",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                >
-                  {availableModes.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
+                {!isDesktopModeCollapsed && (
+                  <div className="p-6">
+                    <select 
+                      value={localMode}
+                      onChange={(e) => handleSetMode(e.target.value)}
+                      disabled={!connected}
+                      className={cn(
+                        "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded p-2 text-sm focus:outline-none focus:border-emerald-500",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      {availableModes.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
 
-              <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] space-y-4">
-                <div className="flex items-center gap-2 text-[#8e9299]">
-                  <Settings size={14} />
-                  <span className="text-[0.625rem] uppercase tracking-widest">Filter Bandwidth</span>
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
+                <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <Settings size={14} />
+                    <span className="text-[0.625rem] uppercase tracking-widest font-bold">Filter Bandwidth</span>
+                  </div>
+                  <button 
+                    onClick={() => setIsDesktopBwCollapsed(!isDesktopBwCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isDesktopBwCollapsed ? "Expand Filter Bandwidth" : "Collapse Filter Bandwidth"}
+                  >
+                    {isDesktopBwCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                  </button>
                 </div>
-                <select 
-                  value={status?.bandwidth || "2400"}
-                  onChange={(e) => handleSetBw(parseInt(e.target.value))}
-                  disabled={!connected}
-                  className={cn(
-                    "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded p-2 text-sm focus:outline-none focus:border-emerald-500",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                >
-                  {BANDWIDTHS.map(bw => <option key={bw} value={bw}>{bw} Hz</option>)}
-                </select>
+                {!isDesktopBwCollapsed && (
+                  <div className="p-6">
+                    <select 
+                      value={status?.bandwidth || "2400"}
+                      onChange={(e) => handleSetBw(parseInt(e.target.value))}
+                      disabled={!connected}
+                      className={cn(
+                        "w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded p-2 text-sm focus:outline-none focus:border-emerald-500",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      {BANDWIDTHS.map(bw => <option key={bw} value={bw}>{bw} Hz</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2537,26 +2123,23 @@ export default function App() {
                 </div>
               </div>
               {!isVideoCollapsed && (
-                <>
-                  <div className="relative aspect-video bg-black flex items-center justify-center">
-                    {videoStatus === "playing" ? (
-                      <img 
-                        src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
-                        alt="Video Stream"
-                        className="w-full h-full object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
-                        <Monitor size={48} strokeWidth={1} />
-                        <span className="text-[0.625rem] uppercase font-bold tracking-widest">
-                          {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <AudioControls />
-                </>
+                <div className="relative aspect-video bg-black flex items-center justify-center">
+                  {videoStatus === "playing" ? (
+                    <img 
+                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                      alt="Video Stream"
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
+                      <Monitor size={48} strokeWidth={1} />
+                      <span className="text-[0.625rem] uppercase font-bold tracking-widest">
+                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
+                      </span>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -2565,285 +2148,340 @@ export default function App() {
           <div className="space-y-6">
             
             {/* RF Power & DNR Slider */}
-            <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] space-y-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2 text-[#8e9299]">
-                    <Gauge size={14} />
-                    <span className="text-[0.625rem] uppercase tracking-widest">RF Power</span>
-                  </div>
-                  <span className="text-emerald-500 font-bold">{Math.round(localRFPower * 100)} Watts</span>
+            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                <div className="flex items-center gap-2 text-[#8e9299]">
+                  <Gauge size={14} />
+                  <span className="text-[0.625rem] uppercase tracking-widest font-bold">RF Power & Levels</span>
                 </div>
-                <input 
-                  type="range" 
-                  min="0.05" 
-                  max="1" 
-                  step="0.05"
-                  value={localRFPower}
-                  disabled={!connected}
-                  onChange={(e) => {
-                    isDraggingRF.current = true;
-                    setLocalRFPower(parseFloat(e.target.value));
-                  }}
-                  className={cn(
-                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                />
+                <button 
+                  onClick={() => setIsDesktopRFPowerCollapsed(!isDesktopRFPowerCollapsed)}
+                  className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                  title={isDesktopRFPowerCollapsed ? "Expand RF Power" : "Collapse RF Power"}
+                >
+                  {isDesktopRFPowerCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                </button>
               </div>
+              {!isDesktopRFPowerCollapsed && (
+                <div className="p-6 space-y-6">
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2 text-[#8e9299]">
+                        <Gauge size={14} />
+                        <span className="text-[0.625rem] uppercase tracking-widest">RF Power</span>
+                      </div>
+                      <span className="text-emerald-500 font-bold">{Math.round(localRFPower * 100)} Watts</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0.05" 
+                      max="1" 
+                      step="0.05"
+                      value={localRFPower}
+                      disabled={!connected}
+                      onChange={(e) => {
+                        isDraggingRF.current = true;
+                        setLocalRFPower(parseFloat(e.target.value));
+                      }}
+                      className={cn(
+                        "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
+                    />
+                  </div>
 
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2 text-[#8e9299]">
-                    <Signal size={14} />
-                    <span className="text-[0.625rem] uppercase tracking-widest">RF Level</span>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2 text-[#8e9299]">
+                        <Signal size={14} />
+                        <span className="text-[0.625rem] uppercase tracking-widest">RF Level</span>
+                      </div>
+                      <span className="text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="1" 
+                      step="0.1"
+                      value={localRFLevel}
+                      disabled={!connected}
+                      onChange={(e) => {
+                        isDraggingRFLevel.current = true;
+                        setLocalRFLevel(parseFloat(e.target.value));
+                      }}
+                      className={cn(
+                        "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
+                    />
                   </div>
-                  <span className="text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="1" 
-                  step="0.1"
-                  value={localRFLevel}
-                  disabled={!connected}
-                  onChange={(e) => {
-                    isDraggingRFLevel.current = true;
-                    setLocalRFLevel(parseFloat(e.target.value));
-                  }}
-                  className={cn(
-                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                />
-              </div>
 
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2 text-[#8e9299]">
-                    <Volume2 size={14} />
-                    <span className="text-[0.625rem] uppercase tracking-widest">DNR Level</span>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2 text-[#8e9299]">
+                        <Volume2 size={14} />
+                        <span className="text-[0.625rem] uppercase tracking-widest">DNR Level</span>
+                      </div>
+                      <span className="text-emerald-500 font-bold">Level {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="14" 
+                      step="1"
+                      value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
+                      disabled={!connected}
+                      onChange={(e) => {
+                        isDraggingNR.current = true;
+                        setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
+                      }}
+                      className={cn(
+                        "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
+                    />
                   </div>
-                  <span className="text-emerald-500 font-bold">Level {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
                 </div>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="14" 
-                  step="1"
-                  value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
-                  disabled={!connected}
-                  onChange={(e) => {
-                    isDraggingNR.current = true;
-                    setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
-                  }}
-                  className={cn(
-                    "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                />
-              </div>
+              )}
             </div>
 
             {/* S-Meter / Power Meter Graph */}
-            <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] space-y-6 h-[320px]">
-              <div className="flex items-center justify-between">
+            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
                 <div className="flex items-center gap-2 text-[#8e9299]">
                   {status.ptt ? <Gauge size={14} className="text-red-500" /> : <Signal size={14} />}
                   <span className={cn(
-                    "text-[0.625rem] uppercase tracking-widest",
-                    status.ptt ? "text-red-500 font-bold" : "text-[#8e9299]"
+                    "text-[0.625rem] uppercase tracking-widest font-bold",
+                    status.ptt ? "text-red-500" : "text-[#8e9299]"
                   )}>
                     {status.ptt ? "POWER OUT" : "S-Meter"}
                   </span>
                 </div>
-                <span className={cn(
-                  "text-xs font-mono font-bold",
-                  status.ptt ? "text-red-500" : "text-emerald-500"
-                )}>
-                  {status.ptt 
-                    ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
-                    : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`
-                  }
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className={cn(
+                    "text-xs font-mono font-bold",
+                    status.ptt ? "text-red-500" : "text-emerald-500"
+                  )}>
+                    {status.ptt 
+                      ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
+                      : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`
+                    }
+                  </span>
+                  <button 
+                    onClick={() => setIsDesktopSMeterCollapsed(!isDesktopSMeterCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isDesktopSMeterCollapsed ? "Expand S-Meter" : "Collapse S-Meter"}
+                  >
+                    {isDesktopSMeterCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                  </button>
+                </div>
               </div>
+              {!isDesktopSMeterCollapsed && (
+                <div className="p-6 space-y-6 h-[280px]">
+                  {/* Bar Graph */}
+                  <div className="space-y-1">
+                    <div className="h-4 bg-[#0a0a0a] rounded border border-[#2a2b2e] relative overflow-hidden">
+                      <div 
+                        className={cn(
+                          "h-full transition-all duration-150 ease-out",
+                          status.ptt ? "bg-red-500" : "bg-gradient-to-r from-blue-600 via-emerald-500 to-red-600"
+                        )}
+                        style={{ 
+                          width: status.ptt 
+                            ? `${Math.max(0, Math.min(100, status.powerMeter * 100))}%`
+                            : `${Math.max(0, Math.min(100, (status.smeter + 54) / 114 * 100))}%` 
+                        }}
+                      />
+                      {/* Scale Overlay */}
+                      <div className="absolute inset-0 flex pointer-events-none">
+                        {status.ptt ? (
+                          <>
+                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '0%' }} />
+                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '25%' }} />
+                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '50%' }} />
+                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '75%' }} />
+                          </>
+                        ) : (
+                          <>
+                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '0%' }} />
+                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '26.3%' }} />
+                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '47.3%' }} />
+                          </>
+                        )}
+                        <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '100%' }} />
+                      </div>
+                    </div>
+                    <div className="flex justify-between text-[0.5rem] text-[#4a4b4e] font-mono uppercase tracking-tighter">
+                      {status.ptt ? (
+                        <>
+                          <span>0W</span>
+                          <span>25W</span>
+                          <span>50W</span>
+                          <span>75W</span>
+                          <span>100W</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>S0</span>
+                          <span className="ml-[-10%]">S5</span>
+                          <span className="ml-[-5%]">S9</span>
+                          <span>S9+60</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
 
-              {/* Bar Graph */}
-              <div className="space-y-1">
-                <div className="h-4 bg-[#0a0a0a] rounded border border-[#2a2b2e] relative overflow-hidden">
-                  <div 
-                    className={cn(
-                      "h-full transition-all duration-150 ease-out",
-                      status.ptt ? "bg-red-500" : "bg-gradient-to-r from-blue-600 via-emerald-500 to-red-600"
-                    )}
-                    style={{ 
-                      width: status.ptt 
-                        ? `${Math.max(0, Math.min(100, status.powerMeter * 100))}%`
-                        : `${Math.max(0, Math.min(100, (status.smeter + 54) / 114 * 100))}%` 
-                    }}
-                  />
-                  {/* Scale Overlay */}
-                  <div className="absolute inset-0 flex pointer-events-none">
-                    {status.ptt ? (
-                      <>
-                        <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '0%' }} />
-                        <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '25%' }} />
-                        <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '50%' }} />
-                        <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '75%' }} />
-                      </>
-                    ) : (
-                      <>
-                        <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '0%' }} />
-                        <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '26.3%' }} />
-                        <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '47.3%' }} />
-                      </>
-                    )}
-                    <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '100%' }} />
+                  {/* Line Graph (History) */}
+                  <div className="h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={history}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
+                        <XAxis dataKey="time" hide />
+                        <YAxis 
+                          domain={status.ptt ? [0, 1] : [-54, 60]} 
+                          ticks={status.ptt ? [0, 0.25, 0.5, 0.75, 1] : [-54, -24, 0, 60]}
+                          tickFormatter={(val) => {
+                            if (status.ptt) return `${Math.round(val * 100)}W`;
+                            if (val === -54) return "S0";
+                            if (val === -24) return "S5";
+                            if (val === 0) return "S9";
+                            if (val === 60) return "+60";
+                            return "";
+                          }}
+                          width={35}
+                          style={{ fontSize: '8px', fill: '#4a4b4e' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '10px' }}
+                          itemStyle={{ color: status.ptt ? '#ef4444' : '#10b981' }}
+                          labelStyle={{ display: 'none' }}
+                          formatter={(value: number) => [
+                            status.ptt 
+                              ? `${Math.round(value * 100)} Watts`
+                              : value > 0 ? `S9+${value}dB` : `S${Math.round((value + 54) / 6)}`,
+                            status.ptt ? 'Power' : 'Signal'
+                          ]}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey={status.ptt ? "powerMeter" : "smeter"} 
+                          stroke={status.ptt ? "#ef4444" : "#10b981"} 
+                          strokeWidth={1.5} 
+                          dot={false} 
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
-                <div className="flex justify-between text-[0.5rem] text-[#4a4b4e] font-mono uppercase tracking-tighter">
-                  {status.ptt ? (
-                    <>
-                      <span>0W</span>
-                      <span>25W</span>
-                      <span>50W</span>
-                      <span>75W</span>
-                      <span>100W</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>S0</span>
-                      <span className="ml-[-10%]">S5</span>
-                      <span className="ml-[-5%]">S9</span>
-                      <span>S9+60</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Line Graph (History) */}
-              <div className="h-32">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={history}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
-                    <XAxis dataKey="time" hide />
-                    <YAxis 
-                      domain={status.ptt ? [0, 1] : [-54, 60]} 
-                      ticks={status.ptt ? [0, 0.25, 0.5, 0.75, 1] : [-54, -24, 0, 60]}
-                      tickFormatter={(val) => {
-                        if (status.ptt) return `${Math.round(val * 100)}W`;
-                        if (val === -54) return "S0";
-                        if (val === -24) return "S5";
-                        if (val === 0) return "S9";
-                        if (val === 60) return "+60";
-                        return "";
-                      }}
-                      width={35}
-                      style={{ fontSize: `${fontSize * 0.5}px`, fill: '#4a4b4e' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.625}px` }}
-                      itemStyle={{ color: status.ptt ? '#ef4444' : '#10b981' }}
-                      labelStyle={{ display: 'none' }}
-                      formatter={(value: number) => [
-                        status.ptt 
-                          ? `${Math.round(value * 100)} Watts`
-                          : value > 0 ? `S9+${value}dB` : `S${Math.round((value + 54) / 6)}`,
-                        status.ptt ? 'Power' : 'Signal'
-                      ]}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey={status.ptt ? "powerMeter" : "smeter"} 
-                      stroke={status.ptt ? "#ef4444" : "#10b981"} 
-                      strokeWidth={1.5} 
-                      dot={false} 
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              )}
             </div>
 
             {/* SWR Graph */}
-            <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] space-y-4 h-[250px]">
-              <div className="flex items-center justify-between">
+            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
                 <div className="flex items-center gap-2 text-[#8e9299]">
                   <Activity size={14} />
-                  <span className="text-[0.625rem] uppercase tracking-widest">SWR Ratio</span>
+                  <span className="text-[0.625rem] uppercase tracking-widest font-bold">SWR Ratio</span>
                 </div>
-                <span className="text-xs font-mono text-amber-500 font-bold">
-                  {(status.swr ?? 1).toFixed(2)}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-amber-500 font-bold">
+                    {(status.swr ?? 1).toFixed(2)}
+                  </span>
+                  <button 
+                    onClick={() => setIsDesktopSWRCollapsed(!isDesktopSWRCollapsed)}
+                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isDesktopSWRCollapsed ? "Expand SWR Graph" : "Collapse SWR Graph"}
+                  >
+                    {isDesktopSWRCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                  </button>
+                </div>
               </div>
-              <div className="h-full pb-8">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={history}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} />
-                    <XAxis dataKey="time" hide />
-                    <YAxis 
-                      domain={[0, 5]} 
-                      ticks={[0, 1, 2, 3, 4, 5]}
-                      width={25}
-                      style={{ fontSize: `${fontSize * 0.5}px`, fill: '#4a4b4e' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.625}px` }}
-                      itemStyle={{ color: '#f59e0b' }}
-                      formatter={(val: number, name: string, props: any) => [(props.payload?.swr ?? 1).toFixed(2), 'SWR']}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="swrGraph" 
-                      stroke="#f59e0b" 
-                      strokeWidth={2} 
-                      dot={false} 
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              {!isDesktopSWRCollapsed && (
+                <div className="p-6 h-[210px]">
+                  <div className="h-full pb-8">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={history}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} />
+                        <XAxis dataKey="time" hide />
+                        <YAxis 
+                          domain={[0, 5]} 
+                          ticks={[0, 1, 2, 3, 4, 5]}
+                          width={25}
+                          style={{ fontSize: '8px', fill: '#4a4b4e' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '10px' }}
+                          itemStyle={{ color: '#f59e0b' }}
+                          formatter={(val: number, name: string, props: any) => [(props.payload?.swr ?? 1).toFixed(2), 'SWR']}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="swrGraph" 
+                          stroke="#f59e0b" 
+                          strokeWidth={2} 
+                          dot={false} 
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* ALC Graph */}
-            <div className="bg-[#151619] p-6 rounded-xl border border-[#2a2b2e] space-y-4 h-[250px]">
-              <div className="flex items-center gap-2 text-[#8e9299]">
-                <Waves size={14} />
-                <span className="text-[0.625rem] uppercase tracking-widest">ALC Level</span>
+            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                <div className="flex items-center gap-2 text-[#8e9299]">
+                  <Waves size={14} />
+                  <span className="text-[0.625rem] uppercase tracking-widest font-bold">ALC Level</span>
+                </div>
+                <button 
+                  onClick={() => setIsDesktopALCCollapsed(!isDesktopALCCollapsed)}
+                  className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                  title={isDesktopALCCollapsed ? "Expand ALC Graph" : "Collapse ALC Graph"}
+                >
+                  {isDesktopALCCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                </button>
               </div>
-              <div className="h-full pb-8">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={history}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} />
-                    <XAxis dataKey="time" hide />
-                    <YAxis 
-                      domain={[0, 1]} 
-                      width={45}
-                      style={{ fontSize: `${fontSize * 0.5}px`, fill: '#4a4b4e' }}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={(val) => (val ?? 0).toFixed(1)}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: `${fontSize * 0.625}px` }}
-                      itemStyle={{ color: '#3b82f6' }}
-                      formatter={(value: number) => [(value ?? 0).toFixed(5), 'ALC']}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="alc" 
-                      stroke="#3b82f6" 
-                      strokeWidth={2} 
-                      dot={false} 
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              {!isDesktopALCCollapsed && (
+                <div className="p-6 h-[210px]">
+                  <div className="h-full pb-8">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={history}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} />
+                        <XAxis dataKey="time" hide />
+                        <YAxis 
+                          domain={[0, 1]} 
+                          width={45}
+                          style={{ fontSize: '8px', fill: '#4a4b4e' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(val) => (val ?? 0).toFixed(1)}
+                        />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '10px' }}
+                          itemStyle={{ color: '#3b82f6' }}
+                          formatter={(value: number) => [(value ?? 0).toFixed(5), 'ALC']}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="alc" 
+                          stroke="#3b82f6" 
+                          strokeWidth={2} 
+                          dot={false} 
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2851,58 +2489,69 @@ export default function App() {
 
         {/* Command Console */}
         {!isCompact && (
-          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-2xl">
-            <div className="bg-[#1a1b1e] px-4 py-2 border-b border-[#2a2b2e] flex items-center gap-2">
-              <Settings size={14} className="text-[#8e9299]" />
-              <span className="text-[0.625rem] uppercase font-bold tracking-widest text-[#8e9299]">Rigctld Command Console</span>
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-2xl flex flex-col">
+            <div className="bg-[#1a1b1e] px-4 py-2 border-b border-[#2a2b2e] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings size={14} className="text-[#8e9299]" />
+                <span className="text-[0.625rem] uppercase font-bold tracking-widest text-[#8e9299]">Rigctld Command Console</span>
+              </div>
+              <button 
+                onClick={() => setIsConsoleCollapsed(!isConsoleCollapsed)}
+                className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                title={isConsoleCollapsed ? "Expand Console" : "Collapse Console"}
+              >
+                {isConsoleCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+              </button>
             </div>
             
-            <div className="p-4 space-y-4">
-              <div className="bg-[#0a0a0a] rounded border border-[#2a2b2e] h-40 overflow-y-auto p-3 font-mono text-[0.6875rem] space-y-1">
-                {consoleLogs.length === 0 ? (
-                  <div className="text-[#4a4b4e] italic">No commands sent yet. Try "f" for frequency or "m" for mode.</div>
-                ) : (
-                  consoleLogs.map((log, i) => (
-                    <div key={i} className="border-b border-[#1a1b1e] pb-1 last:border-0">
-                      <div className="flex justify-between opacity-50 text-[0.5625rem]">
-                        <span>{log.time}</span>
-                        <span>CMD: {log.cmd}</span>
+            {!isConsoleCollapsed && (
+              <div className="p-4 space-y-4">
+                <div className="bg-[#0a0a0a] rounded border border-[#2a2b2e] h-40 overflow-y-auto p-3 font-mono text-[0.6875rem] space-y-1">
+                  {consoleLogs.length === 0 ? (
+                    <div className="text-[#4a4b4e] italic">No commands sent yet. Try "f" for frequency or "m" for mode.</div>
+                  ) : (
+                    consoleLogs.map((log, i) => (
+                      <div key={i} className="border-b border-[#1a1b1e] pb-1 last:border-0">
+                        <div className="flex justify-between opacity-50 text-[0.5625rem]">
+                          <span>{log.time}</span>
+                          <span>CMD: {log.cmd}</span>
+                        </div>
+                        <div className="text-emerald-500 mt-0.5">
+                          <span className="text-[#8e9299] mr-2">&gt;</span>
+                          {log.resp}
+                        </div>
                       </div>
-                      <div className="text-emerald-500 mt-0.5">
-                        <span className="text-[#8e9299] mr-2">&gt;</span>
-                        {log.resp}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <form onSubmit={handleSendRaw} className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={rawCommand}
-                  onChange={(e) => setRawCommand(e.target.value)}
-                  disabled={!connected}
-                  placeholder="Enter raw hamlib command (e.g. 'f', 'm', 'v', 't')..."
-                  className={cn(
-                    "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 transition-colors placeholder:text-[#4a4b4e]",
-                    !connected && "opacity-50 cursor-not-allowed"
+                    ))
                   )}
-                />
-                <button 
-                  type="submit"
-                  disabled={!connected || !rawCommand.trim()}
-                  className="px-6 py-2 bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 rounded font-bold uppercase text-xs hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Send
-                </button>
-              </form>
-            </div>
+                </div>
+
+                <form onSubmit={handleSendRaw} className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={rawCommand}
+                    onChange={(e) => setRawCommand(e.target.value)}
+                    disabled={!connected}
+                    placeholder="Enter hamlib command (e.g. 'f', 'm', 'v', 't')..."
+                    className={cn(
+                      "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 transition-colors placeholder:text-[#4a4b4e]",
+                      !connected && "opacity-50 cursor-not-allowed"
+                    )}
+                  />
+                  <button 
+                    type="submit"
+                    disabled={!connected || !rawCommand.trim()}
+                    className="px-6 py-2 bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 rounded font-bold uppercase text-xs hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Send
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         )}
 
         {/* Footer Status Bar */}
-        {!isPhone && (
+        {!isPhone && !isCompact && (
           <footer className="bg-[#151619] px-6 py-3 rounded-xl border border-[#2a2b2e] flex justify-between items-center text-[0.625rem] uppercase tracking-widest text-[#8e9299]">
             <div className="flex gap-6">
               <span>Status: <span className={connected ? "text-emerald-500" : "text-red-500"}>{connected ? "Online" : "Offline"}</span></span>
@@ -3171,66 +2820,114 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[0.625rem] uppercase text-[#8e9299]">Rig Model (Hamlib Rig #)</label>
-                  <select 
-                    value={rigctldSettings.rigNumber}
-                    onChange={(e) => setRigctldSettings(prev => ({ ...prev, rigNumber: e.target.value }))}
-                    className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                  >
-                    <option value="">Select a Radio...</option>
-                    {radios.map(r => (
-                      <option key={`${r.id}-${r.mfg}-${r.model}`} value={r.id}>
-                        {r.id}: {r.mfg} {r.model}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Port (e.g. /dev/ttyUSB0 or COM3)</label>
-                  <input 
-                    type="text"
-                    value={rigctldSettings.serialPort}
-                    onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPort: e.target.value }))}
-                    placeholder="/dev/ttyUSB0"
-                    className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+              <div className="p-6 space-y-6">
+                {/* Client Side Settings */}
+                <div className="space-y-4">
+                  <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Client Side Settings (Connection to Rigctld)</h3>
                   <div className="space-y-1">
-                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Server Port</label>
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Host Address</label>
                     <input 
-                      type="text"
-                      value={rigctldSettings.portNumber}
-                      onChange={(e) => setRigctldSettings(prev => ({ ...prev, portNumber: e.target.value }))}
-                      placeholder="4532"
+                      type="text" 
+                      value={host}
+                      onChange={(e) => setHost(e.target.value)}
                       className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                      placeholder="127.0.0.1"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Speed</label>
-                    <input 
-                      type="text"
-                      value={rigctldSettings.serialPortSpeed}
-                      onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPortSpeed: e.target.value }))}
-                      placeholder="38400"
-                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299]">Port</label>
+                      <input 
+                        type="number" 
+                        value={(port === null || isNaN(port)) ? "" : port}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setPort(isNaN(val) ? NaN : val);
+                        }}
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299]">Poll Rate</label>
+                      <select 
+                        value={pollRate}
+                        onChange={(e) => handlePollRateChange(parseInt(e.target.value))}
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white appearance-none cursor-pointer"
+                      >
+                        <option value={250}>250 ms</option>
+                        <option value={500}>500 ms</option>
+                        <option value={1000}>1000 ms</option>
+                        <option value={1500}>1500 ms</option>
+                        <option value={2000}>2000 ms</option>
+                        <option value={5000}>5000 ms</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[0.625rem] uppercase text-[#8e9299]">Listen Address</label>
-                  <input 
-                    type="text"
-                    value={rigctldSettings.ipAddress}
-                    onChange={(e) => setRigctldSettings(prev => ({ ...prev, ipAddress: e.target.value }))}
-                    placeholder="127.0.0.1"
-                    className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                  />
+                {/* Server Side Settings */}
+                <div className="space-y-4">
+                  <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold border-b border-blue-500/20 pb-1">Server Side / Backend Settings</h3>
+                  <div className="space-y-1">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Rig Model (Hamlib Rig #)</label>
+                    <select 
+                      value={rigctldSettings.rigNumber}
+                      onChange={(e) => setRigctldSettings(prev => ({ ...prev, rigNumber: e.target.value }))}
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                    >
+                      <option value="">Select a Radio...</option>
+                      {radios.map(r => (
+                        <option key={`${r.id}-${r.mfg}-${r.model}`} value={r.id}>
+                          {r.id}: {r.mfg} {r.model}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Port (e.g. /dev/ttyUSB0 or COM3)</label>
+                    <input 
+                      type="text"
+                      value={rigctldSettings.serialPort}
+                      onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPort: e.target.value }))}
+                      placeholder="/dev/ttyUSB0"
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299]">Server Port</label>
+                      <input 
+                        type="text"
+                        value={rigctldSettings.portNumber}
+                        onChange={(e) => setRigctldSettings(prev => ({ ...prev, portNumber: e.target.value }))}
+                        placeholder="4532"
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Speed</label>
+                      <input 
+                        type="text"
+                        value={rigctldSettings.serialPortSpeed}
+                        onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPortSpeed: e.target.value }))}
+                        placeholder="38400"
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Listen Address</label>
+                    <input 
+                      type="text"
+                      value={rigctldSettings.ipAddress}
+                      onChange={(e) => setRigctldSettings(prev => ({ ...prev, ipAddress: e.target.value }))}
+                      placeholder="127.0.0.1"
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                    />
+                  </div>
                 </div>
 
                 <div className="pt-4 space-y-3">
