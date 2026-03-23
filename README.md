@@ -6,14 +6,20 @@ A modern, full-stack web application and desktop client designed to control amat
 
 - **Real-time Dashboard**: Frequency, mode, and meter displays (S-Meter, SWR, ALC, Power, VDD).
 - **Process Management**: Automatically start and stop `rigctld` from the web interface.
-- **Settings Persistence**: Remembers your radio configuration and auto-start preferences.
-- **Log View**: Real-time output from the underlying `rigctld` process for easy debugging.
 - **Split VFO Support**: Full control over split operations with visual feedback.
 - **Desktop App**: Can be built as a native application for Windows, Linux, and macOS.
+- **Rig Video Feed**: Displays a system video capture device, like an HDMI capture card or a webcam, so you can see your radio's front screen.  Example: FT-710 DVI out > USB to HDMI capture card.
+- **Mobile Rig Control**: Through your own VPN and installing the app or pointing your VPN'd browser to your rig computer IP on port 3000.
+- **Works With All Hamlib Supported Apps**: Tell your app that your rig is a "Hamlib NET rigctl" with a local address of 127.0.0.1:4532.
+
+## TODO
+- **Audio In/Out**: Full audio in/out support for compatible rigs.  You can do remote SSB contacts!
+- **Bundle Hamlib**: So Hamlib doesn't need to be preinstalled on your system.
+- **Testing of All Popular Rigs**: Very limited testing, currently FT-710, 991A, DX10, 101D, 101MP should work fine.
 
 ## Prerequisites
 
-- **Node.js**: Version 18 or higher.
+- **Node.js**: Version 18 or higher. (if compiling)
 - **Hamlib**: `rigctld` must be installed on your system and available in the system PATH.
   - **Linux**: `sudo apt install libhamlib-utils`
   - **macOS**: `brew install hamlib`
@@ -62,10 +68,9 @@ npm run electron:build -- --mac
 The built installers will be located in the `build/` directory.
 
 ### Launching the Installed App
-Once installed, simply launch "RigControl Web" from your applications menu or desktop shortcut. The application will automatically:
+Once installed, simply launch "RigControl Web" from your applications menu or desktop shortcut. The application will:
 1. Start the background Express server.
-2. If "Auto Start Rigctld" was previously enabled, it will launch the `rigctld` process.
-3. Open the main control interface in a native window.
+2. Launch the `rigctld` process from the settings menu after entering all required settings.
 
 ## Configuration
 
