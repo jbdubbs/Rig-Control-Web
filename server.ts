@@ -36,103 +36,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     framerate: "30"
   };
   let videoStatus: "playing" | "paused" | "stopped" = "stopped";
-  let audioInputProcess: ChildProcess | null = null;
-  let audioOutputProcess: ChildProcess | null = null;
-  let audioSettings = {
-    inputDevice: "",
-    outputDevice: "",
-    inputMuted: false,
-    outputMuted: false
-  };
-
-  const stopAudioInput = () => {
-    if (audioInputProcess) {
-      audioInputProcess.kill('SIGKILL');
-      audioInputProcess = null;
-    }
-  };
-
-  const stopAudioOutput = () => {
-    if (audioOutputProcess) {
-      audioOutputProcess.kill('SIGKILL');
-      audioOutputProcess = null;
-    }
-  };
-
-  const startAudioInput = () => {
-    stopAudioInput();
-    if (!audioSettings.inputDevice || audioSettings.inputMuted) return;
-
-    let inputFormat = "";
-    let inputDevice = audioSettings.inputDevice;
-
-    if (process.platform === "linux") {
-      inputFormat = "pulse";
-    } else if (process.platform === "win32") {
-      inputFormat = "dshow";
-      inputDevice = `audio=${audioSettings.inputDevice}`;
-    } else if (process.platform === "darwin") {
-      inputFormat = "avfoundation";
-      inputDevice = `:${audioSettings.inputDevice}`;
-    }
-
-    const args = [
-      "-f", inputFormat,
-      "-i", inputDevice,
-      "-ac", "1",
-      "-ar", "16000",
-      "-f", "s16le",
-      "pipe:1"
-    ];
-
-    console.log(`Starting audio input: ffmpeg ${args.join(" ")}`);
-    audioInputProcess = spawn("ffmpeg", args);
-
-    audioInputProcess.stdout?.on("data", (data: Buffer) => {
-      io.emit("audio-data-from-backend", data);
-    });
-
-    audioInputProcess.on("error", (err) => {
-      console.error("Audio input process error:", err);
-      stopAudioInput();
-    });
-  };
-
-  const startAudioOutput = () => {
-    stopAudioOutput();
-    if (!audioSettings.outputDevice || audioSettings.outputMuted) return;
-
-    let outputFormat = "";
-    let outputDevice = audioSettings.outputDevice;
-
-    if (process.platform === "linux") {
-      outputFormat = "pulse";
-    } else if (process.platform === "win32") {
-      outputFormat = "dshow";
-      outputDevice = `audio=${audioSettings.outputDevice}`;
-    } else if (process.platform === "darwin") {
-      outputFormat = "avfoundation";
-      outputDevice = `:${audioSettings.outputDevice}`;
-    }
-
-    const args = [
-      "-f", "s16le",
-      "-ac", "1",
-      "-ar", "16000",
-      "-i", "pipe:0",
-      "-f", outputFormat,
-      outputDevice
-    ];
-
-    console.log(`Starting audio output: ffmpeg ${args.join(" ")}`);
-    audioOutputProcess = spawn("ffmpeg", args);
-
-    audioOutputProcess.on("error", (err) => {
-      console.error("Audio output process error:", err);
-      stopAudioOutput();
-    });
-  };
-
   let rigctldSettings = {
     rigNumber: "",
     serialPort: "",
@@ -150,9 +53,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (data.videoSettings) {
         videoSettings = { ...videoSettings, ...data.videoSettings };
       }
-      if (data.audioSettings) {
-        audioSettings = { ...audioSettings, ...data.audioSettings };
-      }
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
@@ -162,8 +62,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
       settings: rigctldSettings,
       autoStart: autoStartEnabled,
-      videoSettings: videoSettings,
-      audioSettings: audioSettings
+      videoSettings: videoSettings
     }, null, 2));
   };
 
@@ -197,81 +96,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         } else {
           resolve(!err && !!stdout.trim());
         }
-      });
-    });
-  };
-
-  const listAudioDevices = (): Promise<{ inputs: string[], outputs: string[] }> => {
-    return new Promise((resolve) => {
-      let cmd = "";
-      if (process.platform === "linux") {
-        cmd = "pactl list short sources && echo --- && pactl list short sinks";
-      } else if (process.platform === "win32") {
-        cmd = "ffmpeg -list_devices true -f dshow -i dummy 2>&1";
-      } else if (process.platform === "darwin") {
-        cmd = "ffmpeg -f avfoundation -list_devices true -i \"\" 2>&1";
-      }
-
-      if (!cmd) return resolve({ inputs: [], outputs: [] });
-
-      exec(cmd, (err, stdout, stderr) => {
-        const output = stdout + stderr;
-        const inputs: string[] = [];
-        const outputs: string[] = [];
-        
-        if (process.platform === "linux") {
-          const sections = output.split("---");
-          const inputLines = sections[0] ? sections[0].split("\n") : [];
-          const outputLines = sections[1] ? sections[1].split("\n") : [];
-
-          inputLines.forEach(line => {
-            const parts = line.trim().split(/\s+/);
-            if (parts.length > 1) {
-              const name = parts[1];
-              if (name && !inputs.includes(name)) inputs.push(name);
-            }
-          });
-
-          outputLines.forEach(line => {
-            const parts = line.trim().split(/\s+/);
-            if (parts.length > 1) {
-              const name = parts[1];
-              if (name && !outputs.includes(name)) outputs.push(name);
-            }
-          });
-        } else if (process.platform === "win32") {
-          const lines = output.split("\n");
-          let inVideo = false;
-          let inAudio = false;
-          lines.forEach(line => {
-            if (line.includes("DirectShow video devices")) { inVideo = true; inAudio = false; }
-            if (line.includes("DirectShow audio devices")) { inVideo = false; inAudio = true; }
-            if (inAudio && line.includes("\"")) {
-              const match = line.match(/"([^"]+)"/);
-              if (match) {
-                inputs.push(match[1]);
-                outputs.push(match[1]); // DShow often uses same names for in/out or we can't easily distinguish here
-              }
-            }
-          });
-        } else if (process.platform === "darwin") {
-          const lines = output.split("\n");
-          let inVideo = false;
-          let inAudio = false;
-          lines.forEach(line => {
-            if (line.includes("AVFoundation video devices")) { inVideo = true; inAudio = false; }
-            if (line.includes("AVFoundation audio devices")) { inVideo = false; inAudio = true; }
-            if (inAudio && line.match(/\[\d+\]/)) {
-              const parts = line.split("]");
-              if (parts.length > 1) {
-                inputs.push(parts[1].trim());
-                outputs.push(parts[1].trim());
-              }
-            }
-          });
-        }
-        
-        resolve({ inputs, outputs });
       });
     });
   };
@@ -490,19 +314,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     startRigctld();
   }
 
-  // Start audio on boot if devices are configured
-  if (audioSettings.inputDevice && !audioSettings.inputMuted) {
-    startAudioInput();
-  }
-  if (audioSettings.outputDevice && !audioSettings.outputMuted) {
-    startAudioOutput();
-  }
-
-  process.on("exit", () => {
-    stopRigctld();
-    stopAudioInput();
-    stopAudioOutput();
-  });
+  process.on("exit", stopRigctld);
   process.on("SIGINT", () => {
     stopRigctld();
     process.exit();
@@ -1068,8 +880,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       socket.emit("settings-data", {
         settings: rigctldSettings,
         autoStart: autoStartEnabled,
-        videoSettings: videoSettings,
-        audioSettings: audioSettings
+        videoSettings: videoSettings
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
@@ -1079,34 +890,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     socket.on("get-video-devices", async () => {
       const devices = await listVideoDevices();
       socket.emit("video-devices-list", devices);
-    });
-
-    socket.on("get-audio-devices", async () => {
-      const devices = await listAudioDevices();
-      socket.emit("audio-devices-list", devices);
-    });
-
-    socket.on("update-audio-settings", (settings: any) => {
-      const oldInput = audioSettings.inputDevice;
-      const oldOutput = audioSettings.outputDevice;
-      const oldInputMuted = audioSettings.inputMuted;
-      const oldOutputMuted = audioSettings.outputMuted;
-
-      audioSettings = { ...audioSettings, ...settings };
-      saveSettings();
-
-      if (oldInput !== audioSettings.inputDevice || oldInputMuted !== audioSettings.inputMuted) {
-        startAudioInput();
-      }
-      if (oldOutput !== audioSettings.outputDevice || oldOutputMuted !== audioSettings.outputMuted) {
-        startAudioOutput();
-      }
-    });
-
-    socket.on("audio-data-to-backend", (data: Buffer) => {
-      if (audioOutputProcess && audioOutputProcess.stdin && !audioSettings.outputMuted) {
-        audioOutputProcess.stdin.write(data);
-      }
     });
 
     socket.on("update-video-settings", (settings: any) => {
@@ -1130,9 +913,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     socket.on("save-settings", (data) => {
       rigctldSettings = data;
       saveSettings();
-      if (autoStartEnabled) {
-        startRigctld();
-      }
     });
 
     socket.on("toggle-auto-start", (enabled) => {

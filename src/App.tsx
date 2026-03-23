@@ -2977,7 +2977,13 @@ export default function App() {
                     <div className="flex gap-2">
                       <button 
                         onClick={() => socket?.emit("test-rigctld", rigctldSettings)}
-                        className="px-3 py-1 bg-blue-500/10 text-blue-500 border border-blue-500/50 rounded text-[0.625rem] font-bold uppercase hover:bg-blue-500 hover:text-white transition-all"
+                        disabled={rigctldProcessStatus === "running"}
+                        className={cn(
+                          "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                          rigctldProcessStatus === "running" 
+                            ? "bg-gray-500/10 text-gray-500 border border-gray-500/20 cursor-not-allowed" 
+                            : "bg-blue-500/10 text-blue-500 border border-blue-500/50 hover:bg-blue-500 hover:text-white"
+                        )}
                       >
                         Test
                       </button>
@@ -2999,9 +3005,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl text-[0.625rem] text-blue-400/80 italic text-center">
-                    Settings are saved automatically as you type.
-                  </div>
+
                 </div>
 
                 {/* Log View */}
