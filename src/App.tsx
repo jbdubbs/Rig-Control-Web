@@ -341,6 +341,12 @@ export default function App() {
   }, [socket, isCompact, activeMeter, status?.ptt]);
 
   useEffect(() => {
+    if (videoStatus === "playing") {
+      setVideoSessionId(Date.now());
+    }
+  }, [isCompact, isPhone, videoStatus]);
+
+  useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -858,6 +864,7 @@ export default function App() {
                 <div className="relative aspect-video bg-black flex items-center justify-center">
                   {videoStatus === "playing" ? (
                     <img 
+                      key={videoSessionId}
                       src={`${backendUrl}/api/video-stream?sessionId=${videoSessionId}`} 
                       alt="Video Stream"
                       className="w-full h-full object-contain"
@@ -1458,6 +1465,7 @@ export default function App() {
                   <div className="relative aspect-video bg-black flex items-center justify-center">
                     {videoStatus === "playing" ? (
                       <img 
+                        key={videoSessionId}
                         src={`${backendUrl}/api/video-stream?sessionId=${videoSessionId}`} 
                         alt="Video Stream"
                         className="w-full h-full object-contain"
@@ -2153,6 +2161,7 @@ export default function App() {
                 <div className="relative aspect-video bg-black flex items-center justify-center">
                   {videoStatus === "playing" ? (
                     <img 
+                      key={videoSessionId}
                       src={`${backendUrl}/api/video-stream?sessionId=${videoSessionId}`} 
                       alt="Video Stream"
                       className="w-full h-full object-contain"

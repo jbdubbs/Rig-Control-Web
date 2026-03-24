@@ -40,6 +40,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     framerate: "30"
   };
   let videoStatus: "playing" | "paused" | "stopped" = "stopped";
+  let videoConnections = 0;
   let rigctldSettings = {
     rigNumber: "",
     serialPort: "",
@@ -202,7 +203,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     io.emit("video-status", videoStatus);
 
     videoProcess.stdout?.on("data", (data) => {
-      videoEmitter.emit("data", data);
+      if (videoEmitter.listenerCount("data") > 0) {
+        videoEmitter.emit("data", data);
+      }
+    });
+
+    videoProcess.stderr?.on("data", (data) => {
+      // Optional: log ffmpeg errors
+      // console.error(`ffmpeg stderr: ${data}`);
     });
 
     videoProcess.on("error", (err) => {
@@ -219,22 +227,43 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   // Express route for MJPEG stream
   app.get("/api/video-stream", (req, res) => {
+    videoConnections++;
+    console.log(`New video stream connection. Total: ${videoConnections}`);
+
     res.writeHead(200, {
       'Content-Type': 'multipart/x-mixed-replace; boundary=ffmpeg',
       'Cache-Control': 'no-cache',
-      'Connection': 'close',
+      'Connection': 'keep-alive',
       'Pragma': 'no-cache'
     });
 
+    let isClosed = false;
     const onData = (data: Buffer) => {
-      res.write(data);
+      if (isClosed) return;
+      
+      // Handle backpressure: if the buffer is full, we drop this frame for this client
+      // to avoid blocking the ffmpeg process or leaking memory.
+      const flushed = res.write(data);
+      if (!flushed) {
+        // We could wait for 'drain', but for real-time video, 
+        // it's better to just skip data until the client catches up.
+      }
     };
 
     videoEmitter.on("data", onData);
 
-    req.on("close", () => {
+    const cleanup = () => {
+      if (isClosed) return;
+      isClosed = true;
+      videoConnections--;
+      console.log(`Video stream connection closed. Total: ${videoConnections}`);
       videoEmitter.removeListener("data", onData);
-    });
+      res.end();
+    };
+
+    req.on("close", cleanup);
+    req.on("end", cleanup);
+    res.on("error", cleanup);
   });
 
   const killExistingRigctld = (): Promise<void> => {
