@@ -2,6 +2,16 @@ import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import isDev from 'electron-is-dev';
 
+// Disable hardware acceleration to resolve VA-API errors on Linux
+app.disableHardwareAcceleration();
+
+// Additional switches to ensure VA-API and GPU features are disabled
+app.commandLine.appendSwitch('disable-features', 'VaapiVideoDecoder');
+app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
+app.commandLine.appendSwitch('disable-gpu-compositing');
+app.commandLine.appendSwitch('disable-gpu-rasterization');
+app.commandLine.appendSwitch('disable-gpu');
+
 if (!isDev) {
   process.env.NODE_ENV = 'production';
 }
