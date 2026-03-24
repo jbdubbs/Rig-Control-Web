@@ -21,7 +21,8 @@ import {
   Minimize2,
   Pencil,
   Volume2,
-  Check
+  Check,
+  AlertCircle
 } from "lucide-react";
 import { 
   LineChart, 
@@ -143,6 +144,7 @@ export default function App() {
   const isDraggingNR = useRef(false);
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
   const [showSetupModal, setShowSetupModal] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
   const [isCompact, setIsCompact] = useState(() => localStorage.getItem("is-compact") === "true");
   const [isPhone, setIsPhone] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -229,7 +231,11 @@ export default function App() {
         setVideoStatus(status);
         if (status === "playing") {
           setVideoSessionId(Date.now());
+          setVideoError(null);
         }
+      });
+      socket.on("video-error", (msg: string) => {
+        setVideoError(msg);
       });
       socket.on("radios-list", (list: any) => {
         const unique = Array.from(new Map(list.map((r: any) => [r.id, r])).values()) as any[];
@@ -846,6 +852,18 @@ export default function App() {
                       </span>
                     </div>
                   )}
+                  {videoError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-4 text-center z-10">
+                      <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
+                      <p className="text-xs text-red-400 font-medium">{videoError}</p>
+                      <button 
+                        onClick={() => socket?.emit("control-video", "play")}
+                        className="mt-3 px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-[10px] transition-colors"
+                      >
+                        Retry Connection
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1445,6 +1463,18 @@ export default function App() {
                         <span className="text-[0.5rem] uppercase font-bold tracking-widest">
                           {videoStatus === "paused" ? "Paused" : "Stopped"}
                         </span>
+                      </div>
+                    )}
+                    {videoError && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-4 text-center z-10">
+                        <AlertCircle className="w-6 h-6 text-red-500 mb-1" />
+                        <p className="text-[10px] text-red-400 font-medium">{videoError}</p>
+                        <button 
+                          onClick={() => socket?.emit("control-video", "play")}
+                          className="mt-2 px-2 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-[9px] transition-colors"
+                        >
+                          Retry
+                        </button>
                       </div>
                     )}
                   </div>
@@ -2141,6 +2171,18 @@ export default function App() {
                       <span className="text-[0.625rem] uppercase font-bold tracking-widest">
                         {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
                       </span>
+                    </div>
+                  )}
+                  {videoError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-4 text-center z-10">
+                      <AlertCircle className="w-10 h-10 text-red-500 mb-3" />
+                      <p className="text-sm text-red-400 font-medium">{videoError}</p>
+                      <button 
+                        onClick={() => socket?.emit("control-video", "play")}
+                        className="mt-4 px-4 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-xs transition-colors"
+                      >
+                        Retry Connection
+                      </button>
                     </div>
                   )}
                 </div>

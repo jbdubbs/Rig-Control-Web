@@ -163,6 +163,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   const stopVideo = () => {
     console.log("[VIDEO] Stopping video feed...");
+    videoEmitter.emit("stop-clients"); // Force close all active MJPEG connections
     if (videoProcess) {
       console.log(`[VIDEO] Killing ffmpeg process (PID: ${videoProcess.pid})`);
       videoProcess.kill('SIGKILL');
@@ -208,34 +209,56 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     ];
 
     console.log(`[VIDEO] Executing: ffmpeg ${args.join(" ")}`);
-    videoProcess = spawn("ffmpeg", args);
-    videoStatus = "playing";
-    io.emit("video-status", videoStatus);
+    const currentProcess = spawn("ffmpeg", args);
+    videoProcess = currentProcess;
+    
+    let hasReceivedData = false;
+    const startupTimeout = setTimeout(() => {
+      if (!hasReceivedData && videoProcess === currentProcess) {
+        console.error("[VIDEO] ffmpeg failed to produce data within 10s. Stopping.");
+        stopVideo();
+        io.emit("video-error", "Video device failed to start producing data. Please check if it is in use by another application.");
+      }
+    }, 10000);
 
-    videoProcess.stdout?.on("data", (data) => {
+    currentProcess.stdout?.on("data", (data) => {
+      if (!hasReceivedData && videoProcess === currentProcess) {
+        hasReceivedData = true;
+        clearTimeout(startupTimeout);
+        console.log("[VIDEO] First data chunk received. Stream is now playing.");
+        videoStatus = "playing";
+        io.emit("video-status", videoStatus);
+      }
+      
       if (videoEmitter.listenerCount("data") > 0) {
         videoEmitter.emit("data", data);
       }
     });
 
-    videoProcess.stderr?.on("data", (data) => {
-      // ffmpeg stderr often contains frame info, which might be too noisy
-      // but we can log it if it looks like an error
+    currentProcess.stderr?.on("data", (data) => {
       const msg = data.toString();
-      if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("failed")) {
+      if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("failed") || msg.toLowerCase().includes("cannot open")) {
         console.error(`[VIDEO] ffmpeg stderr: ${msg.trim()}`);
       }
     });
 
-    videoProcess.on("error", (err) => {
-      console.error("[VIDEO] ffmpeg process error:", err);
-      stopVideo();
+    currentProcess.on("error", (err) => {
+      if (videoProcess === currentProcess) {
+        console.error("[VIDEO] ffmpeg process error:", err);
+        stopVideo();
+      }
     });
 
-    videoProcess.on("exit", (code, signal) => {
-      console.log(`[VIDEO] ffmpeg process exited with code ${code} and signal ${signal}`);
-      videoStatus = "stopped";
-      io.emit("video-status", videoStatus);
+    currentProcess.on("exit", (code, signal) => {
+      if (videoProcess === currentProcess) {
+        console.log(`[VIDEO] Current ffmpeg process exited with code ${code} and signal ${signal}`);
+        videoStatus = "stopped";
+        io.emit("video-status", videoStatus);
+        videoProcess = null;
+        clearTimeout(startupTimeout);
+      } else {
+        console.log(`[VIDEO] Old ffmpeg process (PID: ${currentProcess.pid}) exited with code ${code} and signal ${signal}`);
+      }
     });
   };
 
@@ -252,6 +275,16 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     let isClosed = false;
+    const cleanup = () => {
+      if (isClosed) return;
+      isClosed = true;
+      videoConnections--;
+      console.log(`[VIDEO] Stream client disconnected. Total clients: ${videoConnections}`);
+      videoEmitter.removeListener("data", onData);
+      videoEmitter.removeListener("stop-clients", cleanup);
+      res.end();
+    };
+
     const onData = (data: Buffer) => {
       if (isClosed) return;
       
@@ -263,15 +296,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     };
 
     videoEmitter.on("data", onData);
-
-    const cleanup = () => {
-      if (isClosed) return;
-      isClosed = true;
-      videoConnections--;
-      console.log(`[VIDEO] Stream client disconnected. Total clients: ${videoConnections}`);
-      videoEmitter.removeListener("data", onData);
-      res.end();
-    };
+    videoEmitter.once("stop-clients", cleanup);
 
     req.on("close", cleanup);
     req.on("end", cleanup);
