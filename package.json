@@ -65,9 +65,6 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
-    "vite-plugin-pwa": "^1.2.0",
-    "wait-on": "^9.0.4",
-    "workbox-build": "^7.4.0",
-    "workbox-window": "^7.4.0"
+    "wait-on": "^9.0.4"
   }
 }

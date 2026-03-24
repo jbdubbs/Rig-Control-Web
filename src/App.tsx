@@ -141,8 +141,6 @@ export default function App() {
   const isDraggingRFLevel = useRef(false);
   const [localNRLevel, setLocalNRLevel] = useState(0.5);
   const isDraggingNR = useRef(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallButton, setShowInstallButton] = useState(false);
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [isCompact, setIsCompact] = useState(() => localStorage.getItem("is-compact") === "true");
@@ -345,30 +343,6 @@ export default function App() {
       setVideoSessionId(Date.now());
     }
   }, [isCompact, isPhone, videoStatus]);
-
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstallButton(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, []);
-
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-      setShowInstallButton(false);
-    }
-  };
 
   const findClosestDNRValue = (val: number) => {
     if (DNR_LEVELS.length === 0) return 0.5;
@@ -682,12 +656,6 @@ export default function App() {
               </div>
 
               <div className="mt-3 flex gap-4">
-                <button 
-                  onClick={() => socket?.emit("connect-rig", { host: "mock", port: 0 })}
-                  className="text-[0.625rem] uppercase font-bold text-amber-500 hover:underline"
-                >
-                  Try Demo Mode (Mock Rig)
-                </button>
                 <a 
                   href="https://github.com/Hamlib/Hamlib/wiki/rigctld" 
                   target="_blank" 

@@ -397,7 +397,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const startPolling = () => {
     stopPolling();
     const runPoll = async () => {
-      if (!isConnected && !isMock) return;
+      if (!isConnected) return;
       await pollRig();
       pollingTimeout = setTimeout(runPoll, pollRate);
     };
@@ -411,7 +411,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     }
   };
 
-  let isMock = false;
   let visibleMeters: string[] = ['swr', 'alc'];
   let lastStatus: any = {
     frequency: "14074000",
@@ -494,18 +493,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     return values.join("\n");
   };
 
-  let mockAtt = 0;
-  let mockPreamp = 0;
-  let mockNB = 0;
-  let mockNR = 0;
-  let mockNRLevel = 8 / 15;
-  let mockTuner = 0;
-  let mockRFPower = 0.5;
-  let mockRFLevel = 0;
-  let mockAGC = 6;
-  let mockSplit = 0;
-  let mockTxVFO = "VFOB";
-
   const rigCommandQueue: { cmd: string; useExtended: boolean; resolve: (val: string) => void; reject: (err: any) => void }[] = [];
   let isRigBusy = false;
 
@@ -535,117 +522,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const executeRigCommand = (cmd: string, useExtended = false): Promise<string> => {
     const finalCmd = useExtended ? formatExtendedCommand(cmd) : cmd;
     
-    if (isMock) {
-      return new Promise((resolve, reject) => {
-        setTimeout(() => {
-          let response = "";
-          let longCmd = "";
-          
-          // Determine long command name for extended protocol
-          if (cmd === "f") longCmd = "get_freq";
-          else if (cmd === "m") longCmd = "get_mode";
-          else if (cmd === "t") longCmd = "get_ptt";
-          else if (cmd === "v") longCmd = "get_vfo";
-          else if (cmd === "s") longCmd = "get_split_vfo";
-          else if (cmd.startsWith("l")) longCmd = "get_level";
-          else if (cmd.startsWith("u")) longCmd = "get_func";
-          else longCmd = cmd;
-
-          if (cmd === "f") response = "14250000";
-          else if (cmd === "m") response = "USB\n2400";
-          else if (cmd === "M ?") response = "AM CW USB LSB RTTY FM PKTUSB PKTLSB";
-          else if (cmd === "t") response = "0";
-          else if (cmd === "v") response = "VFOA";
-          else if (cmd === "s") response = `${mockSplit}\n${mockTxVFO}`;
-          else if (cmd.startsWith("G")) response = "RPRT 0";
-          else if (cmd.startsWith("l STRENGTH")) response = (Math.random() * -100).toString();
-          else if (cmd.startsWith("l SWR")) response = (1 + Math.random() * 0.5).toString();
-          else if (cmd.startsWith("l ALC")) response = Math.random().toString();
-          else if (cmd.startsWith("l VD_METER")) response = (13.5 + Math.random() * 0.6).toString();
-          else if (cmd.startsWith("l RFPOWER_METER")) response = (mockRFPower * (0.9 + Math.random() * 0.2)).toString();
-          else if (cmd.startsWith("l RFPOWER")) response = mockRFPower.toString();
-          else if (cmd.startsWith("l RF")) response = mockRFLevel.toString();
-          else if (cmd.startsWith("l AGC")) response = mockAGC.toString();
-          else if (cmd.startsWith("l ATT")) response = mockAtt.toString();
-          else if (cmd.startsWith("l PREAMP")) response = mockPreamp.toString();
-          else if (cmd.startsWith("u NB")) response = mockNB.toString();
-          else if (cmd.startsWith("u NR")) response = mockNR.toString();
-          else if (cmd.startsWith("l NR")) response = mockNRLevel.toString();
-          else if (cmd.startsWith("u TUNER")) response = mockTuner.toString();
-          else if (cmd.startsWith("L ATT")) {
-            mockAtt = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("L PREAMP")) {
-            mockPreamp = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("U NB")) {
-            mockNB = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("U NR")) {
-            mockNR = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("L NR")) {
-            mockNRLevel = parseFloat(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("U TUNER")) {
-            mockTuner = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("G TUNE")) {
-            mockTuner = 1;
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("L RFPOWER")) {
-            mockRFPower = parseFloat(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("L RF")) {
-            mockRFLevel = parseFloat(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("L AGC")) {
-            mockAGC = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          }
-          else if (cmd.startsWith("S ")) {
-            const parts = cmd.split(" ");
-            mockSplit = parseInt(parts[1]);
-            mockTxVFO = parts[2];
-            response = "RPRT 0";
-          }
-          else response = "RPRT 0";
-
-          if (useExtended) {
-            let extendedResp = `${longCmd}:\n`;
-            const lines = response.split("\n");
-            if (cmd === "m") {
-              extendedResp += `Mode: ${lines[0]}\nPassband: ${lines[1]}\n`;
-            } else if (cmd.startsWith("l")) {
-              const param = cmd.split(" ")[1];
-              extendedResp += `${param}: ${response}\n`;
-            } else if (cmd.startsWith("u")) {
-              const param = cmd.split(" ")[1];
-              extendedResp += `${param}: ${response}\n`;
-            } else {
-              extendedResp += `Value: ${response}\n`;
-            }
-            extendedResp += "RPRT 0";
-            try {
-              resolve(parseExtendedResponse(extendedResp));
-            } catch (e) {
-              reject(e);
-            }
-          } else {
-            resolve(response.trim());
-          }
-        }, 50);
-      });
-    }
     return new Promise((resolve, reject) => {
       if (!rigSocket || rigSocket.destroyed) {
         return reject("Not connected to rig");
@@ -705,9 +581,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   };
 
   const pollRig = async () => {
-    if (!isMock && !isConnected) {
+    if (!isConnected) {
       // If disconnected, try to reconnect occasionally
-      if (rigConfig.host && rigConfig.host !== "mock" && !isMock) {
+      if (rigConfig.host && rigConfig.host !== "mock") {
         console.log("Attempting background reconnection...");
         connectToRig(rigConfig.host, rigConfig.port);
       }
@@ -794,20 +670,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("connect-rig", ({ host, port }) => {
       resetRigState();
-      if (host === "mock") {
-        isMock = true;
-        console.log("Starting Mock Rig Mode");
-        socket.emit("rig-connected", { host: "MOCK", port: 0 });
-        startPolling();
-        return;
-      }
-
-      isMock = false;
       connectToRig(host, port, socket);
     });
 
     socket.on("disconnect-rig", () => {
-      isMock = false;
       resetRigState();
       if (rigSocket) {
         rigSocket.destroy();
