@@ -264,6 +264,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   // Express route for MJPEG stream
   app.get("/api/video-stream", (req, res) => {
+    // Kill any existing stream connections to prevent resource exhaustion
+    // and ensure only the latest client is active (last-one-wins).
+    // This prevents the "6 connection limit" issue in browsers.
+    videoEmitter.emit("stop-clients");
+
     videoConnections++;
     console.log(`[VIDEO] New stream client connected. Total clients: ${videoConnections}`);
 
