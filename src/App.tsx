@@ -72,7 +72,7 @@ const BANDWIDTHS = [300, 500, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3200, 35
 
 const VFO_STEPS = [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10];
 
-const DNR_LEVELS = [0.05, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.55, 0.6, 0.7, 0.75, 0.8, 0.85, 0.95, 1.0];
+const DNR_LEVELS = Array.from({ length: 15 }, (_, i) => parseFloat(((i + 1) / 15).toFixed(3)));
 
 const AGC_VALUES = [0, 2, 3, 5, 6];
 const AGC_LABELS: Record<number, string> = {
@@ -162,6 +162,7 @@ export default function App() {
   const [radios, setRadios] = useState<{id: string, mfg: string, model: string}[]>([]);
   const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");
   const [videoStatus, setVideoStatus] = useState<"playing" | "paused" | "stopped">("stopped");
+  const [videoSessionId, setVideoSessionId] = useState(Date.now());
   const [videoDevices, setVideoDevices] = useState<string[]>([]);
   const [videoSettings, setVideoSettings] = useState({
     device: "",
@@ -228,6 +229,9 @@ export default function App() {
       });
       socket.on("video-status", (status: "playing" | "paused" | "stopped") => {
         setVideoStatus(status);
+        if (status === "playing") {
+          setVideoSessionId(Date.now());
+        }
       });
       socket.on("radios-list", (list: any) => {
         const unique = Array.from(new Map(list.map((r: any) => [r.id, r])).values()) as any[];
@@ -360,6 +364,20 @@ export default function App() {
     }
   };
 
+  const findClosestDNRValue = (val: number) => {
+    if (DNR_LEVELS.length === 0) return 0.5;
+    let closest = DNR_LEVELS[0];
+    let minDiff = Math.abs(DNR_LEVELS[0] - val);
+    for (let i = 1; i < DNR_LEVELS.length; i++) {
+      const diff = Math.abs(DNR_LEVELS[i] - val);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = DNR_LEVELS[i];
+      }
+    }
+    return closest;
+  };
+
   useEffect(() => {
     const newSocket = io(backendUrl);
     setSocket(newSocket);
@@ -414,7 +432,7 @@ export default function App() {
         setStatus(prev => ({ ...prev, agc: newStatus.agc }));
       }
       if (!isDraggingNR.current && newStatus.nrLevel !== undefined && newStatus.nrLevel !== null) {
-        setLocalNRLevel(newStatus.nrLevel);
+        setLocalNRLevel(findClosestDNRValue(newStatus.nrLevel));
       }
       if (!isChangingMode.current && newStatus.mode) {
         setLocalMode(newStatus.mode);
@@ -840,7 +858,7 @@ export default function App() {
                 <div className="relative aspect-video bg-black flex items-center justify-center">
                   {videoStatus === "playing" ? (
                     <img 
-                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                      src={`${backendUrl}/api/video-stream?sessionId=${videoSessionId}`} 
                       alt="Video Stream"
                       className="w-full h-full object-contain"
                       referrerPolicy="no-referrer"
@@ -1099,14 +1117,14 @@ export default function App() {
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
-                          <span className="text-sm text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                          <span className="text-sm text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
                         </div>
                         <input 
                           type="range" 
                           min="0" 
                           max="14" 
                           step="1"
-                          value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
+                          value={DNR_LEVELS.indexOf(localNRLevel)}
                           disabled={!connected}
                           onChange={(e) => {
                             isDraggingNR.current = true;
@@ -1440,7 +1458,7 @@ export default function App() {
                   <div className="relative aspect-video bg-black flex items-center justify-center">
                     {videoStatus === "playing" ? (
                       <img 
-                        src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                        src={`${backendUrl}/api/video-stream?sessionId=${videoSessionId}`} 
                         alt="Video Stream"
                         className="w-full h-full object-contain"
                         referrerPolicy="no-referrer"
@@ -2135,7 +2153,7 @@ export default function App() {
                 <div className="relative aspect-video bg-black flex items-center justify-center">
                   {videoStatus === "playing" ? (
                     <img 
-                      src={`${backendUrl}/api/video-stream?t=${Date.now()}`} 
+                      src={`${backendUrl}/api/video-stream?sessionId=${videoSessionId}`} 
                       alt="Video Stream"
                       className="w-full h-full object-contain"
                       referrerPolicy="no-referrer"

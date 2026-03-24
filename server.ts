@@ -5,6 +5,7 @@ import net from "net";
 import path from "path";
 import { spawn, ChildProcess, exec } from "child_process";
 import fs from "fs";
+import { EventEmitter } from "events";
 
 export async function startServer(appPath?: string, userDataPath?: string) {
   const app = express();
@@ -30,6 +31,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let autoStartEnabled = false;
   
   let videoProcess: ChildProcess | null = null;
+  const videoEmitter = new EventEmitter();
+  videoEmitter.setMaxListeners(0);
+
   let videoSettings = {
     device: "",
     resolution: "640x480",
@@ -186,6 +190,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       "-framerate", videoSettings.framerate,
       "-video_size", videoSettings.resolution,
       "-i", inputDevice,
+      "-vf", `scale=${videoSettings.resolution.replace('x', ':')}`,
       "-f", "mpjpeg",
       "-q:v", "5",
       "pipe:1"
@@ -195,6 +200,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     videoProcess = spawn("ffmpeg", args);
     videoStatus = "playing";
     io.emit("video-status", videoStatus);
+
+    videoProcess.stdout?.on("data", (data) => {
+      videoEmitter.emit("data", data);
+    });
 
     videoProcess.on("error", (err) => {
       console.error("Video process error:", err);
@@ -210,10 +219,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   // Express route for MJPEG stream
   app.get("/api/video-stream", (req, res) => {
-    if (videoStatus !== "playing" || !videoProcess) {
-      return res.status(404).send("Stream not active");
-    }
-
     res.writeHead(200, {
       'Content-Type': 'multipart/x-mixed-replace; boundary=ffmpeg',
       'Cache-Control': 'no-cache',
@@ -225,10 +230,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       res.write(data);
     };
 
-    videoProcess.stdout?.on("data", onData);
+    videoEmitter.on("data", onData);
 
     req.on("close", () => {
-      videoProcess?.stdout?.removeListener("data", onData);
+      videoEmitter.removeListener("data", onData);
     });
   });
 
@@ -399,7 +404,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     preamp: 0,
     nb: false,
     nr: false,
-    nrLevel: 0.5,
+    nrLevel: 8 / 15,
     tuner: false
   };
 
@@ -424,7 +429,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       preamp: 0,
       nb: false,
       nr: false,
-      nrLevel: 0.5,
+      nrLevel: 8 / 15,
       tuner: false
     };
   };
@@ -464,7 +469,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let mockPreamp = 0;
   let mockNB = 0;
   let mockNR = 0;
-  let mockNRLevel = 0.5;
+  let mockNRLevel = 8 / 15;
   let mockTuner = 0;
   let mockRFPower = 0.5;
   let mockRFLevel = 0;
@@ -720,7 +725,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
       const nb = (await sendToRig("u NB", true)) === "1";
       const nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
-      const nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
+      const nrRaw = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
+      const nrLevel = nrRaw > 1.0 ? nrRaw / 15 : nrRaw;
       const tuner = (await sendToRig("u TUNER", true).catch(() => "0")) === "1";
 
       lastStatus = {
@@ -893,8 +899,17 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("update-video-settings", (settings: any) => {
+      const oldRes = videoSettings.resolution;
+      const oldDev = videoSettings.device;
+      const oldFps = videoSettings.framerate;
+      
       videoSettings = { ...videoSettings, ...settings };
       saveSettings();
+
+      // Restart video if settings changed and it's currently playing
+      if (videoStatus === "playing" && (oldRes !== videoSettings.resolution || oldDev !== videoSettings.device || oldFps !== videoSettings.framerate)) {
+        startVideo();
+      }
     });
 
     socket.on("control-video", (action: "play" | "pause" | "stop") => {
