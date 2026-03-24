@@ -14,16 +14,20 @@ A modern, full-stack web application and desktop client designed to control amat
 
 ## TODO
 - **Audio In/Out**: Full audio in/out support for compatible rigs.  You can do remote SSB contacts!
-- **Bundle Hamlib**: So Hamlib doesn't need to be preinstalled on your system.
 - **Testing of All Popular Rigs**: Very limited testing, currently FT-710, 991A, DX10, 101D, 101MP should work fine.
 
 ## Prerequisites
 
-- **Node.js**: Version 18 or higher. (if compiling)
-- **Hamlib**: `rigctld` must be installed on your system and available in the system PATH.
-  - **Linux**: `sudo apt install libhamlib-utils`
-  - **macOS**: `brew install hamlib`
-  - **Windows**: Download and install from the [Hamlib website](https://hamlib.github.io/).
+- **Node.js**: Version 18 or higher (only if building from source).
+- **Hamlib**: `rigctld` is required in the following cases:
+  - **Windows & macOS Electron Apps**: You must install Hamlib on your system.
+  - **Building from Source**: Required for Windows, macOS, and Linux if running via `npm run dev`.
+  - **Linux AppImage**: **Not required.** Hamlib 4.7.0 is built-in.
+
+### Installing Hamlib (if required)
+- **Linux**: `sudo apt install libhamlib-utils`
+- **macOS**: `brew install hamlib`
+- **Windows**: Download and install from the [Hamlib website](https://hamlib.github.io/).
 
 ## Development
 
