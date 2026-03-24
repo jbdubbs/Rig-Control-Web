@@ -31,16 +31,20 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let autoStartEnabled = false;
   
   const getRigctldPath = (): string => {
-    const binDir = path.join(baseDir, "bin");
-    const binaryName = process.platform === "win32" ? "rigctld.exe" : "rigctld";
-    const localPath = path.join(binDir, binaryName);
+    let platformDir = "";
+    if (process.platform === "win32") platformDir = "windows";
+    else if (process.platform === "linux") platformDir = "linux";
+    else if (process.platform === "darwin") platformDir = "mac";
     
-    if (fs.existsSync(localPath)) {
+    const binaryName = process.platform === "win32" ? "rigctld.exe" : "rigctld";
+    const localPath = platformDir ? path.join(baseDir, "bin", platformDir, binaryName) : "";
+    
+    if (localPath && fs.existsSync(localPath)) {
       console.log(`[HAMLIB] Using bundled rigctld at: ${localPath}`);
       return localPath;
     }
     
-    console.log(`[HAMLIB] Bundled rigctld not found at ${localPath}, falling back to system PATH`);
+    console.log(`[HAMLIB] Bundled rigctld not found at ${localPath || "unsupported platform"}, falling back to system PATH`);
     return "rigctld";
   };
 
