@@ -2913,7 +2913,13 @@ export default function App() {
 
                 {/* Server Side Settings */}
                 <div className="space-y-4">
-                  <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold border-b border-blue-500/20 pb-1">Server Side / Backend Settings</h3>
+                  <div className="flex items-center justify-between border-b border-blue-500/20 pb-1">
+                    <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold">Server Side / Backend Settings</h3>
+                    <span className="text-[0.5rem] text-[#8e9299] font-medium italic">Bundled Hamlib 4.7.0 Supported</span>
+                  </div>
+                  <p className="text-[0.625rem] text-[#8e9299] leading-relaxed">
+                    The app will automatically use a bundled <code className="text-blue-400">rigctld</code> binary if placed in the <code className="text-blue-400">bin/</code> folder, otherwise it falls back to your system PATH.
+                  </p>
                   <div className="space-y-1">
                     <label className="text-[0.625rem] uppercase text-[#8e9299]">Rig Model (Hamlib Rig #)</label>
                     <select 

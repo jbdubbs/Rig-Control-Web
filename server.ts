@@ -30,6 +30,20 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let rigctldLogs: string[] = [];
   let autoStartEnabled = false;
   
+  const getRigctldPath = (): string => {
+    const binDir = path.join(baseDir, "bin");
+    const binaryName = process.platform === "win32" ? "rigctld.exe" : "rigctld";
+    const localPath = path.join(binDir, binaryName);
+    
+    if (fs.existsSync(localPath)) {
+      console.log(`[HAMLIB] Using bundled rigctld at: ${localPath}`);
+      return localPath;
+    }
+    
+    console.log(`[HAMLIB] Bundled rigctld not found at ${localPath}, falling back to system PATH`);
+    return "rigctld";
+  };
+
   let videoProcess: ChildProcess | null = null;
   const videoEmitter = new EventEmitter();
   videoEmitter.setMaxListeners(0);
@@ -342,9 +356,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       return;
     }
 
-    console.log(`Starting rigctld: rigctld -m ${rigNumber} -r ${serialPort} -t ${portNumber} -T ${ipAddress} -s ${serialPortSpeed}`);
+    console.log(`Starting rigctld: ${getRigctldPath()} -m ${rigNumber} -r ${serialPort} -t ${portNumber} -T ${ipAddress} -s ${serialPortSpeed}`);
     
-    rigctldProcess = spawn("rigctld", [
+    rigctldProcess = spawn(getRigctldPath(), [
       "-m", rigNumber,
       "-r", serialPort,
       "-t", portNumber,
@@ -904,9 +918,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       addLog("Testing rigctld configuration...");
       
       // 1. Check if rigctld exists
-      const check = spawn("rigctld", ["-V"]);
+      const check = spawn(getRigctldPath(), ["-V"]);
       check.on("error", () => {
-        socket.emit("test-result", { success: false, message: "rigctld binary not found in system PATH" });
+        socket.emit("test-result", { success: false, message: "rigctld binary not found in system PATH or bin folder" });
         addLog("Error: rigctld binary not found");
       });
       
@@ -914,7 +928,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         if (code !== 0) return; // Error handled above
         
         // 2. Try to start it briefly
-        const testProc = spawn("rigctld", [
+        const testProc = spawn(getRigctldPath(), [
           "-m", rigNumber,
           "-r", serialPort,
           "-t", portNumber,
