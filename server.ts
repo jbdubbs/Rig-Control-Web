@@ -162,21 +162,30 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   };
 
   const stopVideo = () => {
+    console.log("[VIDEO] Stopping video feed...");
     if (videoProcess) {
+      console.log(`[VIDEO] Killing ffmpeg process (PID: ${videoProcess.pid})`);
       videoProcess.kill('SIGKILL');
       videoProcess = null;
+    } else {
+      console.log("[VIDEO] No active video process to stop.");
     }
     videoStatus = "stopped";
     io.emit("video-status", videoStatus);
   };
 
   const startVideo = () => {
+    console.log("[VIDEO] Starting video feed...");
     stopVideo();
-    if (!videoSettings.device) return;
+    if (!videoSettings.device) {
+      console.warn("[VIDEO] Cannot start video: No device selected in settings.");
+      return;
+    }
 
     let inputFormat = "";
     let inputDevice = videoSettings.device;
     
+    console.log(`[VIDEO] Platform detected: ${process.platform}`);
     if (process.platform === "linux") {
       inputFormat = "v4l2";
     } else if (process.platform === "win32") {
@@ -185,6 +194,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     } else if (process.platform === "darwin") {
       inputFormat = "avfoundation";
     }
+    console.log(`[VIDEO] Using input format: ${inputFormat}, device: ${inputDevice}`);
 
     const args = [
       "-f", inputFormat,
@@ -197,7 +207,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       "pipe:1"
     ];
 
-    console.log(`Starting video stream: ffmpeg ${args.join(" ")}`);
+    console.log(`[VIDEO] Executing: ffmpeg ${args.join(" ")}`);
     videoProcess = spawn("ffmpeg", args);
     videoStatus = "playing";
     io.emit("video-status", videoStatus);
@@ -209,17 +219,21 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     videoProcess.stderr?.on("data", (data) => {
-      // Optional: log ffmpeg errors
-      // console.error(`ffmpeg stderr: ${data}`);
+      // ffmpeg stderr often contains frame info, which might be too noisy
+      // but we can log it if it looks like an error
+      const msg = data.toString();
+      if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("failed")) {
+        console.error(`[VIDEO] ffmpeg stderr: ${msg.trim()}`);
+      }
     });
 
     videoProcess.on("error", (err) => {
-      console.error("Video process error:", err);
+      console.error("[VIDEO] ffmpeg process error:", err);
       stopVideo();
     });
 
-    videoProcess.on("exit", () => {
-      console.log("Video process exited");
+    videoProcess.on("exit", (code, signal) => {
+      console.log(`[VIDEO] ffmpeg process exited with code ${code} and signal ${signal}`);
       videoStatus = "stopped";
       io.emit("video-status", videoStatus);
     });
@@ -228,7 +242,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   // Express route for MJPEG stream
   app.get("/api/video-stream", (req, res) => {
     videoConnections++;
-    console.log(`New video stream connection. Total: ${videoConnections}`);
+    console.log(`[VIDEO] New stream client connected. Total clients: ${videoConnections}`);
 
     res.writeHead(200, {
       'Content-Type': 'multipart/x-mixed-replace; boundary=ffmpeg',
@@ -241,12 +255,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     const onData = (data: Buffer) => {
       if (isClosed) return;
       
-      // Handle backpressure: if the buffer is full, we drop this frame for this client
-      // to avoid blocking the ffmpeg process or leaking memory.
       const flushed = res.write(data);
       if (!flushed) {
-        // We could wait for 'drain', but for real-time video, 
-        // it's better to just skip data until the client catches up.
+        // Backpressure detected
+        // console.log("[VIDEO] Backpressure detected, dropping frame for one client");
       }
     };
 
@@ -256,7 +268,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (isClosed) return;
       isClosed = true;
       videoConnections--;
-      console.log(`Video stream connection closed. Total: ${videoConnections}`);
+      console.log(`[VIDEO] Stream client disconnected. Total clients: ${videoConnections}`);
       videoEmitter.removeListener("data", onData);
       res.end();
     };
@@ -789,11 +801,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("get-video-devices", async () => {
+      console.log("[VIDEO] Client requested video devices list");
       const devices = await listVideoDevices();
+      console.log(`[VIDEO] Found ${devices.length} devices: ${devices.join(", ")}`);
       socket.emit("video-devices-list", devices);
     });
 
     socket.on("update-video-settings", (settings: any) => {
+      console.log("[VIDEO] Updating video settings:", settings);
       const oldRes = videoSettings.resolution;
       const oldDev = videoSettings.device;
       const oldFps = videoSettings.framerate;
@@ -803,15 +818,18 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
       // Restart video if settings changed and it's currently playing
       if (videoStatus === "playing" && (oldRes !== videoSettings.resolution || oldDev !== videoSettings.device || oldFps !== videoSettings.framerate)) {
+        console.log("[VIDEO] Settings changed while playing, restarting stream...");
         startVideo();
       }
     });
 
     socket.on("control-video", (action: "play" | "pause" | "stop") => {
+      console.log(`[VIDEO] Control action received: ${action}`);
       if (action === "play") {
         startVideo();
       } else if (action === "pause") {
         // MJPEG doesn't really pause well, we just stop it for now
+        console.log("[VIDEO] Pausing (stopping) stream...");
         stopVideo();
         videoStatus = "paused";
         io.emit("video-status", videoStatus);
