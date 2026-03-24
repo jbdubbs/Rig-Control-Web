@@ -37,7 +37,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     else if (process.platform === "darwin") platformDir = "mac";
     
     const binaryName = process.platform === "win32" ? "rigctld.exe" : "rigctld";
-    const localPath = platformDir ? path.join(baseDir, "bin", platformDir, binaryName) : "";
+    
+    // In production Electron builds, unpacked binaries are in app.asar.unpacked
+    let binBase = baseDir;
+    if (baseDir.endsWith(".asar")) {
+      binBase = baseDir.replace(".asar", ".asar.unpacked");
+    }
+    
+    const localPath = platformDir ? path.join(binBase, "bin", platformDir, binaryName) : "";
     
     if (localPath && fs.existsSync(localPath)) {
       console.log(`[HAMLIB] Using bundled rigctld at: ${localPath}`);

@@ -24,7 +24,11 @@
       "dist/**/*",
       "dist-electron/**/*",
       "package.json",
-      "radios.json"
+      "radios.json",
+      "bin/**/*"
+    ],
+    "asarUnpack": [
+      "bin/**/*"
     ],
     "win": {
       "target": "nsis"
