@@ -36,6 +36,25 @@ async function createWindow() {
     autoHideMenuBar: true,
   });
 
+  // Clear cache and storage to ensure the latest version is loaded
+  await win.webContents.session.clearCache();
+  await win.webContents.session.clearStorageData();
+  console.log("Electron cache and storage cleared.");
+
+  // Handle media permissions for video devices
+  win.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    if (permission === 'media') return true;
+    return false;
+  });
+
+  win.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
   if (isDev) {
     win.loadURL('http://localhost:3000');
     // win.webContents.openDevTools();

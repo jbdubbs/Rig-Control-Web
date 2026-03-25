@@ -130,7 +130,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
   };
 
-  const listVideoDevices = (): Promise<string[]> => {
+  const listVideoDevices = (): Promise<{ devices: string[], error?: string }> => {
     return new Promise((resolve) => {
       let cmd = "";
       if (process.platform === "linux") {
@@ -141,11 +141,12 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         cmd = "ffmpeg -f avfoundation -list_devices true -i \"\" 2>&1";
       }
 
-      if (!cmd) return resolve([]);
+      if (!cmd) return resolve({ devices: [] });
 
       exec(cmd, (err, stdout, stderr) => {
         const output = stdout + stderr;
         const devices: string[] = [];
+        let error: string | undefined;
         
         if (process.platform === "linux") {
           const lines = output.split("\n");
@@ -161,13 +162,29 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const lines = output.split("\n");
           let inDirectShow = false;
           lines.forEach(line => {
+            // FFmpeg output for dshow devices
             if (line.includes("DirectShow video devices")) inDirectShow = true;
             if (line.includes("DirectShow audio devices")) inDirectShow = false;
+            
             if (inDirectShow && line.includes("\"")) {
               const match = line.match(/"([^"]+)"/);
-              if (match) devices.push(match[1]);
+              if (match) {
+                const deviceName = match[1];
+                // Filter out alternative names (starting with @device_pnp_)
+                if (!deviceName.startsWith("@device_pnp_") && !devices.includes(deviceName)) {
+                  devices.push(deviceName);
+                }
+              }
             }
           });
+          
+          if (devices.length === 0 && err) {
+            console.error("[VIDEO] Failed to list Windows video devices:", err.message);
+            if (output.includes("not recognized") || output.includes("not found")) {
+              error = "ffmpeg not found in system PATH. Please install ffmpeg to use the video feed feature.";
+              console.error(`[VIDEO] ${error}`);
+            }
+          }
         } else if (process.platform === "darwin") {
           const lines = output.split("\n");
           let inVideo = false;
@@ -176,12 +193,18 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             if (line.includes("AVFoundation audio devices")) inVideo = false;
             if (inVideo && line.match(/\[\d+\]/)) {
               const parts = line.split("]");
-              if (parts.length > 1) devices.push(parts[1].trim());
+              if (parts.length > 1) {
+                const deviceName = parts[1].trim();
+                if (!devices.includes(deviceName)) {
+                  devices.push(deviceName);
+                }
+              }
             }
           });
         }
         
-        resolve(devices);
+        console.log(`[VIDEO] Found ${devices.length} video devices on ${process.platform}:`, devices);
+        resolve({ devices, error });
       });
     });
   };
@@ -857,7 +880,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("get-video-devices", async () => {
       console.log("[VIDEO] Client requested video devices list");
-      const devices = await listVideoDevices();
+      const { devices, error } = await listVideoDevices();
+      if (error) {
+        socket.emit("video-error", error);
+      }
       console.log(`[VIDEO] Found ${devices.length} devices: ${devices.join(", ")}`);
       socket.emit("video-devices-list", devices);
     });

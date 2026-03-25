@@ -2983,6 +2983,11 @@ export default function App() {
                 </div>
 
                 <div className="pt-4 space-y-3">
+                  <div className="flex items-center justify-between text-[0.5rem] text-[#8e9299] opacity-50 uppercase font-bold tracking-widest border-t border-[#2a2b2e] pt-4">
+                    <span>App Version</span>
+                    <span>v0.1.0</span>
+                  </div>
+
                   {rigctldProcessStatus === "already_running" && (
                     <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-xl text-red-400 text-[0.6875rem] animate-in slide-in-from-top-2">
                       <p className="font-bold uppercase mb-1">Process Conflict</p>
