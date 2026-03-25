@@ -19,9 +19,10 @@
   "build": {
     "appId": "com.rigcontrol.web",
     "productName": "RigControl Web",
-    "icon": "assets/icon.svg",
+    "icon": "./assets/icon.svg",
     "directories": {
-      "output": "build"
+      "output": "build",
+      "buildResources": "."
     },
     "files": [
       "dist/**/*",
@@ -35,7 +36,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "bin/windows/icon.svg",
+      "icon": "./bin/windows/icon.svg",
       "files": [
         "dist/**/*",
         "dist-electron/**/*",
@@ -46,7 +47,7 @@
     },
     "linux": {
       "target": "AppImage",
-      "icon": "bin/linux/icon.svg",
+      "icon": "./bin/linux/icon.svg",
       "files": [
         "dist/**/*",
         "dist-electron/**/*",
@@ -57,7 +58,7 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "bin/mac/icon.svg",
+      "icon": "./bin/mac/icon.svg",
       "files": [
         "dist/**/*",
         "dist-electron/**/*",
