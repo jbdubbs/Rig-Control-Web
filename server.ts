@@ -162,9 +162,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const lines = output.split("\n");
           let inDirectShow = false;
           lines.forEach(line => {
+            const lowerLine = line.toLowerCase();
             // FFmpeg output for dshow devices
-            if (line.includes("DirectShow video devices")) inDirectShow = true;
-            if (line.includes("DirectShow audio devices")) inDirectShow = false;
+            if (lowerLine.includes("directshow video devices")) inDirectShow = true;
+            if (lowerLine.includes("directshow audio devices")) inDirectShow = false;
             
             if (inDirectShow && line.includes("\"")) {
               const match = line.match(/"([^"]+)"/);
@@ -178,12 +179,43 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             }
           });
           
-          if (devices.length === 0 && err) {
-            console.error("[VIDEO] Failed to list Windows video devices:", err.message);
-            if (output.includes("not recognized") || output.includes("not found")) {
-              error = "ffmpeg not found in system PATH. Please install ffmpeg to use the video feed feature.";
-              console.error(`[VIDEO] ${error}`);
-            }
+          // Fallback parsing: look for anything in quotes followed by (video)
+          if (devices.length === 0) {
+            lines.forEach(line => {
+              if (line.includes("\"") && line.toLowerCase().includes("(video)")) {
+                const match = line.match(/"([^"]+)"/);
+                if (match && !match[1].startsWith("@device_pnp_") && !devices.includes(match[1])) {
+                  devices.push(match[1]);
+                }
+              }
+            });
+          }
+          
+          // If still no devices from ffmpeg, try PowerShell as a discovery fallback
+          if (devices.length === 0) {
+            console.log("[VIDEO] No devices found via ffmpeg, trying PowerShell fallback...");
+            const psCmd = 'powershell -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_PnPEntity | Where-Object { $_.Service -eq \'usbvideo\' } | Select-Object -ExpandProperty Caption"';
+            exec(psCmd, (psErr, psStdout) => {
+              if (!psErr && psStdout.trim()) {
+                const psDevices = psStdout.split("\n").map(d => d.trim()).filter(Boolean);
+                psDevices.forEach(d => {
+                  if (!devices.includes(d)) devices.push(d);
+                });
+                console.log(`[VIDEO] PowerShell found ${devices.length} devices:`, devices);
+                resolve({ devices, error });
+              } else {
+                if (err) {
+                  console.error("[VIDEO] Failed to list Windows video devices via ffmpeg:", err.message);
+                  if (output.includes("not recognized") || output.includes("not found")) {
+                    error = "ffmpeg not found in system PATH. Please install ffmpeg to use the video feed feature.";
+                    console.error(`[VIDEO] ${error}`);
+                  }
+                }
+                console.log(`[VIDEO] Found ${devices.length} video devices on ${process.platform}:`, devices);
+                resolve({ devices, error });
+              }
+            });
+            return; // Exit early as we're resolving inside the nested exec
           }
         } else if (process.platform === "darwin") {
           const lines = output.split("\n");
