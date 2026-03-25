@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "rigcontrol-web",
   "private": true,
   "version": "03.25.2026-Alpha1",
   "author": "Jason Weisberger NT0Y",
@@ -35,20 +35,35 @@
     ],
     "win": {
       "target": "nsis",
+      "icon": "bin/windows/icon.svg",
       "files": [
-        "bin/windows/**/*"
+        "dist/**/*",
+        "dist-electron/**/*",
+        "bin/windows/**/*",
+        "package.json",
+        "radios.json"
       ]
     },
     "linux": {
       "target": "AppImage",
+      "icon": "bin/linux/icon.svg",
       "files": [
-        "bin/linux/**/*"
+        "dist/**/*",
+        "dist-electron/**/*",
+        "bin/linux/**/*",
+        "package.json",
+        "radios.json"
       ]
     },
     "mac": {
       "target": "dmg",
+      "icon": "bin/mac/icon.svg",
       "files": [
-        "bin/mac/**/*"
+        "dist/**/*",
+        "dist-electron/**/*",
+        "bin/mac/**/*",
+        "package.json",
+        "radios.json"
       ]
     }
   },
