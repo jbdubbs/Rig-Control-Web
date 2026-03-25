@@ -19,10 +19,9 @@
   "build": {
     "appId": "com.rigcontrol.web",
     "productName": "RigControl Web",
-    "icon": "./assets/icon.svg",
     "directories": {
       "output": "build",
-      "buildResources": "."
+      "buildResources": "bin"
     },
     "files": [
       "dist/**/*",
@@ -36,7 +35,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "./bin/windows/icon.svg",
+      "icon": "windows/icon.png",
       "files": [
         "dist/**/*",
         "dist-electron/**/*",
@@ -47,7 +46,7 @@
     },
     "linux": {
       "target": "AppImage",
-      "icon": "./bin/linux/icon.svg",
+      "icon": "linux/icon.png",
       "files": [
         "dist/**/*",
         "dist-electron/**/*",
@@ -58,7 +57,7 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "./bin/mac/icon.svg",
+      "icon": "mac/icon.png",
       "files": [
         "dist/**/*",
         "dist-electron/**/*",
@@ -93,6 +92,7 @@
     "electron-builder": "^26.8.1",
     "electron-is-dev": "^3.0.1",
     "esbuild": "^0.27.4",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
