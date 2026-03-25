@@ -11,21 +11,31 @@ A modern, full-stack web application and desktop client designed to control amat
 - **Rig Video Feed**: Displays a system video capture device, like an HDMI capture card or a webcam, so you can see your radio's front screen.  Example: FT-710 DVI out > USB to HDMI capture card.
 - **Mobile Rig Control**: Through your own VPN and installing the app or pointing your VPN'd browser to your rig computer IP on port 3000.
 - **Works With All Hamlib Supported Apps**: Tell your app that your rig is a "Hamlib NET rigctl" with a local address of 127.0.0.1:4532.
+  - WSJTX, WSJTX Improved, FLDigi, VarAC, JS8Call, etc...
 
 ## TODO
-- **Audio In/Out**: Full audio in/out support for compatible rigs.  You can do remote SSB contacts!
+- **Audio In/Out**: Full audio in/out support for compatible rigs.  You can work remote SSB contacts!
+- **Remote CW**: CW from your phone, tablet, or laptop while away from home.
 - **Testing of All Popular Rigs**: Very limited testing, currently FT-710, 991A, DX10, 101D, 101MP should work fine.
 
 ## Prerequisites
 
-- **Node.js**: Version 18 or higher (only if building from source).
+### Common
+- **Operating Systems**:
+  - **Windows 10 or higher** (tested on Windows 11 23H2)
+    - No external dependencies.
+  - **Linux 6.0 kernel or higher** (tested on Fedora 43)
+    - No external dependencies.
+  - **MacOS TBA** (I don't have a Mac for testing...)
+    - Requires externally installed Hamlib 4.7.0 and latest ffmpeg, both in the system PATH.
+
+### Compile from Source
+- **Node.js**: Version 18 or higher.
 - **FFmpeg**: Required for the video feed feature.
-  - **Windows & macOS Electron Apps**: You can bundle `ffmpeg` by placing the binary in the `bin/[windows|mac]/` folder.
+  - **Electron Apps**: You can bundle `ffmpeg` by placing the binary in the `bin/[linux|windows|mac]/` folder.
   - **Fallback**: If not bundled, the app will fall back to the system PATH.
-- **Hamlib**: `rigctld` is required in the following cases:
-  - **Windows & macOS Electron Apps**: You must install Hamlib on your system.
-  - **Building from Source**: Required for Windows, macOS, and Linux if running via `npm run dev`.
-  - **Linux AppImage**: **Not required.** Hamlib 4.7.0 is built-in.
+- **Hamlib**: 4.7.0 or higher.
+  - **Electron Apps**: You can bundle `rigctld (Hamlib)` by placing the binary in the `bin/[linux|windows|mac]/` folder.
 
 ### Installing Hamlib (if required)
 - **Linux**: `sudo apt install libhamlib-utils`
@@ -86,7 +96,6 @@ Access the **Settings** (gear icon) in the application to configure:
 - **Serial Port**: The device path (e.g., `/dev/ttyUSB0` or `COM3`).
 - **Baud Rate**: The serial speed for your radio.
 - **Network Settings**: The host and port for the `rigctld` server.
-- **Auto Start**: Enable this to have the app manage the `rigctld` process for you.
 
 ## License
 

@@ -1,7 +1,9 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "0.1.0",
+  "version": "03.25.2026-Alpha1",
+  "author": "Jason Weisberger NT0Y",
+  "description": "A remote control application for amateur radio transceivers, enabling control and monitoring from various devices.",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -17,12 +19,14 @@
   "build": {
     "appId": "com.rigcontrol.web",
     "productName": "RigControl Web",
+    "icon": "assets/icon.svg",
     "directories": {
       "output": "build"
     },
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "assets/**/*",
       "package.json",
       "radios.json"
     ],
