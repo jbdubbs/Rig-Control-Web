@@ -19,7 +19,9 @@ A modern, full-stack web application and desktop client designed to control amat
 ## Prerequisites
 
 - **Node.js**: Version 18 or higher (only if building from source).
-- **FFmpeg**: Required for the video feed feature. Must be installed and available in your system PATH.
+- **FFmpeg**: Required for the video feed feature.
+  - **Windows & macOS Electron Apps**: You can bundle `ffmpeg` by placing the binary in the `bin/[windows|mac]/` folder.
+  - **Fallback**: If not bundled, the app will fall back to the system PATH.
 - **Hamlib**: `rigctld` is required in the following cases:
   - **Windows & macOS Electron Apps**: You must install Hamlib on your system.
   - **Building from Source**: Required for Windows, macOS, and Linux if running via `npm run dev`.

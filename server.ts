@@ -55,6 +55,30 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     return "rigctld";
   };
 
+  const getFfmpegPath = (): string => {
+    let platformDir = "";
+    if (process.platform === "win32") platformDir = "windows";
+    else if (process.platform === "linux") platformDir = "linux";
+    else if (process.platform === "darwin") platformDir = "mac";
+    
+    const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+    
+    let binBase = baseDir;
+    if (baseDir.endsWith(".asar")) {
+      binBase = baseDir.replace(".asar", ".asar.unpacked");
+    }
+    
+    const localPath = platformDir ? path.join(binBase, "bin", platformDir, binaryName) : "";
+    
+    if (localPath && fs.existsSync(localPath)) {
+      console.log(`[VIDEO] Using bundled ffmpeg at: ${localPath}`);
+      return localPath;
+    }
+    
+    console.log(`[VIDEO] Bundled ffmpeg not found at ${localPath || "unsupported platform"}, falling back to system PATH`);
+    return "ffmpeg";
+  };
+
   let videoProcess: ChildProcess | null = null;
   const videoEmitter = new EventEmitter();
   videoEmitter.setMaxListeners(0);
@@ -132,13 +156,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   const listVideoDevices = (): Promise<{ devices: string[], error?: string }> => {
     return new Promise((resolve) => {
+      const ffmpegPath = getFfmpegPath();
       let cmd = "";
       if (process.platform === "linux") {
         cmd = "v4l2-ctl --list-devices || ls /dev/video*";
       } else if (process.platform === "win32") {
-        cmd = "ffmpeg -list_devices true -f dshow -i dummy 2>&1";
+        cmd = `"${ffmpegPath}" -list_devices true -f dshow -i dummy 2>&1`;
       } else if (process.platform === "darwin") {
-        cmd = "ffmpeg -f avfoundation -list_devices true -i \"\" 2>&1";
+        cmd = `"${ffmpegPath}" -f avfoundation -list_devices true -i "" 2>&1`;
       }
 
       if (!cmd) return resolve({ devices: [] });
@@ -288,8 +313,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       "pipe:1"
     ];
 
-    console.log(`[VIDEO] Executing: ffmpeg ${args.join(" ")}`);
-    const currentProcess = spawn("ffmpeg", args);
+    const ffmpegPath = getFfmpegPath();
+    console.log(`[VIDEO] Executing: ${ffmpegPath} ${args.join(" ")}`);
+    const currentProcess = spawn(ffmpegPath, args);
     videoProcess = currentProcess;
     
     let hasReceivedData = false;
@@ -726,7 +752,13 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (isPttActive) {
         try {
           alc = await sendToRig("l ALC", true);
-          powerMeter = await sendToRig("l RFPOWER_METER", true);
+          let powerMeterRaw = await sendToRig("l RFPOWER_METER", true);
+          if (process.platform === "win32") {
+            const pmVal = parseFloat(powerMeterRaw);
+            powerMeter = Math.max(0.0, Math.min(1.0, pmVal * 2.55)).toString();
+          } else {
+            powerMeter = powerMeterRaw;
+          }
           swr = await sendToRig("l SWR", true);
         } catch (e) {
           console.warn("TX levels poll failed, might not be supported");
@@ -742,7 +774,13 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const frequency = await sendToRig("f", true);
       const modeBw = await sendToRig("m", true);
       const [mode, bandwidth] = modeBw.split("\n");
-      const rfpower = parseFloat(await sendToRig("l RFPOWER", true));
+      let rfpower = parseFloat(await sendToRig("l RFPOWER", true));
+      
+      // Windows RFPOWER scaling fix: multiply by 2.55 to match the 0.0-1.0 scale used in the UI
+      if (process.platform === "win32") {
+        rfpower = Math.max(0.0, Math.min(1.0, rfpower * 2.55));
+      }
+
       const rflevel = parseFloat(await sendToRig("l RF", true).catch(() => "0"));
       const agc = parseInt(await sendToRig("l AGC", true).catch(() => "6"));
       const vfo = await sendToRig("v", true);
@@ -818,7 +856,13 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-level", async ({ level, val }) => {
       try {
-        await sendToRig(`L ${level} ${val}`);
+        let finalVal = val;
+        // Windows RFPOWER scaling fix: 35W (0.35) results in 90W (0.90) on Windows
+        // This suggests a 2.55x scaling difference (0.35 * 2.55 = 0.8925)
+        if (level === "RFPOWER" && process.platform === "win32") {
+          finalVal = Math.max(0.0, Math.min(1.0, val / 2.55));
+        }
+        await sendToRig(`L ${level} ${finalVal}`);
         pollRig();
       } catch (err) {
         socket.emit("rig-error", `Failed to set ${level}`);
