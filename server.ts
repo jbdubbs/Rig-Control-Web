@@ -752,13 +752,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (isPttActive) {
         try {
           alc = await sendToRig("l ALC", true);
-          let powerMeterRaw = await sendToRig("l RFPOWER_METER", true);
-          if (process.platform === "win32") {
-            const pmVal = parseFloat(powerMeterRaw);
-            powerMeter = Math.max(0.0, Math.min(1.0, pmVal * 2.55)).toString();
-          } else {
-            powerMeter = powerMeterRaw;
-          }
+          powerMeter = await sendToRig("l RFPOWER_METER", true);
           swr = await sendToRig("l SWR", true);
         } catch (e) {
           console.warn("TX levels poll failed, might not be supported");
@@ -775,12 +769,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const modeBw = await sendToRig("m", true);
       const [mode, bandwidth] = modeBw.split("\n");
       let rfpower = parseFloat(await sendToRig("l RFPOWER", true));
-      
-      // Windows RFPOWER scaling fix: multiply by 2.55 to match the 0.0-1.0 scale used in the UI
-      if (process.platform === "win32") {
-        rfpower = Math.max(0.0, Math.min(1.0, rfpower * 2.55));
-      }
-
       const rflevel = parseFloat(await sendToRig("l RF", true).catch(() => "0"));
       const agc = parseInt(await sendToRig("l AGC", true).catch(() => "6"));
       const vfo = await sendToRig("v", true);
@@ -856,13 +844,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-level", async ({ level, val }) => {
       try {
-        let finalVal = val;
-        // Windows RFPOWER scaling fix: 35W (0.35) results in 90W (0.90) on Windows
-        // This suggests a 2.55x scaling difference (0.35 * 2.55 = 0.8925)
-        if (level === "RFPOWER" && process.platform === "win32") {
-          finalVal = Math.max(0.0, Math.min(1.0, val / 2.55));
-        }
-        await sendToRig(`L ${level} ${finalVal}`);
+        await sendToRig(`L ${level} ${val}`);
         pollRig();
       } catch (err) {
         socket.emit("rig-error", `Failed to set ${level}`);

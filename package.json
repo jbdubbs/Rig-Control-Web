@@ -24,20 +24,28 @@
       "dist/**/*",
       "dist-electron/**/*",
       "package.json",
-      "radios.json",
-      "bin/**/*"
+      "radios.json"
     ],
     "asarUnpack": [
       "bin/**/*"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "files": [
+        "bin/windows/**/*"
+      ]
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "files": [
+        "bin/linux/**/*"
+      ]
     },
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "files": [
+        "bin/mac/**/*"
+      ]
     }
   },
   "dependencies": {
