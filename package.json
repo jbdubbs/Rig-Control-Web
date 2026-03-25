@@ -3,7 +3,7 @@
   "private": true,
   "version": "03.25.2026-Alpha1",
   "author": "Jason Weisberger NT0Y",
-  "description": "A remote control application for amateur radio transceivers, enabling control and monitoring from various devices.",
+  "description": "A web-based frontend for hamlib rigctld for local installation and portable backend capabilities.",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -18,15 +18,13 @@
   },
   "build": {
     "appId": "com.rigcontrol.web",
-    "productName": "RigControl Web",
+    "productName": "RIGCONTROL WEB",
     "directories": {
-      "output": "build",
-      "buildResources": "bin"
+      "output": "build"
     },
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
-      "assets/**/*",
       "package.json",
       "radios.json"
     ],
@@ -35,35 +33,20 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "windows/icon.png",
       "files": [
-        "dist/**/*",
-        "dist-electron/**/*",
-        "bin/windows/**/*",
-        "package.json",
-        "radios.json"
+        "bin/windows/**/*"
       ]
     },
     "linux": {
       "target": "AppImage",
-      "icon": "linux/icon.png",
       "files": [
-        "dist/**/*",
-        "dist-electron/**/*",
-        "bin/linux/**/*",
-        "package.json",
-        "radios.json"
+        "bin/linux/**/*"
       ]
     },
     "mac": {
       "target": "dmg",
-      "icon": "mac/icon.png",
       "files": [
-        "dist/**/*",
-        "dist-electron/**/*",
-        "bin/mac/**/*",
-        "package.json",
-        "radios.json"
+        "bin/mac/**/*"
       ]
     }
   },
@@ -92,7 +75,6 @@
     "electron-builder": "^26.8.1",
     "electron-is-dev": "^3.0.1",
     "esbuild": "^0.27.4",
-    "sharp": "^0.34.5",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

@@ -1,6 +1,6 @@
 {
   "name": "RIGCONTROL WEB",
-  "description": "A web-based frontend for hamlib rigctld with PWA support for local installation and portable backend capabilities.",
+  "description": "A web-based frontend for hamlib rigctld for local installation and portable backend capabilities.",
   "requestFramePermissions": [
     "microphone",
     "camera",
