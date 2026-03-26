@@ -161,6 +161,8 @@ export default function App() {
     ipAddress: "127.0.0.1",
     serialPortSpeed: "38400"
   });
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [statusLoaded, setStatusLoaded] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [radios, setRadios] = useState<{id: string, mfg: string, model: string}[]>([]);
   const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");
@@ -257,6 +259,7 @@ export default function App() {
     if (socket) {
       socket.on("settings-data", (data: any) => {
         setRigctldSettings(data.settings);
+        setSettingsLoaded(true);
         if (data.videoSettings) {
           setVideoSettings(data.videoSettings);
         }
@@ -280,6 +283,7 @@ export default function App() {
       });
       socket.on("rigctld-status", (status: "running" | "stopped" | "error" | "already_running") => {
         setRigctldProcessStatus(status);
+        setStatusLoaded(true);
       });
       socket.on("rigctld-log", (lines: string[]) => {
         setRigctldLogs(prev => [...prev, ...lines].slice(-100));
@@ -293,6 +297,30 @@ export default function App() {
       socket.emit("get-video-devices");
     }
   }, [socket]);
+
+  useEffect(() => {
+    if (rigctldProcessStatus === "running") {
+      localStorage.setItem("rigctld-auto-start", "true");
+    }
+  }, [rigctldProcessStatus]);
+
+  const autoStartAttempted = useRef(false);
+  useEffect(() => {
+    if (socket && settingsLoaded && statusLoaded && !autoStartAttempted.current) {
+      autoStartAttempted.current = true;
+      const hasSettings = rigctldSettings.serialPort && 
+                         rigctldSettings.rigNumber && 
+                         rigctldSettings.serialPortSpeed &&
+                         rigctldSettings.portNumber &&
+                         rigctldSettings.ipAddress;
+      const shouldAutoStart = localStorage.getItem("rigctld-auto-start") === "true";
+      const isStopped = rigctldProcessStatus === "stopped" || rigctldProcessStatus === "error";
+      
+      if (hasSettings && shouldAutoStart && isStopped) {
+        socket.emit("start-rigctld");
+      }
+    }
+  }, [socket, settingsLoaded, statusLoaded, rigctldSettings, rigctldProcessStatus]);
 
   useEffect(() => {
     if (logEndRef.current) {
@@ -3188,7 +3216,10 @@ export default function App() {
                       </button>
                       {rigctldProcessStatus === "running" ? (
                         <button 
-                          onClick={() => socket?.emit("stop-rigctld")}
+                          onClick={() => {
+                            localStorage.setItem("rigctld-auto-start", "false");
+                            socket?.emit("stop-rigctld");
+                          }}
                           className="px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/50 rounded text-[0.625rem] font-bold uppercase hover:bg-red-500 hover:text-white transition-all"
                         >
                           Stop

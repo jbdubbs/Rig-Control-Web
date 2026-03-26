@@ -925,7 +925,15 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       startPolling();
     });
 
-    socket.on("get-settings", () => {
+    socket.on("get-settings", async () => {
+      // Check if rigctld is already running on the system if we think it's stopped
+      if (rigctldStatus === "stopped" || rigctldStatus === "error") {
+        const isRunning = await checkExistingRigctld();
+        if (isRunning) {
+          rigctldStatus = "already_running";
+        }
+      }
+
       socket.emit("settings-data", {
         settings: rigctldSettings,
         autoStart: autoStartEnabled,
