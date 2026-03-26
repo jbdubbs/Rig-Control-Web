@@ -14,7 +14,7 @@
     "lint": "tsc --noEmit",
     "electron:dev": "ELECTRON_RUN=true electron -r tsx electron/main.ts",
     "electron:build": "npm run build && npm run build:electron && electron-builder",
-    "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.cjs --external:electron --external:vite"
+    "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.cjs --external:electron --external:vite && esbuild electron/preload.ts --bundle --platform=node --outfile=dist-electron/preload.cjs --external:electron"
   },
   "build": {
     "appId": "com.rigcontrol.web",

@@ -190,6 +190,33 @@ export default function App() {
   const [isDesktopALCCollapsed, setIsDesktopALCCollapsed] = useState(false);
   const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(false);
   const videoSettingsInitialized = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isCompact || !(window as any).electron) return;
+
+    const snap = () => {
+      if (containerRef.current) {
+        const height = containerRef.current.offsetHeight;
+        const width = window.innerWidth;
+        const padding = isCompact ? 16 : 64; // p-2 is 8px, so 16px total
+        (window as any).electron.resizeWindow(width, height + padding);
+      }
+    };
+
+    const observer = new ResizeObserver(snap);
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    window.addEventListener('resize', snap);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', snap);
+    };
+  }, [isCompact]);
 
   useEffect(() => {
     if (videoSettings.device && !videoSettingsInitialized.current) {
@@ -607,10 +634,13 @@ export default function App() {
       "min-h-screen bg-[#0a0a0a] text-[#e0e0e0] font-mono",
       isCompact ? "p-2" : "p-4 md:p-8"
     )}>
-      <div className={cn(
-        "mx-auto space-y-4",
-        isCompact ? "w-full" : "max-w-6xl space-y-6"
-      )}>
+      <div 
+        ref={containerRef}
+        className={cn(
+          "mx-auto space-y-4",
+          isCompact ? "w-full" : "max-w-6xl space-y-6"
+        )}
+      >
         {/* Header / Connection */}
         <header className="bg-[#151619] rounded-xl border border-[#2a2b2e] shadow-2xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">

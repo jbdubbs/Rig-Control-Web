@@ -1,6 +1,10 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import isDev from 'electron-is-dev';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Disable hardware acceleration to resolve VA-API errors on Linux
 app.disableHardwareAcceleration();
@@ -31,9 +35,24 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: isDev 
+        ? path.join(process.cwd(), 'dist-electron/preload.cjs')
+        : path.join(__dirname, 'preload.cjs')
     },
     title: "RigControl Web",
     autoHideMenuBar: true,
+  });
+
+  ipcMain.on('resize-window', (event, { width, height }) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+      // Use setContentSize to ensure the content fits exactly
+      // We only want to resize if the new size is different
+      const [currentWidth, currentHeight] = win.getContentSize();
+      if (currentWidth !== width || currentHeight !== height) {
+        win.setContentSize(Math.round(width), Math.round(height), true);
+      }
+    }
   });
 
   // Clear cache and storage to ensure the latest version is loaded
