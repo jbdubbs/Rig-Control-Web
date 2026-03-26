@@ -1001,6 +1001,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("start-rigctld", () => {
+      autoStartEnabled = true;
+      saveSettings();
       startRigctld();
     });
 
@@ -1012,6 +1014,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("stop-rigctld", () => {
+      autoStartEnabled = false;
+      saveSettings();
       stopRigctld();
     });
 

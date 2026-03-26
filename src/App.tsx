@@ -299,30 +299,6 @@ export default function App() {
   }, [socket]);
 
   useEffect(() => {
-    if (rigctldProcessStatus === "running") {
-      localStorage.setItem("rigctld-auto-start", "true");
-    }
-  }, [rigctldProcessStatus]);
-
-  const autoStartAttempted = useRef(false);
-  useEffect(() => {
-    if (socket && settingsLoaded && statusLoaded && !autoStartAttempted.current) {
-      autoStartAttempted.current = true;
-      const hasSettings = rigctldSettings.serialPort && 
-                         rigctldSettings.rigNumber && 
-                         rigctldSettings.serialPortSpeed &&
-                         rigctldSettings.portNumber &&
-                         rigctldSettings.ipAddress;
-      const shouldAutoStart = localStorage.getItem("rigctld-auto-start") === "true";
-      const isStopped = rigctldProcessStatus === "stopped" || rigctldProcessStatus === "error";
-      
-      if (hasSettings && shouldAutoStart && isStopped) {
-        socket.emit("start-rigctld");
-      }
-    }
-  }, [socket, settingsLoaded, statusLoaded, rigctldSettings, rigctldProcessStatus]);
-
-  useEffect(() => {
     if (logEndRef.current) {
       logEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
@@ -3216,10 +3192,7 @@ export default function App() {
                       </button>
                       {rigctldProcessStatus === "running" ? (
                         <button 
-                          onClick={() => {
-                            localStorage.setItem("rigctld-auto-start", "false");
-                            socket?.emit("stop-rigctld");
-                          }}
+                          onClick={() => socket?.emit("stop-rigctld")}
                           className="px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/50 rounded text-[0.625rem] font-bold uppercase hover:bg-red-500 hover:text-white transition-all"
                         >
                           Stop
