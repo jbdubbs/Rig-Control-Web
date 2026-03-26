@@ -212,9 +212,16 @@ export default function App() {
 
     window.addEventListener('resize', snap);
 
+    if (isCompact) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+
     return () => {
       observer.disconnect();
       window.removeEventListener('resize', snap);
+      document.body.style.overflow = 'auto';
     };
   }, [isCompact]);
 
@@ -631,8 +638,8 @@ export default function App() {
 
   return (
     <div className={cn(
-      "min-h-screen bg-[#0a0a0a] text-[#e0e0e0] font-mono",
-      isCompact ? "p-2" : "p-4 md:p-8"
+      "bg-[#0a0a0a] text-[#e0e0e0] font-mono",
+      isCompact ? "p-2 overflow-hidden h-fit" : "min-h-screen p-4 md:p-8"
     )}>
       <div 
         ref={containerRef}
