@@ -543,6 +543,31 @@ export default function App() {
     socket?.emit("set-frequency", freq);
   };
 
+  const adjustVfoFrequency = (targetVfo: 'A' | 'B', direction: 1 | -1) => {
+    if (!connected) return;
+    const currentFreq = targetVfo === 'A' ? parseInt(vfoA) : parseInt(vfoB);
+    const stepHz = Math.round(vfoStep * 1000000);
+    const newFreq = currentFreq + (direction * stepHz);
+    const newFreqStr = newFreq.toString();
+
+    if (targetVfo === 'A') {
+      setVfoA(newFreqStr);
+      setInputVfoA((newFreq / 1000000).toFixed(6));
+    } else {
+      setVfoB(newFreqStr);
+      setInputVfoB((newFreq / 1000000).toFixed(6));
+    }
+
+    if (status.vfo === (targetVfo === 'A' ? 'VFOA' : 'VFOB')) {
+      handleSetFreq(newFreqStr);
+    } else {
+      handleSetVFO(targetVfo === 'A' ? 'VFOA' : 'VFOB');
+      setTimeout(() => {
+        handleSetFreq(newFreqStr);
+      }, 100);
+    }
+  };
+
   const handleSetMode = (mode: string) => {
     skipPollsCount.current = 2;
     setLocalMode(mode);
@@ -767,7 +792,25 @@ export default function App() {
                     SPLIT
                   </button>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', 1)}
+                      disabled={!connected}
+                      className="p-1.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                      title="Frequency Up"
+                    >
+                      <ChevronUp size={16} />
+                    </button>
+                    <button
+                      onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', -1)}
+                      disabled={!connected}
+                      className="p-1.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                      title="Frequency Down"
+                    >
+                      <ChevronDown size={16} />
+                    </button>
+                  </div>
                   <select 
                     value={vfoStep}
                     onChange={(e) => setVfoStep(parseFloat(e.target.value))}
@@ -1274,17 +1317,37 @@ export default function App() {
                   >
                     SPLIT
                   </button>
-                  <select 
-                    value={vfoStep}
-                    onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                    disabled={!connected}
-                    className={cn(
-                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-xs px-2 py-1 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
-                      !connected && "opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
-                  </select>
+                  <div className="flex items-center gap-1">
+                    <select 
+                      value={vfoStep}
+                      onChange={(e) => setVfoStep(parseFloat(e.target.value))}
+                      disabled={!connected}
+                      className={cn(
+                        "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-xs px-2 py-1 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
+                        !connected && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
+                    </select>
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', 1)}
+                        disabled={!connected}
+                        className="p-1 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                        title="Frequency Up"
+                      >
+                        <ChevronUp size={12} />
+                      </button>
+                      <button
+                        onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', -1)}
+                        disabled={!connected}
+                        className="p-1 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                        title="Frequency Down"
+                      >
+                        <ChevronDown size={12} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <select 
@@ -1746,17 +1809,37 @@ export default function App() {
                         ? (status.txVFO === "VFOA" ? "text-red-500" : "text-amber-500")
                         : "text-[#8e9299]"
                     )}>VFO A</span>
-                    <select 
-                      value={vfoStep}
-                      onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                      disabled={!connected}
-                      className={cn(
-                        "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
-                        !connected && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
-                    </select>
+                    <div className="flex items-center gap-1">
+                      <select 
+                        value={vfoStep}
+                        onChange={(e) => setVfoStep(parseFloat(e.target.value))}
+                        disabled={!connected}
+                        className={cn(
+                          "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
+                      </select>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => adjustVfoFrequency('A', 1)}
+                          disabled={!connected}
+                          className="p-0.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                          title="Frequency Up"
+                        >
+                          <ChevronUp size={10} />
+                        </button>
+                        <button
+                          onClick={() => adjustVfoFrequency('A', -1)}
+                          disabled={!connected}
+                          className="p-0.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                          title="Frequency Down"
+                        >
+                          <ChevronDown size={10} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   {(status.vfo === "VFOA" || (status.isSplit && status.txVFO === "VFOA")) && (
                     <Activity size={12} className={cn(
@@ -1847,17 +1930,37 @@ export default function App() {
                     >
                       SPLIT
                     </button>
-                    <select 
-                      value={vfoStep}
-                      onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                      disabled={!connected}
-                      className={cn(
-                        "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
-                        !connected && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
-                    </select>
+                    <div className="flex items-center gap-1">
+                      <select 
+                        value={vfoStep}
+                        onChange={(e) => setVfoStep(parseFloat(e.target.value))}
+                        disabled={!connected}
+                        className={cn(
+                          "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
+                      </select>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => adjustVfoFrequency('B', 1)}
+                          disabled={!connected}
+                          className="p-0.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                          title="Frequency Up"
+                        >
+                          <ChevronUp size={10} />
+                        </button>
+                        <button
+                          onClick={() => adjustVfoFrequency('B', -1)}
+                          disabled={!connected}
+                          className="p-0.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                          title="Frequency Down"
+                        >
+                          <ChevronDown size={10} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   {(status?.vfo === "VFOB" || (status.isSplit && status.txVFO === "VFOB")) && (
                     <Activity size={12} className={cn(
