@@ -145,7 +145,10 @@ export default function App() {
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
-  const [isCompact, setIsCompact] = useState(() => localStorage.getItem("is-compact") === "true");
+  const [isCompact, setIsCompact] = useState(() => {
+    const saved = localStorage.getItem("is-compact");
+    return saved === null ? true : saved === "true";
+  });
   const [isPhone, setIsPhone] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [phoneMeterTab, setPhoneMeterTab] = useState<'signal' | 'swr' | 'alc'>('signal');
@@ -173,15 +176,15 @@ export default function App() {
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
-  const [isVideoCollapsed, setIsVideoCollapsed] = useState(true);
+  const [isVideoCollapsed, setIsVideoCollapsed] = useState(false);
   const [isPhoneMeterCollapsed, setIsPhoneMeterCollapsed] = useState(false);
   const [isPhoneQuickControlsCollapsed, setIsPhoneQuickControlsCollapsed] = useState(false);
   const [isPhoneRFPowerCollapsed, setIsPhoneRFPowerCollapsed] = useState(false);
-  const [isCompactSMeterCollapsed, setIsCompactSMeterCollapsed] = useState(false);
-  const [isCompactOtherMeterCollapsed, setIsCompactOtherMeterCollapsed] = useState(false);
-  const [isCompactControlsCollapsed, setIsCompactControlsCollapsed] = useState(false);
-  const [isCompactRFPowerCollapsed, setIsCompactRFPowerCollapsed] = useState(false);
-  const [isDesktopControlsCollapsed, setIsDesktopControlsCollapsed] = useState(false);
+  const [isCompactSMeterCollapsed, setIsCompactSMeterCollapsed] = useState(() => localStorage.getItem("is-compact-smeter-collapsed") === "true");
+  const [isCompactOtherMeterCollapsed, setIsCompactOtherMeterCollapsed] = useState(() => localStorage.getItem("is-compact-other-meter-collapsed") === "true");
+  const [isCompactControlsCollapsed, setIsCompactControlsCollapsed] = useState(() => localStorage.getItem("is-compact-controls-collapsed") === "true");
+  const [isCompactRFPowerCollapsed, setIsCompactRFPowerCollapsed] = useState(() => localStorage.getItem("is-compact-rfpower-collapsed") === "true");
+  const [isDesktopControlsCollapsed, setIsDesktopControlsCollapsed] = useState(() => localStorage.getItem("is-desktop-controls-collapsed") === "true");
   const [isDesktopModeCollapsed, setIsDesktopModeCollapsed] = useState(false);
   const [isDesktopBwCollapsed, setIsDesktopBwCollapsed] = useState(false);
   const [isDesktopRFPowerCollapsed, setIsDesktopRFPowerCollapsed] = useState(false);
@@ -360,7 +363,12 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("is-compact", isCompact.toString());
-  }, [isCompact]);
+    localStorage.setItem("is-compact-smeter-collapsed", isCompactSMeterCollapsed.toString());
+    localStorage.setItem("is-compact-other-meter-collapsed", isCompactOtherMeterCollapsed.toString());
+    localStorage.setItem("is-compact-controls-collapsed", isCompactControlsCollapsed.toString());
+    localStorage.setItem("is-compact-rfpower-collapsed", isCompactRFPowerCollapsed.toString());
+    localStorage.setItem("is-desktop-controls-collapsed", isDesktopControlsCollapsed.toString());
+  }, [isCompact, isCompactSMeterCollapsed, isCompactOtherMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed, isDesktopControlsCollapsed]);
 
   useEffect(() => {
     if (!socket) return;

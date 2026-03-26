@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import isDev from 'electron-is-dev';
 
 // Disable hardware acceleration to resolve VA-API errors on Linux
@@ -19,15 +20,44 @@ console.log(`Electron starting. isDev: ${isDev}, NODE_ENV: ${process.env.NODE_EN
 
 import { startServer } from '../server.ts';
 
+const windowStatePath = path.join(app.getPath('userData'), 'window-state.json');
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(windowStatePath)) {
+      return JSON.parse(fs.readFileSync(windowStatePath, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Failed to load window state:', e);
+  }
+  return null;
+}
+
+function saveWindowState(state: any) {
+  try {
+    fs.writeFileSync(windowStatePath, JSON.stringify(state));
+  } catch (e) {
+    console.error('Failed to save window state:', e);
+  }
+}
+
 async function createWindow() {
   // Start the backend server with the correct app path for static files
   const appPath = isDev ? process.cwd() : app.getAppPath();
   const userDataPath = isDev ? process.cwd() : app.getPath('userData');
   await startServer(appPath, userDataPath);
 
+  const savedState = loadWindowState();
+  
+  // Smallest compact view window size: 768x600
+  const defaultWidth = 768;
+  const defaultHeight = 600;
+
   const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: savedState?.width || defaultWidth,
+    height: savedState?.height || defaultHeight,
+    x: savedState?.x,
+    y: savedState?.y,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -47,8 +77,31 @@ async function createWindow() {
       const [currentWidth, currentHeight] = win.getContentSize();
       if (currentWidth !== width || currentHeight !== height) {
         win.setContentSize(Math.round(width), Math.round(height), true);
+        
+        // Save the new size
+        const [w, h] = win.getSize();
+        const [x, y] = win.getPosition();
+        saveWindowState({ width: w, height: h, x, y });
       }
     }
+  });
+
+  win.on('resize', () => {
+    const [width, height] = win.getSize();
+    const [x, y] = win.getPosition();
+    saveWindowState({ width, height, x, y });
+  });
+
+  win.on('move', () => {
+    const [width, height] = win.getSize();
+    const [x, y] = win.getPosition();
+    saveWindowState({ width, height, x, y });
+  });
+
+  win.on('close', () => {
+    const [width, height] = win.getSize();
+    const [x, y] = win.getPosition();
+    saveWindowState({ width, height, x, y });
   });
 
   // Clear cache and storage to ensure the latest version is loaded
