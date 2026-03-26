@@ -171,8 +171,8 @@ export default function App() {
   const [videoDevices, setVideoDevices] = useState<string[]>([]);
   const [videoSettings, setVideoSettings] = useState({
     device: "",
-    resolution: "640x480",
-    framerate: "30"
+    resolution: "",
+    framerate: ""
   });
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
@@ -2920,6 +2920,7 @@ export default function App() {
                       }}
                       className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all"
                     >
+                      <option value="">Select Resolution</option>
                       <option value="320x240">320x240</option>
                       <option value="640x480">640x480</option>
                       <option value="800x600">800x600</option>
@@ -2937,6 +2938,7 @@ export default function App() {
                       }}
                       className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all"
                     >
+                      <option value="">Select FPS</option>
                       <option value="5">5 fps</option>
                       <option value="10">10 fps</option>
                       <option value="15">15 fps</option>

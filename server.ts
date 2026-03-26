@@ -29,6 +29,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let rigctldStatus: "running" | "stopped" | "error" | "already_running" = "stopped";
   let rigctldLogs: string[] = [];
   let autoStartEnabled = false;
+  let videoAutoStart = false;
   
   const getRigctldPath = (): string => {
     let platformDir = "";
@@ -85,8 +86,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   let videoSettings = {
     device: "",
-    resolution: "640x480",
-    framerate: "30"
+    resolution: "",
+    framerate: ""
   };
   let videoStatus: "playing" | "paused" | "stopped" = "stopped";
   let videoConnections = 0;
@@ -104,6 +105,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
       rigctldSettings = { ...rigctldSettings, ...data.settings };
       autoStartEnabled = data.autoStart || false;
+      videoAutoStart = data.videoAutoStart || false;
       if (data.videoSettings) {
         videoSettings = { ...videoSettings, ...data.videoSettings };
       }
@@ -116,6 +118,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
       settings: rigctldSettings,
       autoStart: autoStartEnabled,
+      videoAutoStart: videoAutoStart,
       videoSettings: videoSettings
     }, null, 2));
   };
@@ -283,8 +286,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const startVideo = () => {
     console.log("[VIDEO] Starting video feed...");
     stopVideo();
-    if (!videoSettings.device) {
-      console.warn("[VIDEO] Cannot start video: No device selected in settings.");
+    if (!videoSettings.device || !videoSettings.resolution || !videoSettings.framerate) {
+      console.warn("[VIDEO] Cannot start video: Missing settings (device, resolution, or framerate).");
       return;
     }
 
@@ -322,6 +325,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     const startupTimeout = setTimeout(() => {
       if (!hasReceivedData && videoProcess === currentProcess) {
         console.error("[VIDEO] ffmpeg failed to produce data within 10s. Stopping.");
+        videoAutoStart = false;
+        saveSettings();
         stopVideo();
         io.emit("video-error", "Video device failed to start producing data. Please check if it is in use by another application.");
       }
@@ -333,6 +338,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         clearTimeout(startupTimeout);
         console.log("[VIDEO] First data chunk received. Stream is now playing.");
         videoStatus = "playing";
+        videoAutoStart = true;
+        saveSettings();
         io.emit("video-status", videoStatus);
       }
       
@@ -494,6 +501,12 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   // Start rigctld on server boot if enabled
   if (autoStartEnabled) {
     startRigctld();
+  }
+
+  // Start video on server boot if enabled and settings are complete
+  if (videoAutoStart && videoSettings.device && videoSettings.resolution && videoSettings.framerate) {
+    console.log("[VIDEO] Auto-starting video feed on boot...");
+    startVideo();
   }
 
   process.on("exit", stopRigctld);
@@ -961,6 +974,12 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const oldFps = videoSettings.framerate;
       
       videoSettings = { ...videoSettings, ...settings };
+      
+      // If settings are cleared, disable auto-start
+      if (!videoSettings.device || !videoSettings.resolution || !videoSettings.framerate) {
+        videoAutoStart = false;
+      }
+      
       saveSettings();
 
       // Restart video if settings changed and it's currently playing
@@ -977,10 +996,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       } else if (action === "pause") {
         // MJPEG doesn't really pause well, we just stop it for now
         console.log("[VIDEO] Pausing (stopping) stream...");
+        videoAutoStart = false;
+        saveSettings();
         stopVideo();
         videoStatus = "paused";
         io.emit("video-status", videoStatus);
       } else if (action === "stop") {
+        videoAutoStart = false;
+        saveSettings();
         stopVideo();
       }
     });
