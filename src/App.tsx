@@ -468,6 +468,7 @@ export default function App() {
         const next = [...prev, { 
           time: new Date(newStatus.timestamp || Date.now()).toLocaleTimeString(),
           smeter: newStatus.smeter,
+          smeterGraph: Math.min(0, newStatus.smeter ?? -54),
           swr: currentPtt ? (newStatus.swr ?? 1.0) : 1.0,
           swrGraph: Math.min(5, currentPtt ? (newStatus.swr ?? 1.0) : 1.0),
           alc: currentPtt ? (newStatus.alc ?? 0) : 0,
@@ -959,22 +960,23 @@ export default function App() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
                       <XAxis dataKey="time" hide />
                       <YAxis 
-                        domain={phoneMeterTab === 'signal' ? (status.ptt ? [0, 1] : [-54, 60]) : phoneMeterTab === 'swr' ? [0, 5] : [0, 1]} 
+                        domain={phoneMeterTab === 'signal' ? (status.ptt ? [0, 1] : [-54, 0]) : phoneMeterTab === 'swr' ? [0, 5] : [0, 1]} 
                         hide 
                       />
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '12px' }}
                         itemStyle={{ color: phoneMeterTab === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6' }}
-                        formatter={(val: number) => {
+                        formatter={(val: number, name: string, props: any) => {
                           if (phoneMeterTab === 'signal') {
-                            return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (val ?? 0), status.ptt ? "POWER" : "SIGNAL"];
+                            const rawVal = props.payload?.smeter ?? val;
+                            return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (rawVal > 0 ? `S9+${rawVal}dB` : `S${Math.round((rawVal + 54) / 6)}`), status.ptt ? "POWER" : "SIGNAL"];
                           }
                           return [(val ?? 0).toFixed(phoneMeterTab === 'swr' ? 2 : 5), phoneMeterTab.toUpperCase()];
                         }}
                       />
                       <Line 
                         type="monotone" 
-                        dataKey={phoneMeterTab === 'signal' ? (status.ptt ? "powerMeter" : "smeter") : phoneMeterTab === 'swr' ? 'swrGraph' : 'alc'} 
+                        dataKey={phoneMeterTab === 'signal' ? (status.ptt ? "powerMeter" : "smeterGraph") : phoneMeterTab === 'swr' ? 'swrGraph' : 'alc'} 
                         stroke={phoneMeterTab === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6'} 
                         strokeWidth={2} 
                         dot={false} 
@@ -1401,7 +1403,7 @@ export default function App() {
                         <XAxis dataKey="time" hide />
                         <YAxis 
                           domain={
-                            activeMeter === 'signal' ? (status.ptt ? [0, 1] : [-54, 60]) :
+                            activeMeter === 'signal' ? (status.ptt ? [0, 1] : [-54, 0]) :
                             activeMeter === 'swr' ? [0, 5] :
                             activeMeter === 'vdd' ? [11, 16] : [0, 1]
                           } 
@@ -1421,7 +1423,8 @@ export default function App() {
                           }}
                           formatter={(val: number, name: string, props: any) => {
                             if (activeMeter === 'signal') {
-                              return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (val ?? 0), status.ptt ? "POWER" : "SIGNAL"];
+                              const rawVal = props.payload?.smeter ?? val;
+                              return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (rawVal > 0 ? `S9+${rawVal}dB` : `S${Math.round((rawVal + 54) / 6)}`), status.ptt ? "POWER" : "SIGNAL"];
                             }
                             if (activeMeter === 'swr') {
                               return [(props.payload?.swr ?? 1).toFixed(2), 'SWR'];
@@ -1435,7 +1438,7 @@ export default function App() {
                         <Line 
                           type="monotone" 
                           dataKey={
-                            activeMeter === 'signal' ? (status.ptt ? "powerMeter" : "smeter") :
+                            activeMeter === 'signal' ? (status.ptt ? "powerMeter" : "smeterGraph") :
                             activeMeter === 'swr' ? 'swrGraph' : activeMeter
                           } 
                           stroke={
@@ -2372,7 +2375,7 @@ export default function App() {
                         style={{ 
                           width: status.ptt 
                             ? `${Math.max(0, Math.min(100, status.powerMeter * 100))}%`
-                            : `${Math.max(0, Math.min(100, (status.smeter + 54) / 114 * 100))}%` 
+                            : `${Math.max(0, Math.min(100, (Math.min(0, status.smeter) + 54) / 54 * 100))}%` 
                         }}
                       />
                       {/* Scale Overlay */}
@@ -2387,8 +2390,7 @@ export default function App() {
                         ) : (
                           <>
                             <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '0%' }} />
-                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '26.3%' }} />
-                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '47.3%' }} />
+                            <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '55.5%' }} />
                           </>
                         )}
                         <div className="h-full border-r border-[#2a2b2e]/50" style={{ width: '100%' }} />
@@ -2407,8 +2409,7 @@ export default function App() {
                         <>
                           <span>S0</span>
                           <span className="ml-[-10%]">S5</span>
-                          <span className="ml-[-5%]">S9</span>
-                          <span>S9+60</span>
+                          <span>S9</span>
                         </>
                       )}
                     </div>
@@ -2421,14 +2422,13 @@ export default function App() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
                         <XAxis dataKey="time" hide />
                         <YAxis 
-                          domain={status.ptt ? [0, 1] : [-54, 60]} 
-                          ticks={status.ptt ? [0, 0.25, 0.5, 0.75, 1] : [-54, -24, 0, 60]}
+                          domain={status.ptt ? [0, 1] : [-54, 0]} 
+                          ticks={status.ptt ? [0, 0.25, 0.5, 0.75, 1] : [-54, -24, 0]}
                           tickFormatter={(val) => {
                             if (status.ptt) return `${Math.round(val * 100)}W`;
                             if (val === -54) return "S0";
                             if (val === -24) return "S5";
                             if (val === 0) return "S9";
-                            if (val === 60) return "+60";
                             return "";
                           }}
                           width={35}
@@ -2440,16 +2440,19 @@ export default function App() {
                           contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '10px' }}
                           itemStyle={{ color: status.ptt ? '#ef4444' : '#10b981' }}
                           labelStyle={{ display: 'none' }}
-                          formatter={(value: number) => [
-                            status.ptt 
-                              ? `${Math.round(value * 100)} Watts`
-                              : value > 0 ? `S9+${value}dB` : `S${Math.round((value + 54) / 6)}`,
-                            status.ptt ? 'Power' : 'Signal'
-                          ]}
+                          formatter={(value: number, name: string, props: any) => {
+                            const rawVal = props.payload?.smeter ?? value;
+                            return [
+                              status.ptt 
+                                ? `${Math.round(value * 100)} Watts`
+                                : rawVal > 0 ? `S9+${rawVal}dB` : `S${Math.round((rawVal + 54) / 6)}`,
+                              status.ptt ? 'Power' : 'Signal'
+                            ];
+                          }}
                         />
                         <Line 
                           type="monotone" 
-                          dataKey={status.ptt ? "powerMeter" : "smeter"} 
+                          dataKey={status.ptt ? "powerMeter" : "smeterGraph"} 
                           stroke={status.ptt ? "#ef4444" : "#10b981"} 
                           strokeWidth={1.5} 
                           dot={false} 
