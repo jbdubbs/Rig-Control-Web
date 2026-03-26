@@ -1,10 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import isDev from 'electron-is-dev';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Disable hardware acceleration to resolve VA-API errors on Linux
 app.disableHardwareAcceleration();
@@ -37,7 +33,7 @@ async function createWindow() {
       contextIsolation: true,
       preload: isDev 
         ? path.join(process.cwd(), 'dist-electron/preload.cjs')
-        : path.join(__dirname, 'preload.cjs')
+        : path.join(app.getAppPath(), 'dist-electron/preload.cjs')
     },
     title: "RigControl Web",
     autoHideMenuBar: true,
