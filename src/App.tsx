@@ -193,6 +193,8 @@ export default function App() {
   const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(false);
   const videoSettingsInitialized = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const hasAttemptedAutoconnect = useRef(false);
+  const isAutoconnectAttempt = useRef(false);
 
   useEffect(() => {
     if (!isCompact || !(window as any).electron) return;
@@ -268,6 +270,19 @@ export default function App() {
         setSettingsLoaded(true);
         if (data.videoSettings) {
           setVideoSettings(data.videoSettings);
+        }
+
+        // Handle autoconnect
+        if (data.autoStart && !connected && !hasAttemptedAutoconnect.current) {
+          const isEligible = localStorage.getItem("rig-autoconnect-eligible") === "true";
+          if (isEligible) {
+            hasAttemptedAutoconnect.current = true;
+            isAutoconnectAttempt.current = true;
+            socket.emit("connect-rig", { 
+              host: localStorage.getItem("rig-host") || "127.0.0.1", 
+              port: parseInt(localStorage.getItem("rig-port") || "4532") 
+            });
+          }
         }
       });
       socket.on("video-devices-list", (list: string[]) => {
@@ -435,15 +450,28 @@ export default function App() {
     newSocket.on("rig-connected", () => {
       setConnected(true);
       setError(null);
+      localStorage.setItem("rig-autoconnect-eligible", "true");
+      isAutoconnectAttempt.current = false;
       newSocket.emit("get-modes");
+      newSocket.emit("set-poll-rate", pollRate);
     });
     newSocket.on("available-modes", (modes: string[]) => {
       setAvailableModes(modes);
     });
-    newSocket.on("rig-disconnected", () => setConnected(false));
+    newSocket.on("rig-disconnected", () => {
+      setConnected(false);
+      if (isAutoconnectAttempt.current) {
+        localStorage.setItem("rig-autoconnect-eligible", "false");
+        isAutoconnectAttempt.current = false;
+      }
+    });
     newSocket.on("rig-error", (msg: string) => {
       setError(msg);
       setConnected(false);
+      if (isAutoconnectAttempt.current) {
+        localStorage.setItem("rig-autoconnect-eligible", "false");
+        isAutoconnectAttempt.current = false;
+      }
     });
     newSocket.on("raw-response", (data: { cmd: string, resp: string }) => {
       setConsoleLogs(prev => [{ cmd: data.cmd, resp: data.resp, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 50));
@@ -559,8 +587,10 @@ export default function App() {
 
   const handleConnect = () => {
     if (connected) {
+      localStorage.setItem("rig-autoconnect-eligible", "false");
       socket?.emit("disconnect-rig");
     } else {
+      isAutoconnectAttempt.current = false;
       socket?.emit("connect-rig", { host, port });
     }
   };
@@ -3256,7 +3286,10 @@ export default function App() {
                       </button>
                       {rigctldProcessStatus === "running" ? (
                         <button 
-                          onClick={() => socket?.emit("stop-rigctld")}
+                          onClick={() => {
+                            localStorage.setItem("rig-autoconnect-eligible", "false");
+                            socket?.emit("stop-rigctld");
+                          }}
                           className="px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/50 rounded text-[0.625rem] font-bold uppercase hover:bg-red-500 hover:text-white transition-all"
                         >
                           Stop
