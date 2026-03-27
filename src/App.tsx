@@ -195,6 +195,11 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const hasAttemptedAutoconnect = useRef(false);
   const isAutoconnectAttempt = useRef(false);
+  const connectedRef = useRef(false);
+
+  useEffect(() => {
+    connectedRef.current = connected;
+  }, [connected]);
 
   useEffect(() => {
     if (!isCompact || !(window as any).electron) return;
@@ -257,6 +262,7 @@ export default function App() {
   useEffect(() => {
     if (socket) {
       socket.on("settings-data", (data: any) => {
+        console.log("[SOCKET] Received settings-data", data);
         setRigctldSettings(data.settings);
         if (data.settings.preampCapabilities) {
           setPreampLevels(data.settings.preampCapabilities);
@@ -273,15 +279,20 @@ export default function App() {
         }
 
         // Handle autoconnect
-        if (data.autoStart && !connected && !hasAttemptedAutoconnect.current) {
+        if (data.autoStart && !connectedRef.current && !hasAttemptedAutoconnect.current) {
           const isEligible = localStorage.getItem("rig-autoconnect-eligible") === "true";
           if (isEligible) {
             hasAttemptedAutoconnect.current = true;
             isAutoconnectAttempt.current = true;
+            const savedHost = localStorage.getItem("rig-host") || "127.0.0.1";
+            const savedPort = parseInt(localStorage.getItem("rig-port") || "4532");
+            console.log(`[AUTOCONNECT] Attempting connection to ${savedHost}:${savedPort}`);
             socket.emit("connect-rig", { 
-              host: localStorage.getItem("rig-host") || "127.0.0.1", 
-              port: parseInt(localStorage.getItem("rig-port") || "4532") 
+              host: savedHost, 
+              port: savedPort
             });
+          } else {
+            console.log("[AUTOCONNECT] Not eligible for autoconnect");
           }
         }
       });
@@ -448,6 +459,7 @@ export default function App() {
     setSocket(newSocket);
 
     newSocket.on("rig-connected", () => {
+      console.log("[RIG] Connected successfully");
       setConnected(true);
       setError(null);
       localStorage.setItem("rig-autoconnect-eligible", "true");
@@ -459,6 +471,7 @@ export default function App() {
       setAvailableModes(modes);
     });
     newSocket.on("rig-disconnected", () => {
+      console.log("[RIG] Disconnected");
       setConnected(false);
       if (isAutoconnectAttempt.current) {
         localStorage.setItem("rig-autoconnect-eligible", "false");
@@ -466,6 +479,7 @@ export default function App() {
       }
     });
     newSocket.on("rig-error", (msg: string) => {
+      console.log("[RIG] Error:", msg);
       setError(msg);
       setConnected(false);
       if (isAutoconnectAttempt.current) {
@@ -590,6 +604,8 @@ export default function App() {
       localStorage.setItem("rig-autoconnect-eligible", "false");
       socket?.emit("disconnect-rig");
     } else {
+      localStorage.setItem("rig-host", host);
+      localStorage.setItem("rig-port", port.toString());
       isAutoconnectAttempt.current = false;
       socket?.emit("connect-rig", { host, port });
     }

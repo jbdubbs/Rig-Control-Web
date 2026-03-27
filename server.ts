@@ -613,20 +613,20 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     rigSocket.connect(port, host, () => {
       console.log(`Connected to rigctld at ${host}:${port}`);
       isConnected = true;
-      if (socket) socket.emit("rig-connected", { host, port });
+      io.emit("rig-connected", { host, port });
       startPolling();
     });
 
     rigSocket.on("error", (err) => {
       console.error("Rig socket error:", err);
       isConnected = false;
-      if (socket) socket.emit("rig-error", `Connection Error: ${err.message}`);
+      io.emit("rig-error", `Connection Error: ${err.message}`);
     });
 
     rigSocket.on("close", () => {
       console.log("Rig connection closed");
       isConnected = false;
-      if (socket) socket.emit("rig-disconnected");
+      io.emit("rig-disconnected");
       stopPolling();
     });
   };
@@ -918,7 +918,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
       isConnected = false;
       stopPolling();
-      socket.emit("rig-disconnected");
+      io.emit("rig-disconnected");
       console.log("Rig manually disconnected");
     });
 
