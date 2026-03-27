@@ -16,7 +16,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   // appPath is for read-only bundled assets (like radios.json and dist/)
   // userDataPath is for writable user settings (settings.json)
   const baseDir = appPath || process.cwd();
-  const dataDir = userDataPath || process.cwd();
+  // In Cloud Run, the root is read-only, so use /tmp for settings
+  const dataDir = userDataPath || (process.env.NODE_ENV === "production" ? "/tmp" : process.cwd());
   
   const SETTINGS_FILE = path.join(dataDir, "settings.json");
   const RADIOS_FILE = path.join(baseDir, "radios.json");
@@ -97,7 +98,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     portNumber: "4532",
     ipAddress: "127.0.0.1",
     serialPortSpeed: "38400",
-    preampCapabilities: [] as string[]
+    preampCapabilities: [] as string[],
+    attenuatorCapabilities: [] as string[],
+    agcCapabilities: [] as string[]
   };
 
   // Load settings if they exist
@@ -128,24 +131,32 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     io.emit("rigctld-status", rigctldStatus);
   };
 
-  const fetchPreampCapabilities = async (rigNumber: string) => {
+  const fetchRadioCapabilities = async (rigNumber: string) => {
     if (!rigNumber || rigNumber === "" || rigNumber === "1") {
       rigctldSettings.preampCapabilities = [];
+      rigctldSettings.attenuatorCapabilities = [];
+      rigctldSettings.agcCapabilities = [];
       saveSettings();
       io.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
+      io.emit("attenuator-capabilities", rigctldSettings.attenuatorCapabilities);
+      io.emit("agc-capabilities", rigctldSettings.agcCapabilities);
       return;
     }
 
     const rigctldPath = getRigctldPath();
-    console.log(`[HAMLIB] Fetching preamp capabilities for rig ${rigNumber}...`);
+    console.log(`[HAMLIB] Fetching radio capabilities for rig ${rigNumber}...`);
     
     // Use exec to get capabilities
     exec(`"${rigctldPath}" -m ${rigNumber} -u`, (error, stdout, stderr) => {
       if (error) {
-        console.error(`[HAMLIB] Error getting preamp capabilities: ${error.message}`);
+        console.error(`[HAMLIB] Error getting radio capabilities: ${error.message}`);
         rigctldSettings.preampCapabilities = [];
+        rigctldSettings.attenuatorCapabilities = [];
+        rigctldSettings.agcCapabilities = [];
       } else {
         const lines = stdout.split('\n');
+        
+        // Parse Preamp
         const preampLine = lines.find(line => line.trim().startsWith('Preamp:'));
         if (preampLine) {
           // Example: "Preamp: 10dB 20dB"
@@ -156,9 +167,35 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           rigctldSettings.preampCapabilities = [];
           console.log(`[HAMLIB] No preamp capabilities found for rig ${rigNumber}`);
         }
+
+        // Parse Attenuator
+        const attenuatorLine = lines.find(line => line.trim().startsWith('Attenuator:'));
+        if (attenuatorLine) {
+          // Example: "Attenuator: 6dB 12dB 18dB"
+          const levels = attenuatorLine.replace('Attenuator:', '').trim().split(/\s+/).filter(Boolean);
+          rigctldSettings.attenuatorCapabilities = levels;
+          console.log(`[HAMLIB] Found attenuator capabilities for rig ${rigNumber}: ${rigctldSettings.attenuatorCapabilities.join(", ")}`);
+        } else {
+          rigctldSettings.attenuatorCapabilities = [];
+          console.log(`[HAMLIB] No attenuator capabilities found for rig ${rigNumber}`);
+        }
+
+        // Parse AGC
+        const agcLine = lines.find(line => line.trim().startsWith('AGC levels:'));
+        if (agcLine) {
+          // Example: "AGC levels: 0=OFF 2=FAST 5=MEDIUM 3=SLOW 6=AUTO"
+          const levels = agcLine.replace('AGC levels:', '').trim().split(/\s+/).filter(Boolean);
+          rigctldSettings.agcCapabilities = levels;
+          console.log(`[HAMLIB] Found AGC capabilities for rig ${rigNumber}: ${rigctldSettings.agcCapabilities.join(", ")}`);
+        } else {
+          rigctldSettings.agcCapabilities = [];
+          console.log(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
+        }
       }
       saveSettings();
       io.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
+      io.emit("attenuator-capabilities", rigctldSettings.attenuatorCapabilities);
+      io.emit("agc-capabilities", rigctldSettings.agcCapabilities);
     });
   };
 
@@ -1053,7 +1090,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       rigctldSettings = { ...rigctldSettings, ...data };
       saveSettings();
       if (oldRigNumber !== rigctldSettings.rigNumber) {
-        fetchPreampCapabilities(rigctldSettings.rigNumber);
+        fetchRadioCapabilities(rigctldSettings.rigNumber);
       }
     });
 
@@ -1217,5 +1254,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 }
 
 if (!process.env.ELECTRON_RUN && !process.versions.electron) {
-  startServer();
+  console.log("Starting server in standalone mode...");
+  startServer().catch(err => {
+    console.error("CRITICAL: Failed to start server:", err);
+    process.exit(1);
+  });
 }

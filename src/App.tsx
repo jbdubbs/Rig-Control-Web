@@ -75,15 +75,6 @@ const VFO_STEPS = [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10];
 
 const DNR_LEVELS = Array.from({ length: 15 }, (_, i) => parseFloat(((i + 1) / 15).toFixed(3)));
 
-const AGC_VALUES = [0, 2, 3, 5, 6];
-const AGC_LABELS: Record<number, string> = {
-  0: "OFF",
-  2: "FAST",
-  3: "SLOW",
-  5: "MED",
-  6: "AUTO"
-};
-
 const DEFAULT_STATUS: RigStatus = {
   frequency: "14074000",
   mode: "USB",
@@ -160,7 +151,9 @@ export default function App() {
     portNumber: "4532",
     ipAddress: "127.0.0.1",
     serialPortSpeed: "38400",
-    preampCapabilities: [] as string[]
+    preampCapabilities: [] as string[],
+    attenuatorCapabilities: [] as string[],
+    agcCapabilities: [] as string[]
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
@@ -177,6 +170,8 @@ export default function App() {
   });
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [preampLevels, setPreampLevels] = useState<string[]>([]);
+  const [attenuatorLevels, setAttenuatorLevels] = useState<string[]>([]);
+  const [agcLevels, setAgcLevels] = useState<string[]>([]);
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
@@ -264,6 +259,12 @@ export default function App() {
         if (data.settings.preampCapabilities) {
           setPreampLevels(data.settings.preampCapabilities);
         }
+        if (data.settings.attenuatorCapabilities) {
+          setAttenuatorLevels(data.settings.attenuatorCapabilities);
+        }
+        if (data.settings.agcCapabilities) {
+          setAgcLevels(data.settings.agcCapabilities);
+        }
         setSettingsLoaded(true);
         if (data.videoSettings) {
           setVideoSettings(data.videoSettings);
@@ -300,6 +301,14 @@ export default function App() {
       socket.on("preamp-capabilities", (levels: string[]) => {
         setPreampLevels(levels);
         setRigctldSettings(prev => ({ ...prev, preampCapabilities: levels }));
+      });
+      socket.on("attenuator-capabilities", (levels: string[]) => {
+        setAttenuatorLevels(levels);
+        setRigctldSettings(prev => ({ ...prev, attenuatorCapabilities: levels }));
+      });
+      socket.on("agc-capabilities", (levels: string[]) => {
+        setAgcLevels(levels);
+        setRigctldSettings(prev => ({ ...prev, agcCapabilities: levels }));
       });
       socket.emit("get-settings");
       socket.emit("get-radios");
@@ -675,9 +684,47 @@ export default function App() {
   };
 
   const getPreampLabel = () => {
-    if (status.preamp === 0) return "OFF";
+    if (status.preamp === 0) return (isCompact || isPhone) ? "P.AMP" : "OFF";
     // If the current preamp level is not in our known capabilities, just show the number
     return `${status.preamp}dB`;
+  };
+
+  const cycleAttenuator = () => {
+    if (attenuatorLevels.length === 0) return;
+    const levelsAsNumbers = attenuatorLevels.map(l => parseInt(l.replace('dB', '')));
+    const allOptions = [0, ...levelsAsNumbers];
+    let currentIndex = allOptions.indexOf(status.attenuation);
+    if (currentIndex === -1) currentIndex = 0;
+    const nextIndex = (currentIndex + 1) % allOptions.length;
+    const nextValue = allOptions[nextIndex];
+    handleSetLevel("ATT", nextValue);
+  };
+
+  const getAttenuatorLabel = () => {
+    if (status.attenuation === 0) return (isCompact || isPhone) ? "ATT" : "OFF";
+    return `${status.attenuation}dB`;
+  };
+
+  const cycleAgc = () => {
+    if (agcLevels.length === 0) return;
+    const parsed = agcLevels.map(l => {
+      const parts = l.split('=');
+      return { value: parseInt(parts[0]), label: parts[1] };
+    });
+    let currentIndex = parsed.findIndex(p => p.value === status.agc);
+    if (currentIndex === -1) currentIndex = 0;
+    const nextIndex = (currentIndex + 1) % parsed.length;
+    handleSetLevel("AGC", parsed[nextIndex].value);
+  };
+
+  const getAgcLabel = () => {
+    if (agcLevels.length === 0) return "OFF";
+    const parsed = agcLevels.map(l => {
+      const parts = l.split('=');
+      return { value: parseInt(parts[0]), label: parts[1] };
+    });
+    const current = parsed.find(p => p.value === status.agc);
+    return current ? current.label : (status.agc === 0 ? "OFF" : status.agc.toString());
   };
 
   const handleVfoOp = (op: string) => {
@@ -1121,20 +1168,17 @@ export default function App() {
                       <span className="text-xs uppercase font-bold leading-none">Tune</span>
                     </button>
                     <button 
-                      onClick={() => {
-                        const next = status.attenuation === 0 ? 6 : status.attenuation === 6 ? 12 : 0;
-                        handleSetLevel("ATT", next);
-                      }}
-                      disabled={!connected}
+                      onClick={cycleAttenuator}
+                      disabled={!connected || attenuatorLevels.length === 0}
                       className={cn(
                         "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                        !connected && "opacity-50 cursor-not-allowed",
+                        (!connected || attenuatorLevels.length === 0) && "opacity-50 cursor-not-allowed",
                         status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
                       <Signal size={24} />
                       <span className="text-xs uppercase font-bold leading-none">
-                        {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "-6" : "-12"}
+                        {getAttenuatorLabel()}
                       </span>
                     </button>
                     <button 
@@ -1270,22 +1314,18 @@ export default function App() {
                   <span className="text-xs uppercase font-bold leading-none">NB</span>
                 </button>
                 <button 
-                  onClick={() => {
-                    const currentIndex = AGC_VALUES.indexOf(status.agc);
-                    const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
-                    handleSetLevel("AGC", AGC_VALUES[nextIndex]);
-                  }}
-                  disabled={!connected}
+                  onClick={cycleAgc}
+                  disabled={!connected || agcLevels.length === 0}
                   className={cn(
                     "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    !connected && "opacity-50 cursor-not-allowed",
+                    (!connected || agcLevels.length === 0) && "opacity-50 cursor-not-allowed",
                     status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
                   )}
                 >
                   <Settings size={20} />
                   <div className="flex flex-col items-center leading-none">
                     <span className="text-xs uppercase font-bold">AGC</span>
-                    <span className="text-[0.625rem] font-bold opacity-80">{AGC_LABELS[status.agc] || "OFF"}</span>
+                    <span className="text-[0.625rem] font-bold opacity-80">{getAgcLabel()}</span>
                   </div>
                 </button>
                 <button 
@@ -1668,20 +1708,17 @@ export default function App() {
                       <span className="text-xs uppercase font-bold leading-none">Tune</span>
                     </button>
                     <button 
-                      onClick={() => {
-                        const next = status.attenuation === 0 ? 6 : status.attenuation === 6 ? 12 : 0;
-                        handleSetLevel("ATT", next);
-                      }}
-                      disabled={!connected}
+                      onClick={cycleAttenuator}
+                      disabled={!connected || attenuatorLevels.length === 0}
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                        !connected && "opacity-50 cursor-not-allowed",
+                        (!connected || attenuatorLevels.length === 0) && "opacity-50 cursor-not-allowed",
                         status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
                       <Signal size={16} />
                       <span className="text-xs uppercase font-bold leading-none">
-                        {status.attenuation === 0 ? "ATT" : status.attenuation === 6 ? "-6" : "-12"}
+                        {getAttenuatorLabel()}
                       </span>
                     </button>
                     <button 
@@ -1711,22 +1748,18 @@ export default function App() {
                       <span className="text-xs uppercase font-bold leading-none">NB</span>
                     </button>
                     <button 
-                      onClick={() => {
-                        const currentIndex = AGC_VALUES.indexOf(status.agc);
-                        const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
-                        handleSetLevel("AGC", AGC_VALUES[nextIndex]);
-                      }}
-                      disabled={!connected}
+                      onClick={cycleAgc}
+                      disabled={!connected || agcLevels.length === 0}
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                        !connected && "opacity-50 cursor-not-allowed",
+                        (!connected || agcLevels.length === 0) && "opacity-50 cursor-not-allowed",
                         status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
                       <Settings size={16} />
                       <div className="flex flex-col items-center leading-none">
                         <span className="text-xs uppercase font-bold">AGC</span>
-                        <span className="text-[0.625rem] font-bold opacity-80">{AGC_LABELS[status.agc] || "OFF"}</span>
+                        <span className="text-[0.625rem] font-bold opacity-80">{getAgcLabel()}</span>
                       </div>
                     </button>
                     <button 
@@ -2112,18 +2145,11 @@ export default function App() {
                   </button>
 
                   <button 
-                    onClick={() => {
-                      const current = status.attenuation;
-                      let next = 0;
-                      if (current === 0) next = 6;
-                      else if (current === 6) next = 12;
-                      else next = 0;
-                      handleSetLevel("ATT", next);
-                    }}
-                    disabled={!connected}
+                    onClick={cycleAttenuator}
+                    disabled={!connected || attenuatorLevels.length === 0}
                     className={cn(
                       "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
-                      !connected && "opacity-50 cursor-not-allowed",
+                      (!connected || attenuatorLevels.length === 0) && "opacity-50 cursor-not-allowed",
                       status.attenuation > 0 
                         ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
                         : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
@@ -2133,9 +2159,7 @@ export default function App() {
                     <div className="flex flex-col items-center">
                       <span className="text-[0.625rem] uppercase font-bold">Atten</span>
                       <span className="text-[0.5625rem] font-bold opacity-80">
-                        {status.attenuation === 0 ? "OFF" : 
-                         status.attenuation === 6 ? "-6dB" : 
-                         status.attenuation === 12 ? "-12dB" : "OFF"}
+                        {getAttenuatorLabel()}
                       </span>
                     </div>
                   </button>
@@ -2201,15 +2225,11 @@ export default function App() {
                   </button>
 
                   <button 
-                    onClick={() => {
-                      const currentIndex = AGC_VALUES.indexOf(status.agc);
-                      const nextIndex = (currentIndex + 1) % AGC_VALUES.length;
-                      handleSetLevel("AGC", AGC_VALUES[nextIndex]);
-                    }}
-                    disabled={!connected}
+                    onClick={cycleAgc}
+                    disabled={!connected || agcLevels.length === 0}
                     className={cn(
                       "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
-                      !connected && "opacity-50 cursor-not-allowed",
+                      (!connected || agcLevels.length === 0) && "opacity-50 cursor-not-allowed",
                       status.agc > 0 
                         ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
                         : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
@@ -2219,7 +2239,7 @@ export default function App() {
                     <div className="flex flex-col items-center">
                       <span className="text-[0.625rem] uppercase font-bold">AGC</span>
                       <span className="text-[0.5625rem] font-bold opacity-80">
-                        {AGC_LABELS[status.agc] || "OFF"}
+                        {getAgcLabel()}
                       </span>
                     </div>
                   </button>
