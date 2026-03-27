@@ -500,7 +500,7 @@ export default function App() {
           smeter: newStatus.smeter,
           smeterGraph: Math.min(0, newStatus.smeter ?? -54),
           swr: currentPtt ? (newStatus.swr ?? 1.0) : 1.0,
-          swrGraph: Math.min(5, currentPtt ? (newStatus.swr ?? 1.0) : 1.0),
+          swrGraph: Math.min(4, Math.max(1, currentPtt ? (newStatus.swr ?? 1.0) : 1.0)),
           alc: currentPtt ? (newStatus.alc ?? 0) : 0,
           powerMeter: newStatus.powerMeter,
           vdd: newStatus.vdd
@@ -1045,7 +1045,9 @@ export default function App() {
                       onClick={() => setPhoneMeterTab(m)}
                       className={cn(
                         "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
-                        phoneMeterTab === m ? "bg-emerald-500 text-white" : "text-[#8e9299] hover:bg-white/5"
+                        phoneMeterTab === m 
+                          ? (m === 'swr' && (status.swr ?? 1) > 3 ? "bg-red-500 text-white" : "bg-emerald-500 text-white")
+                          : (m === 'swr' && (status.swr ?? 1) > 3 ? "text-red-500 bg-red-500/10" : "text-[#8e9299] hover:bg-white/5")
                       )}
                     >
                       {m === 'signal' ? (status.ptt ? 'POWER' : 'SIGNAL') : m}
@@ -1065,7 +1067,10 @@ export default function App() {
                       </span>
                     )}
                     {phoneMeterTab === 'swr' && (
-                      <span className="text-lg font-mono font-bold text-amber-500">
+                      <span className={cn(
+                        "text-lg font-mono font-bold",
+                        (status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500"
+                      )}>
                         {(status.swr ?? 1).toFixed(2)}
                       </span>
                     )}
@@ -1091,24 +1096,39 @@ export default function App() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
                       <XAxis dataKey="time" hide />
                       <YAxis 
-                        domain={phoneMeterTab === 'signal' ? (status.ptt ? [0, 1] : [-54, 0]) : phoneMeterTab === 'swr' ? [0, 5] : [0, 1]} 
+                        domain={phoneMeterTab === 'signal' ? (status.ptt ? [0, 1] : [-54, 0]) : phoneMeterTab === 'swr' ? [1, 4] : [0, 1]} 
                         hide 
                       />
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '12px' }}
-                        itemStyle={{ color: phoneMeterTab === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6' }}
+                        itemStyle={{ 
+                          color: phoneMeterTab === 'signal' 
+                            ? (status.ptt ? '#ef4444' : '#10b981') 
+                            : phoneMeterTab === 'swr' 
+                              ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') 
+                              : '#3b82f6' 
+                        }}
                         formatter={(val: number, name: string, props: any) => {
                           if (phoneMeterTab === 'signal') {
                             const rawVal = props.payload?.smeter ?? val;
                             return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (rawVal > 0 ? `S9+${rawVal}dB` : `S${Math.round((rawVal + 54) / 6)}`), status.ptt ? "POWER" : "SIGNAL"];
                           }
-                          return [(val ?? 0).toFixed(phoneMeterTab === 'swr' ? 2 : 5), phoneMeterTab.toUpperCase()];
+                          if (phoneMeterTab === 'swr') {
+                            return [(props.payload?.swr ?? 1).toFixed(2), 'SWR'];
+                          }
+                          return [(val ?? 0).toFixed(phoneMeterTab === 'alc' ? 5 : 2), phoneMeterTab.toUpperCase()];
                         }}
                       />
                       <Line 
                         type="monotone" 
                         dataKey={phoneMeterTab === 'signal' ? (status.ptt ? "powerMeter" : "smeterGraph") : phoneMeterTab === 'swr' ? 'swrGraph' : 'alc'} 
-                        stroke={phoneMeterTab === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") : phoneMeterTab === 'swr' ? '#f59e0b' : '#3b82f6'} 
+                        stroke={
+                          phoneMeterTab === 'signal' 
+                            ? (status.ptt ? "#ef4444" : "#10b981") 
+                            : phoneMeterTab === 'swr' 
+                              ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') 
+                              : '#3b82f6'
+                        } 
                         strokeWidth={2} 
                         dot={false} 
                         isAnimationActive={false}
@@ -1502,7 +1522,9 @@ export default function App() {
                         onClick={() => setActiveMeter(m)}
                         className={cn(
                           "px-2 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
-                          activeMeter === m ? "bg-emerald-500 text-white" : "text-[#8e9299] hover:bg-white/5"
+                          activeMeter === m 
+                            ? (m === 'swr' && (status.swr ?? 1) > 3 ? "bg-red-500 text-white" : "bg-emerald-500 text-white")
+                            : (m === 'swr' && (status.swr ?? 1) > 3 ? "text-red-500 bg-red-500/10" : "text-[#8e9299] hover:bg-white/5")
                         )}
                       >
                         {m === 'signal' ? (status.ptt ? 'power' : 'signal') : m}
@@ -1513,7 +1535,7 @@ export default function App() {
                     <span className={cn(
                       "text-xs font-mono font-bold",
                       activeMeter === 'signal' ? (status.ptt ? "text-red-500" : "text-emerald-500") :
-                      activeMeter === 'swr' ? "text-amber-500" :
+                      activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500") :
                       activeMeter === 'alc' ? "text-blue-500" : "text-emerald-500"
                     )}>
                       {activeMeter === 'signal' ? (
@@ -1545,11 +1567,11 @@ export default function App() {
                         <YAxis 
                           domain={
                             activeMeter === 'signal' ? (status.ptt ? [0, 1] : [-54, 0]) :
-                            activeMeter === 'swr' ? [0, 5] :
+                            activeMeter === 'swr' ? [1, 4] :
                             activeMeter === 'vdd' ? [11, 16] : [0, 1]
                           } 
                           hide={activeMeter !== 'swr' && activeMeter !== 'vdd'}
-                          ticks={activeMeter === 'swr' ? [0, 1, 2, 3, 4, 5] : activeMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
+                          ticks={activeMeter === 'swr' ? [1, 2, 3, 4] : activeMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
                           width={15}
                           style={{ fontSize: '6px', fill: '#4a4b4e' }}
                           axisLine={false}
@@ -1559,7 +1581,7 @@ export default function App() {
                           contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '8px' }}
                           itemStyle={{ 
                             color: activeMeter === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') :
-                                   activeMeter === 'swr' ? '#f59e0b' :
+                                   activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
                                    activeMeter === 'alc' ? '#3b82f6' : '#10b981'
                           }}
                           formatter={(val: number, name: string, props: any) => {
@@ -1584,7 +1606,7 @@ export default function App() {
                           } 
                           stroke={
                             activeMeter === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") :
-                            activeMeter === 'swr' ? '#f59e0b' :
+                            activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
                             activeMeter === 'alc' ? '#3b82f6' : '#10b981'
                           } 
                           strokeWidth={1.5} 
@@ -2617,12 +2639,18 @@ export default function App() {
             {/* SWR Graph */}
             <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
               <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
-                <div className="flex items-center gap-2 text-[#8e9299]">
+                <div className={cn(
+                  "flex items-center gap-2",
+                  (status.swr ?? 1) > 3 ? "text-red-500" : "text-[#8e9299]"
+                )}>
                   <Activity size={14} />
                   <span className="text-[0.625rem] uppercase tracking-widest font-bold">SWR Ratio</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-mono text-amber-500 font-bold">
+                  <span className={cn(
+                    "text-xs font-mono font-bold",
+                    (status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500"
+                  )}>
                     {(status.swr ?? 1).toFixed(2)}
                   </span>
                   <button 
@@ -2642,8 +2670,8 @@ export default function App() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} />
                         <XAxis dataKey="time" hide />
                         <YAxis 
-                          domain={[0, 5]} 
-                          ticks={[0, 1, 2, 3, 4, 5]}
+                          domain={[1, 4]} 
+                          ticks={[1, 2, 3, 4]}
                           width={25}
                           style={{ fontSize: '8px', fill: '#4a4b4e' }}
                           axisLine={false}
@@ -2651,13 +2679,13 @@ export default function App() {
                         />
                         <Tooltip 
                           contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '10px' }}
-                          itemStyle={{ color: '#f59e0b' }}
+                          itemStyle={{ color: (status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b' }}
                           formatter={(val: number, name: string, props: any) => [(props.payload?.swr ?? 1).toFixed(2), 'SWR']}
                         />
                         <Line 
                           type="monotone" 
                           dataKey="swrGraph" 
-                          stroke="#f59e0b" 
+                          stroke={(status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b'} 
                           strokeWidth={2} 
                           dot={false} 
                           isAnimationActive={false}
