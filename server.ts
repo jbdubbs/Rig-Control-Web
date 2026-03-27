@@ -1217,6 +1217,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   });
 }
 
-if (process.env.NODE_ENV !== "production" && !process.env.ELECTRON_RUN && !process.versions.electron) {
+if (!process.env.ELECTRON_RUN && !process.versions.electron) {
   startServer();
 }

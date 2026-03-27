@@ -8,7 +8,9 @@
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "start": "node dist/server.js",
+    "build": "vite build && npm run build:server",
+    "build:server": "esbuild server.ts --bundle --platform=node --outfile=dist/server.js --format=esm --packages=external",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron build",
     "lint": "tsc --noEmit",
