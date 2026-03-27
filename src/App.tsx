@@ -159,7 +159,8 @@ export default function App() {
     serialPort: "",
     portNumber: "4532",
     ipAddress: "127.0.0.1",
-    serialPortSpeed: "38400"
+    serialPortSpeed: "38400",
+    preampCapabilities: [] as string[]
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
@@ -260,6 +261,9 @@ export default function App() {
     if (socket) {
       socket.on("settings-data", (data: any) => {
         setRigctldSettings(data.settings);
+        if (data.settings.preampCapabilities) {
+          setPreampLevels(data.settings.preampCapabilities);
+        }
         setSettingsLoaded(true);
         if (data.videoSettings) {
           setVideoSettings(data.videoSettings);
@@ -295,6 +299,7 @@ export default function App() {
       });
       socket.on("preamp-capabilities", (levels: string[]) => {
         setPreampLevels(levels);
+        setRigctldSettings(prev => ({ ...prev, preampCapabilities: levels }));
       });
       socket.emit("get-settings");
       socket.emit("get-radios");
