@@ -104,10 +104,9 @@ async function createWindow() {
     saveWindowState({ width, height, x, y });
   });
 
-  // Clear cache and storage to ensure the latest version is loaded
+  // Clear cache to ensure the latest version is loaded
   await win.webContents.session.clearCache();
-  await win.webContents.session.clearStorageData();
-  console.log("Electron cache and storage cleared.");
+  console.log("Electron cache cleared.");
 
   // Handle media permissions for video devices
   win.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {

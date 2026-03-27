@@ -31,6 +31,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let rigctldLogs: string[] = [];
   let autoStartEnabled = false;
   let videoAutoStart = false;
+  let pollRate = 2000;
+  let autoconnectEligible = false;
+  let clientHost = "127.0.0.1";
+  let clientPort = 4532;
   
   const getRigctldPath = (): string => {
     let platformDir = "";
@@ -110,6 +114,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       rigctldSettings = { ...rigctldSettings, ...data.settings };
       autoStartEnabled = data.autoStart || false;
       videoAutoStart = data.videoAutoStart || false;
+      pollRate = data.pollRate || 2000;
+      autoconnectEligible = data.autoconnectEligible || false;
+      clientHost = data.clientHost || "127.0.0.1";
+      clientPort = data.clientPort || 4532;
       if (data.videoSettings) {
         videoSettings = { ...videoSettings, ...data.videoSettings };
       }
@@ -123,7 +131,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       settings: rigctldSettings,
       autoStart: autoStartEnabled,
       videoAutoStart: videoAutoStart,
-      videoSettings: videoSettings
+      videoSettings: videoSettings,
+      pollRate: pollRate,
+      autoconnectEligible: autoconnectEligible,
+      clientHost: clientHost,
+      clientPort: clientPort
     }, null, 2));
   };
 
@@ -597,7 +609,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   let rigSocket: net.Socket | null = null;
   let pollingTimeout: NodeJS.Timeout | null = null;
-  let pollRate = 2000;
   let rigConfig = { host: "", port: 0 };
   let isConnected = false;
 
@@ -1011,7 +1022,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-poll-rate", (rate) => {
       pollRate = rate;
+      saveSettings();
       startPolling();
+    });
+
+    socket.on("set-autoconnect-eligible", (eligible) => {
+      autoconnectEligible = eligible;
+      saveSettings();
+    });
+
+    socket.on("set-client-config", ({ host, port }) => {
+      clientHost = host;
+      clientPort = port;
+      saveSettings();
     });
 
     socket.on("get-settings", async () => {
@@ -1026,7 +1049,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       socket.emit("settings-data", {
         settings: rigctldSettings,
         autoStart: autoStartEnabled,
-        videoSettings: videoSettings
+        videoSettings: videoSettings,
+        pollRate: pollRate,
+        autoconnectEligible: autoconnectEligible,
+        clientHost: clientHost,
+        clientPort: clientPort
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
