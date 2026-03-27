@@ -30,6 +30,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let rigctldLogs: string[] = [];
   let autoStartEnabled = false;
   let videoAutoStart = false;
+  let preampCapabilities: string[] = [];
   
   const getRigctldPath = (): string => {
     let platformDir = "";
@@ -126,6 +127,41 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const emitRigctldStatus = () => {
     io.emit("rigctld-status", rigctldStatus);
   };
+
+  const fetchPreampCapabilities = async (rigNumber: string) => {
+    if (!rigNumber || rigNumber === "" || rigNumber === "1") {
+      preampCapabilities = [];
+      io.emit("preamp-capabilities", preampCapabilities);
+      return;
+    }
+
+    const rigctldPath = getRigctldPath();
+    console.log(`[HAMLIB] Fetching preamp capabilities for rig ${rigNumber}...`);
+    
+    // Use exec to get capabilities
+    exec(`"${rigctldPath}" -m ${rigNumber} -u`, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[HAMLIB] Error getting preamp capabilities: ${error.message}`);
+        preampCapabilities = [];
+      } else {
+        const lines = stdout.split('\n');
+        const preampLine = lines.find(line => line.trim().startsWith('Preamp:'));
+        if (preampLine) {
+          // Example: "Preamp: 10dB 20dB"
+          const levels = preampLine.replace('Preamp:', '').trim().split(/\s+/).filter(Boolean);
+          preampCapabilities = levels;
+          console.log(`[HAMLIB] Found preamp capabilities for rig ${rigNumber}: ${preampCapabilities.join(", ")}`);
+        } else {
+          preampCapabilities = [];
+          console.log(`[HAMLIB] No preamp capabilities found for rig ${rigNumber}`);
+        }
+      }
+      io.emit("preamp-capabilities", preampCapabilities);
+    });
+  };
+
+  // Initial fetch of preamp capabilities
+  fetchPreampCapabilities(rigctldSettings.rigNumber);
 
   const addLog = (data: string) => {
     const lines = data.split("\n").filter(l => l.trim());
@@ -955,6 +991,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
       socket.emit("video-status", videoStatus);
+      socket.emit("preamp-capabilities", preampCapabilities);
     });
 
     socket.on("get-video-devices", async () => {
@@ -1009,14 +1046,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("save-settings", (data) => {
+      const oldRigNumber = rigctldSettings.rigNumber;
       rigctldSettings = data;
       saveSettings();
+      if (oldRigNumber !== rigctldSettings.rigNumber) {
+        fetchPreampCapabilities(rigctldSettings.rigNumber);
+      }
     });
 
     socket.on("toggle-auto-start", (enabled) => {
       autoStartEnabled = enabled;
       saveSettings();
       if (enabled) {
+        fetchPreampCapabilities(rigctldSettings.rigNumber);
         startRigctld();
       } else {
         stopRigctld();
@@ -1026,6 +1068,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     socket.on("start-rigctld", () => {
       autoStartEnabled = true;
       saveSettings();
+      fetchPreampCapabilities(rigctldSettings.rigNumber);
       startRigctld();
     });
 
@@ -1033,6 +1076,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       addLog("Killing existing rigctld process...");
       await killExistingRigctld();
       addLog("Existing rigctld killed. Starting new process...");
+      fetchPreampCapabilities(rigctldSettings.rigNumber);
       startRigctld();
     });
 
@@ -1073,6 +1117,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           testProc.kill();
           socket.emit("test-result", { success: true, message: "Configuration looks valid (process started successfully)" });
           addLog("Test: Success");
+          fetchPreampCapabilities(rigNumber);
         }, 2000);
         
         testProc.on("error", (err) => {

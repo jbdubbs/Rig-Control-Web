@@ -175,6 +175,7 @@ export default function App() {
     framerate: ""
   });
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
+  const [preampLevels, setPreampLevels] = useState<string[]>([]);
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
@@ -291,6 +292,9 @@ export default function App() {
       socket.on("test-result", (result: { success: boolean, message: string }) => {
         setTestResult(result);
         setTimeout(() => setTestResult(null), 5000);
+      });
+      socket.on("preamp-capabilities", (levels: string[]) => {
+        setPreampLevels(levels);
       });
       socket.emit("get-settings");
       socket.emit("get-radios");
@@ -649,6 +653,26 @@ export default function App() {
       setStatus(prev => ({ ...(prev || DEFAULT_STATUS), [key]: val }));
     }
     socket?.emit("set-level", { level, val });
+  };
+
+  const cyclePreamp = () => {
+    if (preampLevels.length === 0) {
+      handleSetLevel("PREAMP", 0);
+      return;
+    }
+    const levelsAsNumbers = preampLevels.map(l => parseInt(l.replace('dB', '')));
+    const allOptions = [0, ...levelsAsNumbers];
+    let currentIndex = allOptions.indexOf(status.preamp);
+    if (currentIndex === -1) currentIndex = 0; // Fallback to OFF if current level is not in list
+    const nextIndex = (currentIndex + 1) % allOptions.length;
+    const nextValue = allOptions[nextIndex];
+    handleSetLevel("PREAMP", nextValue);
+  };
+
+  const getPreampLabel = () => {
+    if (status.preamp === 0) return "OFF";
+    // If the current preamp level is not in our known capabilities, just show the number
+    return `${status.preamp}dB`;
   };
 
   const handleVfoOp = (op: string) => {
@@ -1109,20 +1133,17 @@ export default function App() {
                       </span>
                     </button>
                     <button 
-                      onClick={() => {
-                        const next = status.preamp === 0 ? 10 : status.preamp === 10 ? 20 : 0;
-                        handleSetLevel("PREAMP", next);
-                      }}
-                      disabled={!connected}
+                      onClick={cyclePreamp}
+                      disabled={!connected || preampLevels.length === 0}
                       className={cn(
                         "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                        !connected && "opacity-50 cursor-not-allowed",
+                        (!connected || preampLevels.length === 0) && "opacity-50 cursor-not-allowed",
                         status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
                       <Zap size={24} />
                       <span className="text-xs uppercase font-bold leading-none">
-                        {status.preamp === 0 ? "IPO" : status.preamp === 10 ? "AMP1" : "AMP2"}
+                        {getPreampLabel()}
                       </span>
                     </button>
                     <button 
@@ -1659,20 +1680,17 @@ export default function App() {
                       </span>
                     </button>
                     <button 
-                      onClick={() => {
-                        const next = status.preamp === 0 ? 10 : status.preamp === 10 ? 20 : 0;
-                        handleSetLevel("PREAMP", next);
-                      }}
-                      disabled={!connected}
+                      onClick={cyclePreamp}
+                      disabled={!connected || preampLevels.length === 0}
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                        !connected && "opacity-50 cursor-not-allowed",
+                        (!connected || preampLevels.length === 0) && "opacity-50 cursor-not-allowed",
                         status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
                       <Zap size={16} />
                       <span className="text-xs uppercase font-bold leading-none">
-                        {status.preamp === 0 ? "IPO" : status.preamp === 10 ? "AMP1" : "AMP2"}
+                        {getPreampLabel()}
                       </span>
                     </button>
                     <button 
@@ -2118,18 +2136,11 @@ export default function App() {
                   </button>
 
                   <button 
-                    onClick={() => {
-                      const current = status.preamp;
-                      let next = 0;
-                      if (current === 0) next = 10;
-                      else if (current === 10) next = 20;
-                      else next = 0;
-                      handleSetLevel("PREAMP", next);
-                    }}
-                    disabled={!connected}
+                    onClick={cyclePreamp}
+                    disabled={!connected || preampLevels.length === 0}
                     className={cn(
                       "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
-                      !connected && "opacity-50 cursor-not-allowed",
+                      (!connected || preampLevels.length === 0) && "opacity-50 cursor-not-allowed",
                       status.preamp > 0 
                         ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
                         : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
@@ -2139,9 +2150,7 @@ export default function App() {
                     <div className="flex flex-col items-center">
                       <span className="text-[0.625rem] uppercase font-bold">Preamp</span>
                       <span className="text-[0.5625rem] font-bold opacity-80">
-                        {status.preamp === 0 ? "IPO" : 
-                         status.preamp === 10 ? "AMP1" : 
-                         status.preamp === 20 ? "AMP2" : "IPO"}
+                        {getPreampLabel()}
                       </span>
                     </div>
                   </button>
