@@ -108,7 +108,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     nbSupported: false,
     nbLevelRange: { min: 0, max: 1, step: 0.1 },
     nrSupported: false,
-    nrLevelRange: { min: 0, max: 1, step: 0.1 }
+    nrLevelRange: { min: 0, max: 1, step: 0.1 },
+    rfPowerRange: { min: 0, max: 1, step: 0.01 }
   };
 
   // Load settings if they exist
@@ -256,6 +257,18 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           } else {
             rigctldSettings.nrLevelRange = { min: 0, max: 1, step: 0.1 };
           }
+
+          const rfPowerMatch = getLevelLine.match(/RFPOWER\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+          if (rfPowerMatch) {
+            rigctldSettings.rfPowerRange = {
+              min: parseFloat(rfPowerMatch[1]),
+              max: parseFloat(rfPowerMatch[2]),
+              step: parseFloat(rfPowerMatch[3])
+            };
+            console.log(`[HAMLIB] RF Power range for rig ${rigNumber}: min=${rigctldSettings.rfPowerRange.min}, max=${rigctldSettings.rfPowerRange.max}, step=${rigctldSettings.rfPowerRange.step}`);
+          } else {
+            rigctldSettings.rfPowerRange = { min: 0, max: 1, step: 0.01 };
+          }
         }
       }
       saveSettings();
@@ -264,6 +277,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       io.emit("agc-capabilities", rigctldSettings.agcCapabilities);
       io.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
       io.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
+      io.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
     });
   };
 

@@ -137,6 +137,7 @@ export default function App() {
   const isDraggingNB = useRef(false);
   const [nbCapabilities, setNbCapabilities] = useState({ supported: false, range: { min: 0, max: 1, step: 0.1 } });
   const [nrCapabilities, setNrCapabilities] = useState({ supported: false, range: { min: 0, max: 1, step: 0.066667 } });
+  const [rfPowerCapabilities, setRfPowerCapabilities] = useState({ range: { min: 0, max: 1, step: 0.01 } });
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -157,7 +158,8 @@ export default function App() {
     serialPortSpeed: "38400",
     preampCapabilities: [] as string[],
     attenuatorCapabilities: [] as string[],
-    agcCapabilities: [] as string[]
+    agcCapabilities: [] as string[],
+    rfPowerRange: { min: 0, max: 1, step: 0.01 }
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
@@ -277,6 +279,9 @@ export default function App() {
         if (data.settings.agcCapabilities) {
           setAgcLevels(data.settings.agcCapabilities);
         }
+        if (data.settings.rfPowerRange) {
+          setRfPowerCapabilities({ range: data.settings.rfPowerRange });
+        }
         setSettingsLoaded(true);
         if (data.videoSettings) {
           setVideoSettings(data.videoSettings);
@@ -356,6 +361,10 @@ export default function App() {
       socket.on("nr-capabilities", (data: { supported: boolean, range: { min: number, max: number, step: number } }) => {
         setNrCapabilities(data);
         setRigctldSettings(prev => ({ ...prev, nrSupported: data.supported, nrLevelRange: data.range }));
+      });
+      socket.on("rfpower-capabilities", (data: { range: { min: number, max: number, step: number } }) => {
+        setRfPowerCapabilities(data);
+        setRigctldSettings(prev => ({ ...prev, rfPowerRange: data.range }));
       });
       socket.emit("get-settings");
       socket.emit("get-radios");
@@ -1320,28 +1329,28 @@ export default function App() {
                 </div>
                 {!isPhoneRFPowerCollapsed && (
                   <div className="p-4 flex flex-col justify-center gap-4">
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
-                        <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
+                          <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min={rfPowerCapabilities.range.min * 100} 
+                          max={rfPowerCapabilities.range.max * 100} 
+                          step={rfPowerCapabilities.range.step * 100}
+                          value={localRFPower * 100}
+                          disabled={!connected}
+                          onChange={(e) => {
+                            isDraggingRF.current = true;
+                            setLocalRFPower(parseFloat(e.target.value) / 100);
+                          }}
+                          className={cn(
+                            "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                            !connected && "opacity-50 cursor-not-allowed"
+                          )}
+                        />
                       </div>
-                      <input 
-                        type="range" 
-                        min="0.05" 
-                        max="1" 
-                        step="0.05"
-                        value={localRFPower}
-                        disabled={!connected}
-                        onChange={(e) => {
-                          isDraggingRF.current = true;
-                          setLocalRFPower(parseFloat(e.target.value));
-                        }}
-                        className={cn(
-                          "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                          !connected && "opacity-50 cursor-not-allowed"
-                        )}
-                      />
-                    </div>
                     
                     <div className="space-y-4">
                       <div className="space-y-2">
@@ -1927,18 +1936,18 @@ export default function App() {
                   <div className="p-2 flex flex-col justify-center gap-1">
                     <div className="flex justify-between items-center">
                       <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
-                      <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
+                      <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}</span>
                     </div>
                     <input 
                       type="range" 
-                      min="0.05" 
-                      max="1" 
-                      step="0.05"
-                      value={localRFPower}
+                      min={rfPowerCapabilities.range.min * 100} 
+                      max={rfPowerCapabilities.range.max * 100} 
+                      step={rfPowerCapabilities.range.step * 100}
+                      value={localRFPower * 100}
                       disabled={!connected}
                       onChange={(e) => {
                         isDraggingRF.current = true;
-                        setLocalRFPower(parseFloat(e.target.value));
+                        setLocalRFPower(parseFloat(e.target.value) / 100);
                       }}
                       className={cn(
                         "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
@@ -2566,18 +2575,18 @@ export default function App() {
                         <Gauge size={14} />
                         <span className="text-[0.625rem] uppercase tracking-widest">RF Power</span>
                       </div>
-                      <span className="text-emerald-500 font-bold">{Math.round(localRFPower * 100)} Watts</span>
+                      <span className="text-emerald-500 font-bold">{Math.round(localRFPower * 100)}</span>
                     </div>
                     <input 
                       type="range" 
-                      min="0.05" 
-                      max="1" 
-                      step="0.05"
-                      value={localRFPower}
+                      min={rfPowerCapabilities.range.min * 100} 
+                      max={rfPowerCapabilities.range.max * 100} 
+                      step={rfPowerCapabilities.range.step * 100}
+                      value={localRFPower * 100}
                       disabled={!connected}
                       onChange={(e) => {
                         isDraggingRF.current = true;
-                        setLocalRFPower(parseFloat(e.target.value));
+                        setLocalRFPower(parseFloat(e.target.value) / 100);
                       }}
                       className={cn(
                         "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
