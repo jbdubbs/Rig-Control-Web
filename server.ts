@@ -106,7 +106,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     attenuatorCapabilities: [] as string[],
     agcCapabilities: [] as string[],
     nbSupported: false,
-    nbLevelRange: { min: 0, max: 1, step: 0.1 }
+    nbLevelRange: { min: 0, max: 1, step: 0.1 },
+    nrSupported: false,
+    nrLevelRange: { min: 0, max: 1, step: 0.1 }
   };
 
   // Load settings if they exist
@@ -173,6 +175,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         rigctldSettings.attenuatorCapabilities = [];
         rigctldSettings.agcCapabilities = [];
         rigctldSettings.nbSupported = false;
+        rigctldSettings.nrSupported = false;
       } else {
         const lines = stdout.split('\n');
         
@@ -212,18 +215,21 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           console.log(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
         }
 
-        // Parse Set functions for NB
+        // Parse Set functions for NB and NR
         const setFunctionsLine = lines.find(line => line.trim().startsWith('Set functions:'));
         if (setFunctionsLine) {
           const functions = setFunctionsLine.replace('Set functions:', '').trim().split(/\s+/);
           rigctldSettings.nbSupported = functions.includes('NB');
+          rigctldSettings.nrSupported = functions.includes('NR');
           console.log(`[HAMLIB] NB supported for rig ${rigNumber}: ${rigctldSettings.nbSupported}`);
+          console.log(`[HAMLIB] NR supported for rig ${rigNumber}: ${rigctldSettings.nrSupported}`);
         } else {
           rigctldSettings.nbSupported = false;
-          console.log(`[HAMLIB] NB not supported for rig ${rigNumber}`);
+          rigctldSettings.nrSupported = false;
+          console.log(`[HAMLIB] NB/NR not supported for rig ${rigNumber}`);
         }
 
-        // Parse Get level for NB range
+        // Parse Get level for NB and NR range
         const getLevelLine = lines.find(line => line.trim().startsWith('Get level:'));
         if (getLevelLine) {
           // Example: "Get level: NB(0.000000..10.000000/1.000000)"
@@ -236,8 +242,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             };
             console.log(`[HAMLIB] NB level range for rig ${rigNumber}: min=${rigctldSettings.nbLevelRange.min}, max=${rigctldSettings.nbLevelRange.max}, step=${rigctldSettings.nbLevelRange.step}`);
           } else {
-            // Default range if not found but supported
             rigctldSettings.nbLevelRange = { min: 0, max: 1, step: 0.1 };
+          }
+
+          const nrMatch = getLevelLine.match(/NR\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+          if (nrMatch) {
+            rigctldSettings.nrLevelRange = {
+              min: parseFloat(nrMatch[1]),
+              max: parseFloat(nrMatch[2]),
+              step: parseFloat(nrMatch[3])
+            };
+            console.log(`[HAMLIB] NR level range for rig ${rigNumber}: min=${rigctldSettings.nrLevelRange.min}, max=${rigctldSettings.nrLevelRange.max}, step=${rigctldSettings.nrLevelRange.step}`);
+          } else {
+            rigctldSettings.nrLevelRange = { min: 0, max: 1, step: 0.1 };
           }
         }
       }
@@ -246,6 +263,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       io.emit("attenuator-capabilities", rigctldSettings.attenuatorCapabilities);
       io.emit("agc-capabilities", rigctldSettings.agcCapabilities);
       io.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
+      io.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
     });
   };
 
@@ -920,8 +938,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const nb = (await sendToRig("u NB", true).catch(() => "0")) === "1";
       const nbLevel = parseFloat(await sendToRig("l NB", true).catch(() => "0"));
       const nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
-      const nrRaw = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
-      const nrLevel = nrRaw > 1.0 ? nrRaw / 15 : nrRaw;
+      const nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
       const tuner = (await sendToRig("u TUNER", true).catch(() => "0")) === "1";
 
       lastStatus = {

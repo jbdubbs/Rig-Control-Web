@@ -74,8 +74,6 @@ const BANDWIDTHS = [300, 500, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3200, 35
 
 const VFO_STEPS = [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10];
 
-const DNR_LEVELS = Array.from({ length: 15 }, (_, i) => parseFloat(((i + 1) / 15).toFixed(3)));
-
 const DEFAULT_STATUS: RigStatus = {
   frequency: "14074000",
   mode: "USB",
@@ -133,11 +131,12 @@ export default function App() {
   const [localRFPower, setLocalRFPower] = useState(() => parseFloat(localStorage.getItem("last-rfpower") || "0.5"));
   const [localRFLevel, setLocalRFLevel] = useState(0);
   const isDraggingRFLevel = useRef(false);
-  const [localNRLevel, setLocalNRLevel] = useState(0.5);
+  const [localNRLevel, setLocalNRLevel] = useState(0);
   const isDraggingNR = useRef(false);
   const [localNBLevel, setLocalNBLevel] = useState(0);
   const isDraggingNB = useRef(false);
   const [nbCapabilities, setNbCapabilities] = useState({ supported: false, range: { min: 0, max: 1, step: 0.1 } });
+  const [nrCapabilities, setNrCapabilities] = useState({ supported: false, range: { min: 0, max: 1, step: 0.066667 } });
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -354,6 +353,10 @@ export default function App() {
         setNbCapabilities(data);
         setRigctldSettings(prev => ({ ...prev, nbSupported: data.supported, nbLevelRange: data.range }));
       });
+      socket.on("nr-capabilities", (data: { supported: boolean, range: { min: number, max: number, step: number } }) => {
+        setNrCapabilities(data);
+        setRigctldSettings(prev => ({ ...prev, nrSupported: data.supported, nrLevelRange: data.range }));
+      });
       socket.emit("get-settings");
       socket.emit("get-radios");
       socket.emit("get-video-devices");
@@ -462,17 +465,9 @@ export default function App() {
   }, [isCompact, isPhone, videoStatus]);
 
   const findClosestDNRValue = (val: number) => {
-    if (DNR_LEVELS.length === 0) return 0.5;
-    let closest = DNR_LEVELS[0];
-    let minDiff = Math.abs(DNR_LEVELS[0] - val);
-    for (let i = 1; i < DNR_LEVELS.length; i++) {
-      const diff = Math.abs(DNR_LEVELS[i] - val);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = DNR_LEVELS[i];
-      }
-    }
-    return closest;
+    if (!nrCapabilities.range.step) return val;
+    const steps = Math.round((val - nrCapabilities.range.min) / nrCapabilities.range.step);
+    return nrCapabilities.range.min + (steps * nrCapabilities.range.step);
   };
 
   useEffect(() => {
@@ -1373,22 +1368,23 @@ export default function App() {
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
-                          <span className="text-sm text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                          <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}</span>
                         </div>
                         <input 
                           type="range" 
                           min="0" 
-                          max="14" 
+                          max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)} 
                           step="1"
-                          value={DNR_LEVELS.indexOf(localNRLevel)}
-                          disabled={!connected}
+                          value={Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}
+                          disabled={!connected || !nrCapabilities.supported}
                           onChange={(e) => {
                             isDraggingNR.current = true;
-                            setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
+                            const stepIdx = parseInt(e.target.value);
+                            setLocalNRLevel(nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step));
                           }}
                           className={cn(
                             "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                            !connected && "opacity-50 cursor-not-allowed"
+                            (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed"
                           )}
                         />
                       </div>
@@ -1453,15 +1449,15 @@ export default function App() {
                 </button>
                 <button 
                   onClick={() => handleSetFunc("NR", !status.nr)}
-                  disabled={!connected}
+                  disabled={!connected || !nrCapabilities.supported}
                   className={cn(
                     "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    !connected && "opacity-50 cursor-not-allowed",
+                    (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed",
                     status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
                   )}
                 >
-                  <Volume2 size={20} />
-                  <span className="text-xs uppercase font-bold leading-none">DNR</span>
+                  <Activity size={20} />
+                  <span className="text-xs uppercase font-bold leading-none">NR</span>
                 </button>
                 <button 
                   onClick={() => handleSetFunc("NB", !status.nb)}
@@ -1901,15 +1897,15 @@ export default function App() {
                     </button>
                     <button 
                       onClick={() => handleSetFunc("NR", !status.nr)}
-                      disabled={!connected}
+                      disabled={!connected || !nrCapabilities.supported}
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                        !connected && "opacity-50 cursor-not-allowed",
+                        (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed",
                         status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
-                      <Volume2 size={16} />
-                      <span className="text-xs uppercase font-bold leading-none">DNR</span>
+                      <Activity size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">NR</span>
                     </button>
                   </div>
                 )}
@@ -1969,22 +1965,23 @@ export default function App() {
                     />
                     <div className="flex justify-between items-center mt-3">
                       <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
-                      <span className="text-sm text-emerald-500 font-bold">Lvl {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                      <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}</span>
                     </div>
                     <input 
                       type="range" 
                       min="0" 
-                      max="14" 
+                      max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)} 
                       step="1"
-                      value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
-                      disabled={!connected}
+                      value={Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}
+                      disabled={!connected || !nrCapabilities.supported}
                       onChange={(e) => {
                         isDraggingNR.current = true;
-                        setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
+                        const stepIdx = parseInt(e.target.value);
+                        setLocalNRLevel(nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step));
                       }}
                       className={cn(
                         "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                        !connected && "opacity-50 cursor-not-allowed"
+                        (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed"
                       )}
                     />
                     {nbCapabilities.supported && (
@@ -2367,18 +2364,18 @@ export default function App() {
 
                   <button 
                     onClick={() => handleSetFunc("NR", !status.nr)}
-                    disabled={!connected}
+                    disabled={!connected || !nrCapabilities.supported}
                     className={cn(
                       "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
-                      !connected && "opacity-50 cursor-not-allowed",
+                      (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed",
                       status.nr 
                         ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
                         : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                     )}
                   >
-                    <Volume2 size={20} />
+                    <Activity size={20} />
                     <div className="flex flex-col items-center">
-                      <span className="text-[0.625rem] uppercase font-bold">DNR</span>
+                      <span className="text-[0.625rem] uppercase font-bold">NR</span>
                       <span className="text-[0.5625rem] font-bold opacity-80">
                         {status.nr ? "ON" : "OFF"}
                       </span>
@@ -2615,25 +2612,26 @@ export default function App() {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2 text-[#8e9299]">
-                        <Volume2 size={14} />
+                        <Activity size={14} />
                         <span className="text-[0.625rem] uppercase tracking-widest">DNR Level</span>
                       </div>
-                      <span className="text-emerald-500 font-bold">Level {DNR_LEVELS.indexOf(localNRLevel) === -1 ? 8 : DNR_LEVELS.indexOf(localNRLevel) + 1}</span>
+                      <span className="text-emerald-500 font-bold">Level {Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}</span>
                     </div>
                     <input 
                       type="range" 
                       min="0" 
-                      max="14" 
+                      max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)} 
                       step="1"
-                      value={DNR_LEVELS.indexOf(localNRLevel) === -1 ? 7 : DNR_LEVELS.indexOf(localNRLevel)}
-                      disabled={!connected}
+                      value={Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}
+                      disabled={!connected || !nrCapabilities.supported}
                       onChange={(e) => {
                         isDraggingNR.current = true;
-                        setLocalNRLevel(DNR_LEVELS[parseInt(e.target.value)]);
+                        const stepIdx = parseInt(e.target.value);
+                        setLocalNRLevel(nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step));
                       }}
                       className={cn(
                         "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                        !connected && "opacity-50 cursor-not-allowed"
+                        (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed"
                       )}
                     />
                   </div>
