@@ -109,7 +109,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     nbLevelRange: { min: 0, max: 1, step: 0.1 },
     nrSupported: false,
     nrLevelRange: { min: 0, max: 1, step: 0.1 },
-    rfPowerRange: { min: 0, max: 1, step: 0.01 }
+    rfPowerRange: { min: 0, max: 1, step: 0.01 },
+    anfSupported: false
   };
 
   // Load settings if they exist
@@ -162,6 +163,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       io.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
       io.emit("attenuator-capabilities", rigctldSettings.attenuatorCapabilities);
       io.emit("agc-capabilities", rigctldSettings.agcCapabilities);
+      io.emit("anf-capabilities", rigctldSettings.anfSupported);
       return;
     }
 
@@ -177,6 +179,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         rigctldSettings.agcCapabilities = [];
         rigctldSettings.nbSupported = false;
         rigctldSettings.nrSupported = false;
+        rigctldSettings.anfSupported = false;
       } else {
         const lines = stdout.split('\n');
         
@@ -222,12 +225,15 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const functions = setFunctionsLine.replace('Set functions:', '').trim().split(/\s+/);
           rigctldSettings.nbSupported = functions.includes('NB');
           rigctldSettings.nrSupported = functions.includes('NR');
+          rigctldSettings.anfSupported = functions.includes('ANF');
           console.log(`[HAMLIB] NB supported for rig ${rigNumber}: ${rigctldSettings.nbSupported}`);
           console.log(`[HAMLIB] NR supported for rig ${rigNumber}: ${rigctldSettings.nrSupported}`);
+          console.log(`[HAMLIB] ANF supported for rig ${rigNumber}: ${rigctldSettings.anfSupported}`);
         } else {
           rigctldSettings.nbSupported = false;
           rigctldSettings.nrSupported = false;
-          console.log(`[HAMLIB] NB/NR not supported for rig ${rigNumber}`);
+          rigctldSettings.anfSupported = false;
+          console.log(`[HAMLIB] NB/NR/ANF not supported for rig ${rigNumber}`);
         }
 
         // Parse Get level for NB and NR range
@@ -278,6 +284,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       io.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
       io.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
       io.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
+      io.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
     });
   };
 
@@ -753,6 +760,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     preamp: 0,
     nb: false,
     nr: false,
+    anf: false,
     nrLevel: 8 / 15,
     tuner: false
   };
@@ -778,6 +786,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       preamp: 0,
       nb: false,
       nr: false,
+      anf: false,
       nrLevel: 8 / 15,
       tuner: false
     };
@@ -953,6 +962,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const nbLevel = parseFloat(await sendToRig("l NB", true).catch(() => "0"));
       const nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
       const nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
+      const anf = (await sendToRig("u ANF", true).catch(() => "0")) === "1";
       const tuner = (await sendToRig("u TUNER", true).catch(() => "0")) === "1";
 
       lastStatus = {
@@ -977,6 +987,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         nbLevel,
         nr,
         nrLevel,
+        anf,
         tuner,
         timestamp: now,
       };
@@ -1134,6 +1145,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       socket.emit("video-status", videoStatus);
       socket.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
       socket.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
+      socket.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
+      socket.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
+      socket.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
     });
 
     socket.on("get-video-devices", async () => {

@@ -59,6 +59,7 @@ interface RigStatus {
   nbLevel: number;
   nr: boolean;
   nrLevel: number;
+  anf: boolean;
   tuner: boolean;
   alc: number;
   powerMeter: number;
@@ -93,6 +94,7 @@ const DEFAULT_STATUS: RigStatus = {
   nbLevel: 0,
   nr: false,
   nrLevel: 0.5,
+  anf: false,
   tuner: false,
   alc: 0,
   powerMeter: 0,
@@ -137,6 +139,7 @@ export default function App() {
   const isDraggingNB = useRef(false);
   const [nbCapabilities, setNbCapabilities] = useState({ supported: false, range: { min: 0, max: 1, step: 0.1 } });
   const [nrCapabilities, setNrCapabilities] = useState({ supported: false, range: { min: 0, max: 1, step: 0.066667 } });
+  const [anfCapabilities, setAnfCapabilities] = useState({ supported: false });
   const [rfPowerCapabilities, setRfPowerCapabilities] = useState({ range: { min: 0, max: 1, step: 0.01 } });
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
   const [showSetupModal, setShowSetupModal] = useState(false);
@@ -159,7 +162,12 @@ export default function App() {
     preampCapabilities: [] as string[],
     attenuatorCapabilities: [] as string[],
     agcCapabilities: [] as string[],
-    rfPowerRange: { min: 0, max: 1, step: 0.01 }
+    nbSupported: false,
+    nbLevelRange: { min: 0, max: 1, step: 0.1 },
+    nrSupported: false,
+    nrLevelRange: { min: 0, max: 1, step: 0.1 },
+    rfPowerRange: { min: 0, max: 1, step: 0.01 },
+    anfSupported: false
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
@@ -361,6 +369,10 @@ export default function App() {
       socket.on("nr-capabilities", (data: { supported: boolean, range: { min: number, max: number, step: number } }) => {
         setNrCapabilities(data);
         setRigctldSettings(prev => ({ ...prev, nrSupported: data.supported, nrLevelRange: data.range }));
+      });
+      socket.on("anf-capabilities", (data: { supported: boolean }) => {
+        setAnfCapabilities(data);
+        setRigctldSettings(prev => ({ ...prev, anfSupported: data.supported }));
       });
       socket.on("rfpower-capabilities", (data: { range: { min: number, max: number, step: number } }) => {
         setRfPowerCapabilities(data);
@@ -1471,16 +1483,16 @@ export default function App() {
                   <span className="text-xs uppercase font-bold leading-none">DNR</span>
                 </button>
                 <button 
-                  onClick={() => handleSetFunc("NB", !status.nb)}
-                  disabled={!connected || !nbCapabilities.supported}
+                  onClick={() => handleSetFunc("ANF", !status.anf)}
+                  disabled={!connected || !anfCapabilities.supported}
                   className={cn(
                     "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    (!connected || !nbCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                    status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
+                    (!connected || !anfCapabilities.supported) && "opacity-50 cursor-not-allowed",
+                    status.anf ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
                   )}
                 >
-                  <Waves size={20} />
-                  <span className="text-xs uppercase font-bold leading-none">NB</span>
+                  <Activity size={20} />
+                  <span className="text-xs uppercase font-bold leading-none">ANF</span>
                 </button>
               </div>
             )}
@@ -1891,6 +1903,19 @@ export default function App() {
                       <Waves size={16} />
                       <span className="text-xs uppercase font-bold leading-none">NB</span>
                     </button>
+                    <button 
+                      onClick={() => handleSetFunc("ANF", !status.anf)}
+                      disabled={!connected || !anfCapabilities.supported}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                        (!connected || !anfCapabilities.supported) && "opacity-50 cursor-not-allowed",
+                        status.anf ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Activity size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">ANF</span>
+                    </button>
+
                     <button 
                       onClick={cycleAgc}
                       disabled={!connected || agcLevels.length === 0}
@@ -2390,6 +2415,26 @@ export default function App() {
                       <span className="text-[0.625rem] uppercase font-bold">DNR</span>
                       <span className="text-[0.5625rem] font-bold opacity-80">
                         {status.nr ? "ON" : "OFF"}
+                      </span>
+                    </div>
+                  </button>
+
+                  <button 
+                    onClick={() => handleSetFunc("ANF", !status.anf)}
+                    disabled={!connected || !anfCapabilities.supported}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
+                      (!connected || !anfCapabilities.supported) && "opacity-50 cursor-not-allowed",
+                      status.anf 
+                        ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
+                        : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                    )}
+                  >
+                    <Activity size={20} />
+                    <div className="flex flex-col items-center">
+                      <span className="text-[0.625rem] uppercase font-bold">ANF</span>
+                      <span className="text-[0.5625rem] font-bold opacity-80">
+                        {status.anf ? "ON" : "OFF"}
                       </span>
                     </div>
                   </button>
