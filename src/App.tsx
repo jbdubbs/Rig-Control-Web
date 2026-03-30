@@ -467,7 +467,8 @@ export default function App() {
   const findClosestDNRValue = (val: number) => {
     if (!nrCapabilities.range.step) return val;
     const steps = Math.round((val - nrCapabilities.range.min) / nrCapabilities.range.step);
-    return nrCapabilities.range.min + (steps * nrCapabilities.range.step);
+    const calculated = nrCapabilities.range.min + (steps * nrCapabilities.range.step);
+    return Math.min(nrCapabilities.range.max, calculated);
   };
 
   useEffect(() => {
@@ -1368,19 +1369,20 @@ export default function App() {
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
-                          <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}</span>
+                          <span className="text-sm text-emerald-500 font-bold">Lvl {Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}</span>
                         </div>
                         <input 
                           type="range" 
-                          min="0" 
+                          min="1" 
                           max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)} 
                           step="1"
-                          value={Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}
+                          value={Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}
                           disabled={!connected || !nrCapabilities.supported}
                           onChange={(e) => {
                             isDraggingNR.current = true;
                             const stepIdx = parseInt(e.target.value);
-                            setLocalNRLevel(nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step));
+                            const calculated = nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step);
+                            setLocalNRLevel(Math.min(nrCapabilities.range.max, calculated));
                           }}
                           className={cn(
                             "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
@@ -1457,7 +1459,7 @@ export default function App() {
                   )}
                 >
                   <Activity size={20} />
-                  <span className="text-xs uppercase font-bold leading-none">NR</span>
+                  <span className="text-xs uppercase font-bold leading-none">DNR</span>
                 </button>
                 <button 
                   onClick={() => handleSetFunc("NB", !status.nb)}
@@ -1905,7 +1907,7 @@ export default function App() {
                       )}
                     >
                       <Activity size={16} />
-                      <span className="text-xs uppercase font-bold leading-none">NR</span>
+                      <span className="text-xs uppercase font-bold leading-none">DNR</span>
                     </button>
                   </div>
                 )}
@@ -1965,19 +1967,20 @@ export default function App() {
                     />
                     <div className="flex justify-between items-center mt-3">
                       <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
-                      <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}</span>
+                      <span className="text-sm text-emerald-500 font-bold">Lvl {Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}</span>
                     </div>
                     <input 
                       type="range" 
-                      min="0" 
+                      min="1" 
                       max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)} 
                       step="1"
-                      value={Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}
+                      value={Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}
                       disabled={!connected || !nrCapabilities.supported}
                       onChange={(e) => {
                         isDraggingNR.current = true;
                         const stepIdx = parseInt(e.target.value);
-                        setLocalNRLevel(nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step));
+                        const calculated = nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step);
+                        setLocalNRLevel(Math.min(nrCapabilities.range.max, calculated));
                       }}
                       className={cn(
                         "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
@@ -2375,7 +2378,7 @@ export default function App() {
                   >
                     <Activity size={20} />
                     <div className="flex flex-col items-center">
-                      <span className="text-[0.625rem] uppercase font-bold">NR</span>
+                      <span className="text-[0.625rem] uppercase font-bold">DNR</span>
                       <span className="text-[0.5625rem] font-bold opacity-80">
                         {status.nr ? "ON" : "OFF"}
                       </span>
@@ -2615,19 +2618,20 @@ export default function App() {
                         <Activity size={14} />
                         <span className="text-[0.625rem] uppercase tracking-widest">DNR Level</span>
                       </div>
-                      <span className="text-emerald-500 font-bold">Level {Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}</span>
+                      <span className="text-emerald-500 font-bold">Level {Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}</span>
                     </div>
                     <input 
                       type="range" 
-                      min="0" 
+                      min="1" 
                       max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)} 
                       step="1"
-                      value={Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step)}
+                      value={Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}
                       disabled={!connected || !nrCapabilities.supported}
                       onChange={(e) => {
                         isDraggingNR.current = true;
                         const stepIdx = parseInt(e.target.value);
-                        setLocalNRLevel(nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step));
+                        const calculated = nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step);
+                        setLocalNRLevel(Math.min(nrCapabilities.range.max, calculated));
                       }}
                       className={cn(
                         "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
