@@ -1332,7 +1332,7 @@ export default function App() {
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
-                          <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}</span>
+                          <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
                         </div>
                         <input 
                           type="range" 
@@ -1403,7 +1403,7 @@ export default function App() {
                         <div className="space-y-2 animate-in slide-in-from-top-1 duration-300">
                           <div className="flex justify-between items-center">
                             <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
-                            <span className="text-sm text-emerald-500 font-bold">{localNBLevel.toFixed(1)}</span>
+                            <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round(localNBLevel)}</span>
                           </div>
                           <input 
                             type="range" 
@@ -1936,7 +1936,7 @@ export default function App() {
                   <div className="p-2 flex flex-col justify-center gap-1">
                     <div className="flex justify-between items-center">
                       <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
-                      <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}</span>
+                      <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
                     </div>
                     <input 
                       type="range" 
@@ -2000,7 +2000,7 @@ export default function App() {
                       <>
                         <div className="flex justify-between items-center mt-3">
                           <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
-                          <span className="text-sm text-emerald-500 font-bold">{localNBLevel.toFixed(1)}</span>
+                          <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round(localNBLevel)}</span>
                         </div>
                         <input 
                           type="range" 
@@ -2575,7 +2575,7 @@ export default function App() {
                         <Gauge size={14} />
                         <span className="text-[0.625rem] uppercase tracking-widest">RF Power</span>
                       </div>
-                      <span className="text-emerald-500 font-bold">{Math.round(localRFPower * 100)}</span>
+                      <span className="text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
                     </div>
                     <input 
                       type="range" 
@@ -2656,7 +2656,7 @@ export default function App() {
                           <Waves size={14} />
                           <span className="text-[0.625rem] uppercase tracking-widest">NB Level</span>
                         </div>
-                        <span className="text-emerald-500 font-bold">{localNBLevel.toFixed(1)}</span>
+                        <span className="text-emerald-500 font-bold">Level {Math.round(localNBLevel)}</span>
                       </div>
                       <input 
                         type="range" 
