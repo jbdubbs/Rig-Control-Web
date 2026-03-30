@@ -104,7 +104,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     serialPortSpeed: "38400",
     preampCapabilities: [] as string[],
     attenuatorCapabilities: [] as string[],
-    agcCapabilities: [] as string[]
+    agcCapabilities: [] as string[],
+    nbSupported: false,
+    nbLevelRange: { min: 0, max: 1, step: 0.1 }
   };
 
   // Load settings if they exist
@@ -170,6 +172,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         rigctldSettings.preampCapabilities = [];
         rigctldSettings.attenuatorCapabilities = [];
         rigctldSettings.agcCapabilities = [];
+        rigctldSettings.nbSupported = false;
       } else {
         const lines = stdout.split('\n');
         
@@ -208,11 +211,41 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           rigctldSettings.agcCapabilities = [];
           console.log(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
         }
+
+        // Parse Set functions for NB
+        const setFunctionsLine = lines.find(line => line.trim().startsWith('Set functions:'));
+        if (setFunctionsLine) {
+          const functions = setFunctionsLine.replace('Set functions:', '').trim().split(/\s+/);
+          rigctldSettings.nbSupported = functions.includes('NB');
+          console.log(`[HAMLIB] NB supported for rig ${rigNumber}: ${rigctldSettings.nbSupported}`);
+        } else {
+          rigctldSettings.nbSupported = false;
+          console.log(`[HAMLIB] NB not supported for rig ${rigNumber}`);
+        }
+
+        // Parse Get level for NB range
+        const getLevelLine = lines.find(line => line.trim().startsWith('Get level:'));
+        if (getLevelLine) {
+          // Example: "Get level: NB(0.000000..10.000000/1.000000)"
+          const nbMatch = getLevelLine.match(/NB\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+          if (nbMatch) {
+            rigctldSettings.nbLevelRange = {
+              min: parseFloat(nbMatch[1]),
+              max: parseFloat(nbMatch[2]),
+              step: parseFloat(nbMatch[3])
+            };
+            console.log(`[HAMLIB] NB level range for rig ${rigNumber}: min=${rigctldSettings.nbLevelRange.min}, max=${rigctldSettings.nbLevelRange.max}, step=${rigctldSettings.nbLevelRange.step}`);
+          } else {
+            // Default range if not found but supported
+            rigctldSettings.nbLevelRange = { min: 0, max: 1, step: 0.1 };
+          }
+        }
       }
       saveSettings();
       io.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
       io.emit("attenuator-capabilities", rigctldSettings.attenuatorCapabilities);
       io.emit("agc-capabilities", rigctldSettings.agcCapabilities);
+      io.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
     });
   };
 
@@ -884,7 +917,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const [isSplitStr, txVFO] = splitInfo.split("\n");
       const att = parseInt(await sendToRig("l ATT", true)) || 0;
       const preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
-      const nb = (await sendToRig("u NB", true)) === "1";
+      const nb = (await sendToRig("u NB", true).catch(() => "0")) === "1";
+      const nbLevel = parseFloat(await sendToRig("l NB", true).catch(() => "0"));
       const nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
       const nrRaw = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
       const nrLevel = nrRaw > 1.0 ? nrRaw / 15 : nrRaw;
@@ -909,6 +943,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         attenuation: att,
         preamp,
         nb,
+        nbLevel,
         nr,
         nrLevel,
         tuner,
@@ -1067,6 +1102,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       socket.emit("rigctld-log", rigctldLogs);
       socket.emit("video-status", videoStatus);
       socket.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
+      socket.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
     });
 
     socket.on("get-video-devices", async () => {

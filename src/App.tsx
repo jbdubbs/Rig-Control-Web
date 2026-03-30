@@ -56,6 +56,7 @@ interface RigStatus {
   attenuation: number;
   preamp: number;
   nb: boolean;
+  nbLevel: number;
   nr: boolean;
   nrLevel: number;
   tuner: boolean;
@@ -91,6 +92,7 @@ const DEFAULT_STATUS: RigStatus = {
   attenuation: 0,
   preamp: 0,
   nb: false,
+  nbLevel: 0,
   nr: false,
   nrLevel: 0.5,
   tuner: false,
@@ -133,6 +135,9 @@ export default function App() {
   const isDraggingRFLevel = useRef(false);
   const [localNRLevel, setLocalNRLevel] = useState(0.5);
   const isDraggingNR = useRef(false);
+  const [localNBLevel, setLocalNBLevel] = useState(0);
+  const isDraggingNB = useRef(false);
+  const [nbCapabilities, setNbCapabilities] = useState({ supported: false, range: { min: 0, max: 1, step: 0.1 } });
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -345,6 +350,10 @@ export default function App() {
         setAgcLevels(levels);
         setRigctldSettings(prev => ({ ...prev, agcCapabilities: levels }));
       });
+      socket.on("nb-capabilities", (data: { supported: boolean, range: { min: number, max: number, step: number } }) => {
+        setNbCapabilities(data);
+        setRigctldSettings(prev => ({ ...prev, nbSupported: data.supported, nbLevelRange: data.range }));
+      });
       socket.emit("get-settings");
       socket.emit("get-radios");
       socket.emit("get-video-devices");
@@ -537,6 +546,9 @@ export default function App() {
       if (!isDraggingNR.current && newStatus.nrLevel !== undefined && newStatus.nrLevel !== null) {
         setLocalNRLevel(findClosestDNRValue(newStatus.nrLevel));
       }
+      if (!isDraggingNB.current && newStatus.nbLevel !== undefined && newStatus.nbLevel !== null) {
+        setLocalNBLevel(newStatus.nbLevel);
+      }
       if (!isChangingMode.current && newStatus.mode) {
         setLocalMode(newStatus.mode);
       } else if (newStatus.mode === targetModeRef.current) {
@@ -597,6 +609,16 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [localNRLevel]);
+
+  useEffect(() => {
+    if (!isDraggingNB.current) return;
+    const timer = setTimeout(() => {
+      handleSetLevel("NB", localNBLevel);
+      isDraggingNB.current = false;
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [localNBLevel]);
 
   useEffect(() => {
     if (document.activeElement?.id !== "vfoA-input") {
@@ -717,7 +739,8 @@ export default function App() {
                 level.toLowerCase() === "agc" ? "agc" :
                 level.toLowerCase() === "att" ? "attenuation" :
                 level.toLowerCase() === "preamp" ? "preamp" :
-                level.toLowerCase() === "nr" ? "nrLevel" : null;
+                level.toLowerCase() === "nr" ? "nrLevel" :
+                level.toLowerCase() === "nb" ? "nbLevel" : null;
     if (key) {
       skipPollsCount.current = 2;
       setStatus(prev => ({ ...(prev || DEFAULT_STATUS), [key]: val }));
@@ -1369,6 +1392,30 @@ export default function App() {
                           )}
                         />
                       </div>
+                      {nbCapabilities.supported && showAdvanced && (
+                        <div className="space-y-2 animate-in slide-in-from-top-1 duration-300">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
+                            <span className="text-sm text-emerald-500 font-bold">{localNBLevel.toFixed(1)}</span>
+                          </div>
+                          <input 
+                            type="range" 
+                            min={nbCapabilities.range.min}
+                            max={nbCapabilities.range.max}
+                            step={nbCapabilities.range.step}
+                            value={localNBLevel}
+                            disabled={!connected}
+                            onChange={(e) => {
+                              isDraggingNB.current = true;
+                              setLocalNBLevel(parseFloat(e.target.value));
+                            }}
+                            className={cn(
+                              "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                              !connected && "opacity-50 cursor-not-allowed"
+                            )}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1379,14 +1426,14 @@ export default function App() {
               <div className="grid grid-cols-3 gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
                 <button 
                   onClick={() => handleSetFunc("NB", !status.nb)}
-                  disabled={!connected}
+                  disabled={!connected || !nbCapabilities.supported}
                   className={cn(
                     "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    !connected && "opacity-50 cursor-not-allowed",
+                    (!connected || !nbCapabilities.supported) && "opacity-50 cursor-not-allowed",
                     status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
                   )}
                 >
-                  <Activity size={20} />
+                  <Waves size={20} />
                   <span className="text-xs uppercase font-bold leading-none">NB</span>
                 </button>
                 <button 
@@ -1415,6 +1462,18 @@ export default function App() {
                 >
                   <Volume2 size={20} />
                   <span className="text-xs uppercase font-bold leading-none">DNR</span>
+                </button>
+                <button 
+                  onClick={() => handleSetFunc("NB", !status.nb)}
+                  disabled={!connected || !nbCapabilities.supported}
+                  className={cn(
+                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                    (!connected || !nbCapabilities.supported) && "opacity-50 cursor-not-allowed",
+                    status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
+                  )}
+                >
+                  <Waves size={20} />
+                  <span className="text-xs uppercase font-bold leading-none">NB</span>
                 </button>
               </div>
             )}
@@ -1815,14 +1874,14 @@ export default function App() {
                     </button>
                     <button 
                       onClick={() => handleSetFunc("NB", !status.nb)}
-                      disabled={!connected}
+                      disabled={!connected || !nbCapabilities.supported}
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                        !connected && "opacity-50 cursor-not-allowed",
+                        (!connected || !nbCapabilities.supported) && "opacity-50 cursor-not-allowed",
                         status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
-                      <Activity size={16} />
+                      <Waves size={16} />
                       <span className="text-xs uppercase font-bold leading-none">NB</span>
                     </button>
                     <button 
@@ -1928,6 +1987,30 @@ export default function App() {
                         !connected && "opacity-50 cursor-not-allowed"
                       )}
                     />
+                    {nbCapabilities.supported && (
+                      <>
+                        <div className="flex justify-between items-center mt-3">
+                          <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
+                          <span className="text-sm text-emerald-500 font-bold">{localNBLevel.toFixed(1)}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min={nbCapabilities.range.min}
+                          max={nbCapabilities.range.max}
+                          step={nbCapabilities.range.step}
+                          value={localNBLevel}
+                          disabled={!connected}
+                          onChange={(e) => {
+                            isDraggingNB.current = true;
+                            setLocalNBLevel(parseFloat(e.target.value));
+                          }}
+                          className={cn(
+                            "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                            !connected && "opacity-50 cursor-not-allowed"
+                          )}
+                        />
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -2264,16 +2347,16 @@ export default function App() {
 
                   <button 
                     onClick={() => handleSetFunc("NB", !status.nb)}
-                    disabled={!connected}
+                    disabled={!connected || !nbCapabilities.supported}
                     className={cn(
                       "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
-                      !connected && "opacity-50 cursor-not-allowed",
+                      (!connected || !nbCapabilities.supported) && "opacity-50 cursor-not-allowed",
                       status.nb 
                         ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" 
                         : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                     )}
                   >
-                    <Activity size={20} />
+                    <Waves size={20} />
                     <div className="flex flex-col items-center">
                       <span className="text-[0.625rem] uppercase font-bold">NB</span>
                       <span className="text-[0.5625rem] font-bold opacity-80">
@@ -2554,6 +2637,34 @@ export default function App() {
                       )}
                     />
                   </div>
+
+                  {nbCapabilities.supported && (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2 text-[#8e9299]">
+                          <Waves size={14} />
+                          <span className="text-[0.625rem] uppercase tracking-widest">NB Level</span>
+                        </div>
+                        <span className="text-emerald-500 font-bold">{localNBLevel.toFixed(1)}</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min={nbCapabilities.range.min}
+                        max={nbCapabilities.range.max}
+                        step={nbCapabilities.range.step}
+                        value={localNBLevel}
+                        disabled={!connected}
+                        onChange={(e) => {
+                          isDraggingNB.current = true;
+                          setLocalNBLevel(parseFloat(e.target.value));
+                        }}
+                        className={cn(
+                          "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
