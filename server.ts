@@ -102,6 +102,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     portNumber: "4532",
     ipAddress: "127.0.0.1",
     serialPortSpeed: "38400",
+    bridgeAddress: "127.0.0.1",
+    bridgePort: "12345",
     preampCapabilities: [] as string[],
     attenuatorCapabilities: [] as string[],
     agcCapabilities: [] as string[],
@@ -611,24 +613,37 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       return;
     }
     
-    const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = rigctldSettings;
+    const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed, bridgeAddress, bridgePort } = rigctldSettings;
     
-    if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
-      console.error("Cannot start rigctld: missing settings");
-      rigctldStatus = "error";
-      emitRigctldStatus();
-      return;
+    const bridgeModels = ["4", "5", "8", "9", "10", "11"];
+    const isBridge = bridgeModels.includes(rigNumber);
+
+    if (isBridge) {
+      if (!rigNumber || !bridgeAddress || !bridgePort || !portNumber || !ipAddress) {
+        console.error("Cannot start rigctld: missing bridge settings");
+        rigctldStatus = "error";
+        emitRigctldStatus();
+        return;
+      }
+    } else {
+      if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
+        console.error("Cannot start rigctld: missing settings");
+        rigctldStatus = "error";
+        emitRigctldStatus();
+        return;
+      }
     }
 
-    console.log(`Starting rigctld: ${getRigctldPath()} -m ${rigNumber} -r ${serialPort} -t ${portNumber} -T ${ipAddress} -s ${serialPortSpeed}`);
+    const args = ["-m", rigNumber, "-t", portNumber, "-T", ipAddress];
+    if (isBridge) {
+      args.push("-r", `${bridgeAddress}:${bridgePort}`);
+    } else {
+      args.push("-r", serialPort, "-s", serialPortSpeed);
+    }
+
+    console.log(`Starting rigctld: ${getRigctldPath()} ${args.join(" ")}`);
     
-    rigctldProcess = spawn(getRigctldPath(), [
-      "-m", rigNumber,
-      "-r", serialPort,
-      "-t", portNumber,
-      "-T", ipAddress,
-      "-s", serialPortSpeed
-    ], { detached: false });
+    rigctldProcess = spawn(getRigctldPath(), args, { detached: false });
 
     rigctldStatus = "running";
     emitRigctldStatus();
@@ -1256,7 +1271,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("test-rigctld", async (data) => {
-      const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = data;
+      const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed, bridgeAddress, bridgePort } = data;
       
       addLog("Testing rigctld configuration...");
       
@@ -1270,14 +1285,18 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       check.on("close", (code) => {
         if (code !== 0) return; // Error handled above
         
+        const bridgeModels = ["4", "5", "8", "9", "10", "11"];
+        const isBridge = bridgeModels.includes(rigNumber);
+
+        const args = ["-m", rigNumber, "-t", portNumber, "-T", ipAddress];
+        if (isBridge) {
+          args.push("-r", `${bridgeAddress}:${bridgePort}`);
+        } else {
+          args.push("-r", serialPort, "-s", serialPortSpeed);
+        }
+
         // 2. Try to start it briefly
-        const testProc = spawn(getRigctldPath(), [
-          "-m", rigNumber,
-          "-r", serialPort,
-          "-t", portNumber,
-          "-T", ipAddress,
-          "-s", serialPortSpeed
-        ]);
+        const testProc = spawn(getRigctldPath(), args);
         
         let errorMsg = "";
         testProc.stderr?.on("data", (d) => errorMsg += d.toString());
