@@ -103,8 +103,8 @@ const DEFAULT_STATUS: RigStatus = {
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
-  const [host, setHost] = useState("127.0.0.1");
-  const [port, setPort] = useState(4532);
+  const [host, setHost] = useState(() => localStorage.getItem("last-host") || "127.0.0.1");
+  const [port, setPort] = useState(() => parseInt(localStorage.getItem("last-port") || "4532"));
   const [status, setStatus] = useState<RigStatus>(() => {
     try {
       const saved = localStorage.getItem("last-rig-status");
@@ -116,7 +116,7 @@ export default function App() {
     return DEFAULT_STATUS;
   });
   const [history, setHistory] = useState<any[]>([]);
-  const [pollRate, setPollRate] = useState(2000);
+  const [pollRate, setPollRate] = useState(() => parseInt(localStorage.getItem("last-poll-rate") || "2000"));
   const [vfoA, setVfoA] = useState(() => localStorage.getItem("last-vfoA") || "14074000");
   const [vfoB, setVfoB] = useState(() => localStorage.getItem("last-vfoB") || "7074000");
   const [error, setError] = useState<string | null>(null);
@@ -374,7 +374,15 @@ export default function App() {
       return;
     }
     const timer = setTimeout(() => {
-      socket?.emit("save-settings", rigctldSettings);
+      socket?.emit("save-settings", {
+        settings: rigctldSettings,
+        pollRate,
+        clientHost: host,
+        clientPort: port
+      });
+      localStorage.setItem("last-poll-rate", pollRate.toString());
+      localStorage.setItem("last-host", host);
+      localStorage.setItem("last-port", port.toString());
     }, 1000);
     return () => clearTimeout(timer);
   }, [rigctldSettings, host, port, pollRate, socket]);
@@ -469,7 +477,6 @@ export default function App() {
       newSocket.emit("set-autoconnect-eligible", true);
       isAutoconnectAttempt.current = false;
       newSocket.emit("get-modes");
-      newSocket.emit("set-poll-rate", pollRate);
     });
     newSocket.on("available-modes", (modes: string[]) => {
       setAvailableModes(modes);

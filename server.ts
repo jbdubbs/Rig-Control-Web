@@ -114,10 +114,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       rigctldSettings = { ...rigctldSettings, ...data.settings };
       autoStartEnabled = data.autoStart || false;
       videoAutoStart = data.videoAutoStart || false;
-      pollRate = data.pollRate || 2000;
+      pollRate = Number(data.pollRate) || 2000;
       autoconnectEligible = data.autoconnectEligible || false;
       clientHost = data.clientHost || "127.0.0.1";
-      clientPort = data.clientPort || 4532;
+      clientPort = Number(data.clientPort) || 4532;
       if (data.videoSettings) {
         videoSettings = { ...videoSettings, ...data.videoSettings };
       }
@@ -127,16 +127,21 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   }
 
   const saveSettings = () => {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
-      settings: rigctldSettings,
-      autoStart: autoStartEnabled,
-      videoAutoStart: videoAutoStart,
-      videoSettings: videoSettings,
-      pollRate: pollRate,
-      autoconnectEligible: autoconnectEligible,
-      clientHost: clientHost,
-      clientPort: clientPort
-    }, null, 2));
+    console.log(`[SETTINGS] Saving settings to ${SETTINGS_FILE}...`);
+    try {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+        settings: rigctldSettings,
+        autoStart: autoStartEnabled,
+        videoAutoStart: videoAutoStart,
+        videoSettings: videoSettings,
+        pollRate: Number(pollRate),
+        autoconnectEligible: autoconnectEligible,
+        clientHost: clientHost,
+        clientPort: Number(clientPort)
+      }, null, 2));
+    } catch (e) {
+      console.error("[SETTINGS] Failed to save settings:", e);
+    }
   };
 
   const emitRigctldStatus = () => {
@@ -646,8 +651,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     stopPolling();
     const runPoll = async () => {
       if (!isConnected) return;
+      const startTime = Date.now();
       await pollRig();
-      pollingTimeout = setTimeout(runPoll, pollRate);
+      const duration = Date.now() - startTime;
+      const nextDelay = Math.max(0, pollRate - duration);
+      pollingTimeout = setTimeout(runPoll, nextDelay);
     };
     pollingTimeout = setTimeout(runPoll, pollRate);
   };
@@ -1114,7 +1122,23 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("save-settings", (data) => {
       const oldRigNumber = rigctldSettings.rigNumber;
-      rigctldSettings = { ...rigctldSettings, ...data };
+      
+      // Handle both flat and nested data for backward compatibility
+      if (data.settings) {
+        rigctldSettings = { ...rigctldSettings, ...data.settings };
+      } else {
+        // If it's the old flat format, we need to filter out top-level fields
+        const { pollRate: pr, clientHost: ch, clientPort: cp, ...rest } = data;
+        rigctldSettings = { ...rigctldSettings, ...rest };
+      }
+
+      if (data.pollRate !== undefined) {
+        pollRate = Number(data.pollRate);
+        startPolling(); // Restart polling with new rate
+      }
+      if (data.clientHost !== undefined) clientHost = data.clientHost;
+      if (data.clientPort !== undefined) clientPort = Number(data.clientPort);
+
       saveSettings();
       if (oldRigNumber !== rigctldSettings.rigNumber) {
         fetchRadioCapabilities(rigctldSettings.rigNumber);
