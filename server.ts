@@ -603,6 +603,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     let isClosed = false;
+    let isCongested = false;
     const cleanup = () => {
       if (isClosed) return;
       isClosed = true;
@@ -615,12 +616,15 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     };
 
     const onData = (data: Buffer) => {
-      if (isClosed) return;
+      if (isClosed || isCongested) return;
       
       const flushed = res.write(data);
       if (!flushed) {
-        // Backpressure detected
-        // console.log("[VIDEO] Backpressure detected, dropping frame for one client");
+        // Backpressure detected: drop subsequent frames until the buffer is drained
+        isCongested = true;
+        res.once('drain', () => {
+          isCongested = false;
+        });
       }
     };
 
