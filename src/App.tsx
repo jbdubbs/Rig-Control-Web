@@ -247,7 +247,7 @@ export default function App() {
     window.addEventListener('resize', snap);
 
     if (isPhone) {
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = 'hidden';
     } else if (isCompact) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -868,7 +868,7 @@ export default function App() {
   return (
     <div className={cn(
       "bg-[#0a0a0a] text-[#e0e0e0] font-mono",
-      isPhone ? "p-2 overflow-y-auto h-fit max-h-[95vh]" : 
+      isPhone ? "p-2 overflow-y-auto h-screen" : 
       isCompact ? "p-2 overflow-hidden h-fit" : "min-h-screen p-4 md:p-8"
     )}>
       <div 
