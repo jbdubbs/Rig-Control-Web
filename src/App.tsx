@@ -221,10 +221,20 @@ export default function App() {
 
     const snap = () => {
       if (containerRef.current) {
-        const height = containerRef.current.offsetHeight;
+        const contentHeight = containerRef.current.offsetHeight;
         const width = window.innerWidth;
         const padding = isCompact ? 16 : 64; // p-2 is 8px, so 16px total
-        (window as any).electron.resizeWindow(width, height + padding);
+        const totalHeight = contentHeight + padding;
+        
+        if (isPhone) {
+          // Cap at 95% of available vertical resolution (screen height) for phone view
+          const maxAllowedHeight = window.screen.availHeight * 0.95;
+          const finalHeight = Math.min(totalHeight, maxAllowedHeight);
+          (window as any).electron.resizeWindow(width, Math.round(finalHeight));
+        } else {
+          // Original behavior for compact/desktop
+          (window as any).electron.resizeWindow(width, totalHeight);
+        }
       }
     };
 
@@ -236,7 +246,9 @@ export default function App() {
 
     window.addEventListener('resize', snap);
 
-    if (isCompact) {
+    if (isPhone) {
+      document.body.style.overflow = 'auto';
+    } else if (isCompact) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'auto';
@@ -856,6 +868,7 @@ export default function App() {
   return (
     <div className={cn(
       "bg-[#0a0a0a] text-[#e0e0e0] font-mono",
+      isPhone ? "p-2 overflow-y-auto h-fit max-h-[95vh]" : 
       isCompact ? "p-2 overflow-hidden h-fit" : "min-h-screen p-4 md:p-8"
     )}>
       <div 
