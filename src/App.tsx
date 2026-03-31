@@ -343,7 +343,6 @@ export default function App() {
       socket.on("video-status", (status: "playing" | "paused" | "stopped") => {
         setVideoStatus(status);
         if (status === "playing") {
-          setVideoSessionId(Date.now());
           setVideoError(null);
         }
       });
@@ -499,12 +498,6 @@ export default function App() {
     }
     socket.emit("set-visible-meters", visible);
   }, [socket, isCompact, activeMeter, status?.ptt]);
-
-  useEffect(() => {
-    if (videoStatus === "playing") {
-      setVideoSessionId(Date.now());
-    }
-  }, [isCompact, isPhone, videoStatus]);
 
   const findClosestDNRValue = (val: number) => {
     if (!nrCapabilities.range.step) return val;
