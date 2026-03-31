@@ -751,6 +751,16 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let isConnected = false;
 
   const connectToRig = (host: string, port: number, socket?: any) => {
+    if (isConnected && rigConfig.host === host && rigConfig.port === port) {
+      console.log(`Already connected to rigctld at ${host}:${port}. Informing client.`);
+      if (socket) {
+        socket.emit("rig-connected", { host, port });
+      } else {
+        io.emit("rig-connected", { host, port });
+      }
+      return;
+    }
+
     if (rigSocket) {
       rigSocket.destroy();
       rigSocket = null;
@@ -1199,7 +1209,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         pollRate: pollRate,
         autoconnectEligible: autoconnectEligible,
         clientHost: clientHost,
-        clientPort: clientPort
+        clientPort: clientPort,
+        isConnected: isConnected
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);

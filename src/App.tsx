@@ -301,6 +301,9 @@ export default function App() {
         if (data.settings.rfPowerRange) {
           setRfPowerCapabilities({ range: data.settings.rfPowerRange });
         }
+        if (data.isConnected !== undefined) {
+          setConnected(data.isConnected);
+        }
         setSettingsLoaded(true);
         if (data.videoSettings) {
           setVideoSettings(data.videoSettings);
@@ -316,7 +319,8 @@ export default function App() {
         }
 
         // Handle autoconnect
-        if (data.autoStart && !connectedRef.current && !hasAttemptedAutoconnect.current) {
+        const isAlreadyConnected = data.isConnected === true || connectedRef.current;
+        if (data.autoStart && !isAlreadyConnected && !hasAttemptedAutoconnect.current) {
           const isEligible = data.autoconnectEligible === true;
           if (isEligible) {
             hasAttemptedAutoconnect.current = true;
