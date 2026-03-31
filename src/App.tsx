@@ -221,20 +221,20 @@ export default function App() {
 
     const snap = () => {
       if (containerRef.current) {
-        const contentHeight = containerRef.current.offsetHeight;
+        const height = containerRef.current.offsetHeight;
         const width = window.innerWidth;
         const padding = isCompact ? 16 : 64; // p-2 is 8px, so 16px total
-        const totalHeight = contentHeight + padding;
-        
+        let targetHeight = height + padding;
+
         if (isPhone) {
-          // Cap at 95% of available vertical resolution (screen height) for phone view
-          const maxAllowedHeight = window.screen.availHeight * 0.95;
-          const finalHeight = Math.min(totalHeight, maxAllowedHeight);
-          (window as any).electron.resizeWindow(width, Math.round(finalHeight));
-        } else {
-          // Original behavior for compact/desktop
-          (window as any).electron.resizeWindow(width, totalHeight);
+          // In phone view, cap height at screen resolution
+          const screenHeight = window.screen.availHeight;
+          if (targetHeight > screenHeight) {
+            targetHeight = screenHeight;
+          }
         }
+
+        (window as any).electron.resizeWindow(width, targetHeight);
       }
     };
 
@@ -246,10 +246,12 @@ export default function App() {
 
     window.addEventListener('resize', snap);
 
-    if (isPhone) {
-      document.body.style.overflow = 'hidden';
-    } else if (isCompact) {
-      document.body.style.overflow = 'hidden';
+    if (isCompact) {
+      if (isPhone) {
+        document.body.style.overflow = 'auto';
+      } else {
+        document.body.style.overflow = 'hidden';
+      }
     } else {
       document.body.style.overflow = 'auto';
     }
@@ -259,7 +261,7 @@ export default function App() {
       window.removeEventListener('resize', snap);
       document.body.style.overflow = 'auto';
     };
-  }, [isCompact]);
+  }, [isCompact, isPhone]);
 
   useEffect(() => {
     if (videoSettings.device && !videoSettingsInitialized.current) {
@@ -868,8 +870,7 @@ export default function App() {
   return (
     <div className={cn(
       "bg-[#0a0a0a] text-[#e0e0e0] font-mono",
-      isPhone ? "p-2 overflow-y-auto h-screen" : 
-      isCompact ? "p-2 overflow-hidden h-fit" : "min-h-screen p-4 md:p-8"
+      isCompact ? (isPhone ? "p-2 overflow-auto h-screen" : "p-2 overflow-hidden h-fit") : "min-h-screen p-4 md:p-8"
     )}>
       <div 
         ref={containerRef}
