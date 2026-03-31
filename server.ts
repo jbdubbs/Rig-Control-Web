@@ -193,6 +193,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   getRigctldVersion().then(v => {
     rigctldVersion = v;
     isRigctldVersionSupported = checkVersionSupported(v);
+    console.log(`[HAMLIB] Detected rigctld version: ${v || "unknown"}`);
     emitRigctldStatus();
   });
 
@@ -646,6 +647,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     // Check version first
     rigctldVersion = await getRigctldVersion();
     isRigctldVersionSupported = checkVersionSupported(rigctldVersion);
+    console.log(`[HAMLIB] rigctld version check: ${rigctldVersion || "unknown"}`);
+    addLog(`Hamlib (rigctld) version check: ${rigctldVersion || "unknown"}`);
     if (!isRigctldVersionSupported) {
       console.warn(`rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
       addLog(`Warning: rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
@@ -1313,6 +1316,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       // 1. Check if rigctld exists and its version
       rigctldVersion = await getRigctldVersion();
       isRigctldVersionSupported = checkVersionSupported(rigctldVersion);
+      console.log(`[HAMLIB] Test rigctld version check: ${rigctldVersion || "unknown"}`);
+      addLog(`Hamlib (rigctld) version check: ${rigctldVersion || "unknown"}`);
       emitRigctldStatus();
 
       if (!rigctldVersion) {
