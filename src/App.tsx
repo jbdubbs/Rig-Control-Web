@@ -159,8 +159,6 @@ export default function App() {
     portNumber: "4532",
     ipAddress: "127.0.0.1",
     serialPortSpeed: "38400",
-    bridgeAddress: "127.0.0.1",
-    bridgePort: "12345",
     preampCapabilities: [] as string[],
     attenuatorCapabilities: [] as string[],
     agcCapabilities: [] as string[],
@@ -189,6 +187,7 @@ export default function App() {
   const [attenuatorLevels, setAttenuatorLevels] = useState<string[]>([]);
   const [agcLevels, setAgcLevels] = useState<string[]>([]);
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
+  const [rigctldVersionInfo, setRigctldVersionInfo] = useState<{ version: string | null, isSupported: boolean }>({ version: null, isSupported: true });
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
   const [isVideoCollapsed, setIsVideoCollapsed] = useState(false);
@@ -341,8 +340,14 @@ export default function App() {
         const unique = Array.from(new Map(list.map((r: any) => [r.id, r])).values()) as any[];
         setRadios(unique);
       });
-      socket.on("rigctld-status", (status: "running" | "stopped" | "error" | "already_running") => {
-        setRigctldProcessStatus(status);
+      socket.on("rigctld-status", (data: any) => {
+        if (typeof data === 'string') {
+          setRigctldProcessStatus(data as any);
+        } else {
+          setRigctldProcessStatus(data.status);
+          if (data.logs) setRigctldLogs(data.logs);
+          setRigctldVersionInfo({ version: data.version, isSupported: data.isVersionSupported });
+        }
         setStatusLoaded(true);
       });
       socket.on("rigctld-log", (lines: string[]) => {
@@ -861,28 +866,28 @@ export default function App() {
         )}
       >
         {/* Header / Connection */}
-        <header className="bg-[#151619] rounded-xl border border-[#2a2b2e] shadow-2xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Signal size={24} className="text-emerald-500" />
-            <h1 className="text-xl font-bold tracking-tighter uppercase italic">RigControl Web</h1>
+        <header className="bg-[#151619] rounded-xl border border-[#2a2b2e] shadow-2xl p-3 sm:p-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <Signal size={24} className="text-emerald-500 flex-shrink-0" />
+            <h1 className="text-lg sm:text-xl font-bold tracking-tighter uppercase italic truncate">RigControl Web</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             <button 
               onClick={handleConnect}
               className={cn(
-                "px-6 py-2 rounded-lg font-bold uppercase text-sm transition-all flex items-center gap-2",
+                "px-3 sm:px-6 py-2 rounded-lg font-bold uppercase text-sm transition-all flex items-center gap-2",
                 connected 
                   ? "bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500 hover:text-white"
                   : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white"
               )}
             >
-              <Power size={16} />
-              {connected ? "Disconnect" : "Connect"}
+              <Power size={16} className="flex-shrink-0" />
+              <span className="hidden sm:inline">{connected ? "Disconnect" : "Connect"}</span>
             </button>
             <button 
               onClick={() => setIsSettingsOpen(true)}
               className={cn(
-                "p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg transition-all",
+                "p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg transition-all flex-shrink-0",
                 rigctldProcessStatus === "running" ? "text-emerald-500 border-emerald-500/50" : "text-red-500 border-red-500/50"
               )}
               title="Rigctld Settings"
@@ -3359,11 +3364,19 @@ export default function App() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b border-blue-500/20 pb-1">
                     <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold">Server Side / Backend Settings</h3>
-                    <span className="text-[0.5rem] text-[#8e9299] font-medium italic">Bundled Hamlib 4.7.0 Supported</span>
+                    <span className="text-[0.5rem] text-[#8e9299] font-medium italic">Hamlib 4.7.0+ Recommended</span>
                   </div>
-                  <p className="text-[0.625rem] text-[#8e9299] leading-relaxed">
-                    The app will automatically use a bundled <code className="text-blue-400">rigctld</code> binary if placed in the <code className="text-blue-400">bin/[linux|windows|mac]/</code> folder, otherwise it falls back to your system PATH.
-                  </p>
+                  {!rigctldVersionInfo.isSupported && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/50 rounded-xl text-amber-500 text-[0.6875rem] animate-in slide-in-from-top-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <AlertCircle size={14} />
+                        <p className="font-bold uppercase">Unsupported Hamlib Version</p>
+                      </div>
+                      <p className="opacity-80">
+                        Detected rigctld version {rigctldVersionInfo.version}. Hamlib versions less than 4.7.0 are unsupported and may cause issues. Please upgrade to Hamlib 4.7.0 or newer.
+                      </p>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-[0.625rem] uppercase text-[#8e9299]">Rig Model (Hamlib Rig #)</label>
                     <select 
@@ -3380,79 +3393,39 @@ export default function App() {
                     </select>
                   </div>
 
-                  {["4", "5", "8", "9", "10", "11"].includes(rigctldSettings.rigNumber) ? (
-                    <>
-                      <div className="space-y-1">
-                        <label className="text-[0.625rem] uppercase text-[#8e9299]">Bridge Address (FLRig, N3FJP, etc.)</label>
-                        <input 
-                          type="text"
-                          value={rigctldSettings.bridgeAddress}
-                          onChange={(e) => setRigctldSettings(prev => ({ ...prev, bridgeAddress: e.target.value }))}
-                          placeholder="127.0.0.1"
-                          className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                        />
-                      </div>
+                  <div className="space-y-1">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Port (e.g. /dev/ttyUSB0 or COM3)</label>
+                    <input 
+                      type="text"
+                      value={rigctldSettings.serialPort}
+                      onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPort: e.target.value }))}
+                      placeholder="/dev/ttyUSB0"
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                    />
+                  </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[0.625rem] uppercase text-[#8e9299]">Server Port</label>
-                          <input 
-                            type="text"
-                            value={rigctldSettings.portNumber}
-                            onChange={(e) => setRigctldSettings(prev => ({ ...prev, portNumber: e.target.value }))}
-                            placeholder="4532"
-                            className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[0.625rem] uppercase text-[#8e9299]">Bridge Port</label>
-                          <input 
-                            type="text"
-                            value={rigctldSettings.bridgePort}
-                            onChange={(e) => setRigctldSettings(prev => ({ ...prev, bridgePort: e.target.value }))}
-                            placeholder="12345"
-                            className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                          />
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="space-y-1">
-                        <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Port (e.g. /dev/ttyUSB0 or COM3)</label>
-                        <input 
-                          type="text"
-                          value={rigctldSettings.serialPort}
-                          onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPort: e.target.value }))}
-                          placeholder="/dev/ttyUSB0"
-                          className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[0.625rem] uppercase text-[#8e9299]">Server Port</label>
-                          <input 
-                            type="text"
-                            value={rigctldSettings.portNumber}
-                            onChange={(e) => setRigctldSettings(prev => ({ ...prev, portNumber: e.target.value }))}
-                            placeholder="4532"
-                            className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Speed</label>
-                          <input 
-                            type="text"
-                            value={rigctldSettings.serialPortSpeed}
-                            onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPortSpeed: e.target.value }))}
-                            placeholder="38400"
-                            className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299]">Server Port</label>
+                      <input 
+                        type="text"
+                        value={rigctldSettings.portNumber}
+                        onChange={(e) => setRigctldSettings(prev => ({ ...prev, portNumber: e.target.value }))}
+                        placeholder="4532"
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299]">Serial Speed</label>
+                      <input 
+                        type="text"
+                        value={rigctldSettings.serialPortSpeed}
+                        onChange={(e) => setRigctldSettings(prev => ({ ...prev, serialPortSpeed: e.target.value }))}
+                        placeholder="38400"
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+                      />
+                    </div>
+                  </div>
 
                   <div className="space-y-1">
                     <label className="text-[0.625rem] uppercase text-[#8e9299]">Listen Address</label>

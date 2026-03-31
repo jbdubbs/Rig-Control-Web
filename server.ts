@@ -28,6 +28,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   let rigctldProcess: ChildProcess | null = null;
   let rigctldStatus: "running" | "stopped" | "error" | "already_running" = "stopped";
+  let rigctldVersion: string | null = null;
+  let isRigctldVersionSupported = true;
   let rigctldLogs: string[] = [];
   let autoStartEnabled = false;
   let videoAutoStart = false;
@@ -102,8 +104,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     portNumber: "4532",
     ipAddress: "127.0.0.1",
     serialPortSpeed: "38400",
-    bridgeAddress: "127.0.0.1",
-    bridgePort: "12345",
     preampCapabilities: [] as string[],
     attenuatorCapabilities: [] as string[],
     agcCapabilities: [] as string[],
@@ -152,9 +152,49 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     }
   };
 
-  const emitRigctldStatus = () => {
-    io.emit("rigctld-status", rigctldStatus);
+  const getRigctldVersion = (): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const proc = spawn(getRigctldPath(), ["-V"]);
+      let output = "";
+      proc.stdout?.on("data", (d) => output += d.toString());
+      proc.stderr?.on("data", (d) => output += d.toString());
+      proc.on("close", () => {
+        // rigctld -V output is usually like "rigctld hamlib 4.7.0"
+        const match = output.match(/hamlib\s+([\d.]+)/i);
+        resolve(match ? match[1] : null);
+      });
+      proc.on("error", () => resolve(null));
+    });
   };
+
+  const checkVersionSupported = (version: string | null): boolean => {
+    if (!version) return true; // If we can't get version, assume it's okay for now
+    const parts = version.split('.').map(Number);
+    const min = [4, 7, 0];
+    for (let i = 0; i < Math.max(parts.length, min.length); i++) {
+      const v = parts[i] || 0;
+      const m = min[i] || 0;
+      if (v > m) return true;
+      if (v < m) return false;
+    }
+    return true;
+  };
+
+  const emitRigctldStatus = () => {
+    io.emit("rigctld-status", { 
+      status: rigctldStatus, 
+      logs: rigctldLogs,
+      version: rigctldVersion,
+      isVersionSupported: isRigctldVersionSupported
+    });
+  };
+
+  // Initial version check
+  getRigctldVersion().then(v => {
+    rigctldVersion = v;
+    isRigctldVersionSupported = checkVersionSupported(v);
+    emitRigctldStatus();
+  });
 
   const fetchRadioCapabilities = async (rigNumber: string) => {
     if (!rigNumber || rigNumber === "" || rigNumber === "1") {
@@ -603,6 +643,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       stopRigctld();
     }
 
+    // Check version first
+    rigctldVersion = await getRigctldVersion();
+    isRigctldVersionSupported = checkVersionSupported(rigctldVersion);
+    if (!isRigctldVersionSupported) {
+      console.warn(`rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
+      addLog(`Warning: rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
+    }
+
     // Check if rigctld is already running on the system (not by us)
     const isAlreadyRunning = await checkExistingRigctld();
     if (isAlreadyRunning) {
@@ -613,37 +661,24 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       return;
     }
     
-    const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed, bridgeAddress, bridgePort } = rigctldSettings;
+    const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = rigctldSettings;
     
-    const bridgeModels = ["4", "5", "8", "9", "10", "11"];
-    const isBridge = bridgeModels.includes(rigNumber);
-
-    if (isBridge) {
-      if (!rigNumber || !bridgeAddress || !bridgePort || !portNumber || !ipAddress) {
-        console.error("Cannot start rigctld: missing bridge settings");
-        rigctldStatus = "error";
-        emitRigctldStatus();
-        return;
-      }
-    } else {
-      if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
-        console.error("Cannot start rigctld: missing settings");
-        rigctldStatus = "error";
-        emitRigctldStatus();
-        return;
-      }
+    if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
+      console.error("Cannot start rigctld: missing settings");
+      rigctldStatus = "error";
+      emitRigctldStatus();
+      return;
     }
 
-    const args = ["-m", rigNumber, "-t", portNumber, "-T", ipAddress];
-    if (isBridge) {
-      args.push("-r", `${bridgeAddress}:${bridgePort}`);
-    } else {
-      args.push("-r", serialPort, "-s", serialPortSpeed);
-    }
-
-    console.log(`Starting rigctld: ${getRigctldPath()} ${args.join(" ")}`);
+    console.log(`Starting rigctld: ${getRigctldPath()} -m ${rigNumber} -r ${serialPort} -t ${portNumber} -T ${ipAddress} -s ${serialPortSpeed}`);
     
-    rigctldProcess = spawn(getRigctldPath(), args, { detached: false });
+    rigctldProcess = spawn(getRigctldPath(), [
+      "-m", rigNumber,
+      "-r", serialPort,
+      "-t", portNumber,
+      "-T", ipAddress,
+      "-s", serialPortSpeed
+    ], { detached: false });
 
     rigctldStatus = "running";
     emitRigctldStatus();
@@ -1271,32 +1306,33 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("test-rigctld", async (data) => {
-      const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed, bridgeAddress, bridgePort } = data;
+      const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = data;
       
       addLog("Testing rigctld configuration...");
       
-      // 1. Check if rigctld exists
-      const check = spawn(getRigctldPath(), ["-V"]);
-      check.on("error", () => {
+      // 1. Check if rigctld exists and its version
+      rigctldVersion = await getRigctldVersion();
+      isRigctldVersionSupported = checkVersionSupported(rigctldVersion);
+      emitRigctldStatus();
+
+      if (!rigctldVersion) {
         socket.emit("test-result", { success: false, message: "rigctld binary not found in system PATH or bin folder" });
         addLog("Error: rigctld binary not found");
-      });
+        return;
+      }
+
+      if (!isRigctldVersionSupported) {
+        addLog(`Warning: rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
+      }
       
-      check.on("close", (code) => {
-        if (code !== 0) return; // Error handled above
-        
-        const bridgeModels = ["4", "5", "8", "9", "10", "11"];
-        const isBridge = bridgeModels.includes(rigNumber);
-
-        const args = ["-m", rigNumber, "-t", portNumber, "-T", ipAddress];
-        if (isBridge) {
-          args.push("-r", `${bridgeAddress}:${bridgePort}`);
-        } else {
-          args.push("-r", serialPort, "-s", serialPortSpeed);
-        }
-
-        // 2. Try to start it briefly
-        const testProc = spawn(getRigctldPath(), args);
+      // 2. Try to start it briefly
+      const testProc = spawn(getRigctldPath(), [
+        "-m", rigNumber,
+        "-r", serialPort,
+        "-t", portNumber,
+        "-T", ipAddress,
+        "-s", serialPortSpeed
+      ]);
         
         let errorMsg = "";
         testProc.stderr?.on("data", (d) => errorMsg += d.toString());
@@ -1321,7 +1357,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           }
         });
       });
-    });
 
     socket.on("get-radios", () => {
       if (fs.existsSync(RADIOS_FILE)) {
