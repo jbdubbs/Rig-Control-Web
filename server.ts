@@ -585,13 +585,15 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   // Express route for MJPEG stream
   app.get("/api/video-stream", (req, res) => {
-    // Kill any existing stream connections to prevent resource exhaustion
-    // and ensure only the latest client is active (last-one-wins).
-    // This prevents the "6 connection limit" issue in browsers.
-    videoEmitter.emit("stop-clients");
+    const sessionId = (req.query.sessionId as string) || "default";
+
+    // Kill any existing stream connections for THIS SESSION ONLY to prevent resource exhaustion
+    // and ensure only the latest client for this window is active (last-one-wins per session).
+    // This prevents the "6 connection limit" issue in browsers while allowing multiple windows.
+    videoEmitter.emit(`stop-clients-${sessionId}`);
 
     videoConnections++;
-    console.log(`[VIDEO] New stream client connected. Total clients: ${videoConnections}`);
+    console.log(`[VIDEO] New stream client connected (Session: ${sessionId}). Total clients: ${videoConnections}`);
 
     res.writeHead(200, {
       'Content-Type': 'multipart/x-mixed-replace; boundary=ffmpeg',
@@ -605,9 +607,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (isClosed) return;
       isClosed = true;
       videoConnections--;
-      console.log(`[VIDEO] Stream client disconnected. Total clients: ${videoConnections}`);
+      console.log(`[VIDEO] Stream client disconnected (Session: ${sessionId}). Total clients: ${videoConnections}`);
       videoEmitter.removeListener("data", onData);
       videoEmitter.removeListener("stop-clients", cleanup);
+      videoEmitter.removeListener(`stop-clients-${sessionId}`, cleanup);
       res.end();
     };
 
@@ -623,6 +626,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     videoEmitter.on("data", onData);
     videoEmitter.once("stop-clients", cleanup);
+    videoEmitter.once(`stop-clients-${sessionId}`, cleanup);
 
     req.on("close", cleanup);
     req.on("end", cleanup);
