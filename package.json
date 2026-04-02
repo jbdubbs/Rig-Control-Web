@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron build",
     "lint": "tsc --noEmit",
+    "test": "vitest run",
     "electron:dev": "ELECTRON_RUN=true electron -r tsx electron/main.ts",
     "electron:build": "npm run build && npm run build:electron && electron-builder",
     "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.cjs --external:electron --external:vite && esbuild electron/preload.ts --bundle --platform=node --outfile=dist-electron/preload.cjs --external:electron"
@@ -68,18 +69,23 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@vitest/ui": "^4.1.2",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.1",
     "electron": "^41.0.3",
     "electron-builder": "^26.8.1",
     "electron-is-dev": "^3.0.1",
     "esbuild": "^0.27.4",
+    "jsdom": "^29.0.1",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
+    "vitest": "^4.1.2",
     "wait-on": "^9.0.4"
   }
 }

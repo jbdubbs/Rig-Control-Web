@@ -98,6 +98,17 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   };
   let videoStatus: "playing" | "paused" | "stopped" = "stopped";
   let videoConnections = 0;
+  
+  let audioSettings = {
+    inputDevice: "",
+    outputDevice: "",
+    inboundEnabled: false,
+    outboundEnabled: false
+  };
+  let audioStatus: "playing" | "stopped" = "stopped";
+  let inboundAudioProcess: ChildProcess | null = null;
+  let outboundAudioProcess: ChildProcess | null = null;
+
   let rigctldSettings = {
     rigNumber: "",
     serialPort: "",
@@ -129,6 +140,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (data.videoSettings) {
         videoSettings = { ...videoSettings, ...data.videoSettings };
       }
+      if (data.audioSettings) {
+        audioSettings = { ...audioSettings, ...data.audioSettings };
+      }
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
@@ -142,6 +156,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         autoStart: autoStartEnabled,
         videoAutoStart: videoAutoStart,
         videoSettings: videoSettings,
+        audioSettings: audioSettings,
         pollRate: Number(pollRate),
         autoconnectEligible: autoconnectEligible,
         clientHost: clientHost,
@@ -475,6 +490,182 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         resolve({ devices, error });
       });
     });
+  };
+
+  const listAudioDevices = (): Promise<{ inputs: string[], outputs: string[], error?: string }> => {
+    return new Promise((resolve) => {
+      const ffmpegPath = getFfmpegPath();
+      let cmd = "";
+      if (process.platform === "linux") {
+        cmd = "arecord -l && aplay -l";
+      } else if (process.platform === "win32") {
+        cmd = `"${ffmpegPath}" -list_devices true -f dshow -i dummy 2>&1`;
+      } else if (process.platform === "darwin") {
+        cmd = `"${ffmpegPath}" -f avfoundation -list_devices true -i "" 2>&1`;
+      }
+
+      if (!cmd) return resolve({ inputs: [], outputs: [] });
+
+      exec(cmd, (err, stdout, stderr) => {
+        const output = stdout + stderr;
+        const inputs: string[] = [];
+        const outputs: string[] = [];
+        let error: string | undefined;
+
+        if (process.platform === "linux") {
+          // Parse arecord -l for inputs
+          const inputLines = stdout.split("\n");
+          inputLines.forEach(line => {
+            if (line.startsWith("card")) {
+              const match = line.match(/card (\d+):.*device (\d+):/);
+              if (match) {
+                inputs.push(`hw:${match[1]},${match[2]}`);
+              }
+            }
+          });
+          // Parse aplay -l for outputs
+          const outputLines = stderr.split("\n"); // exec combines them or arecord/aplay might use stderr
+          // Actually exec(cmd) for "arecord -l && aplay -l" will have both in stdout
+          const combinedLines = output.split("\n");
+          let parsingOutputs = false;
+          combinedLines.forEach(line => {
+            if (line.includes("List of PLAYBACK Hardware Devices")) parsingOutputs = true;
+            if (parsingOutputs && line.startsWith("card")) {
+              const match = line.match(/card (\d+):.*device (\d+):/);
+              if (match) {
+                outputs.push(`hw:${match[1]},${match[2]}`);
+              }
+            }
+          });
+        } else if (process.platform === "win32") {
+          const lines = output.split("\n");
+          let inAudio = false;
+          lines.forEach(line => {
+            const lowerLine = line.toLowerCase();
+            if (lowerLine.includes("directshow audio devices")) inAudio = true;
+            if (inAudio && line.includes("\"")) {
+              const match = line.match(/"([^"]+)"/);
+              if (match) {
+                const deviceName = match[1];
+                if (!deviceName.startsWith("@device_pnp_")) {
+                  inputs.push(deviceName);
+                  outputs.push(deviceName); // In dshow, audio devices are often listed once but can be both
+                }
+              }
+            }
+          });
+        } else if (process.platform === "darwin") {
+          const lines = output.split("\n");
+          let inAudio = false;
+          lines.forEach(line => {
+            if (line.includes("AVFoundation audio devices")) inAudio = true;
+            if (inAudio && line.match(/\[\d+\]/)) {
+              const parts = line.split("]");
+              if (parts.length > 1) {
+                const deviceName = parts[1].trim();
+                inputs.push(deviceName);
+                outputs.push(deviceName);
+              }
+            }
+          });
+        }
+
+        resolve({ inputs, outputs, error });
+      });
+    });
+  };
+
+  const stopAudio = () => {
+    console.log("[AUDIO] Stopping audio streaming...");
+    if (inboundAudioProcess) {
+      inboundAudioProcess.kill('SIGKILL');
+      inboundAudioProcess = null;
+    }
+    if (outboundAudioProcess) {
+      outboundAudioProcess.kill('SIGKILL');
+      outboundAudioProcess = null;
+    }
+    audioStatus = "stopped";
+    io.emit("audio-status", audioStatus);
+  };
+
+  const startAudio = () => {
+    console.log("[AUDIO] Starting audio streaming...");
+    stopAudio();
+
+    if (!audioSettings.inputDevice && !audioSettings.outputDevice) {
+      console.warn("[AUDIO] Cannot start audio: No devices selected.");
+      return;
+    }
+
+    // Inbound: Backend -> Frontend
+    if (audioSettings.inputDevice) {
+      let inputFormat = "";
+      let inputDevice = audioSettings.inputDevice;
+
+      if (process.platform === "linux") {
+        inputFormat = "alsa";
+      } else if (process.platform === "win32") {
+        inputFormat = "dshow";
+        inputDevice = `audio=${audioSettings.inputDevice}`;
+      } else if (process.platform === "darwin") {
+        inputFormat = "avfoundation";
+      }
+
+      const inboundArgs = [
+        "-f", inputFormat,
+        "-i", inputDevice,
+        "-f", "s16le",
+        "-ac", "1",
+        "-ar", "44100",
+        "pipe:1"
+      ];
+
+      const ffmpegPath = getFfmpegPath();
+      inboundAudioProcess = spawn(ffmpegPath, inboundArgs);
+      
+      inboundAudioProcess.stdout?.on("data", (data) => {
+        io.emit("audio-inbound", data);
+      });
+
+      inboundAudioProcess.stderr?.on("data", (data) => {
+        // console.log(`[AUDIO-IN] ${data.toString()}`);
+      });
+    }
+
+    // Outbound: Frontend -> Backend
+    if (audioSettings.outputDevice) {
+      let outputFormat = "";
+      let outputDevice = audioSettings.outputDevice;
+
+      if (process.platform === "linux") {
+        outputFormat = "alsa";
+      } else if (process.platform === "win32") {
+        outputFormat = "dshow";
+        outputDevice = `audio=${audioSettings.outputDevice}`;
+      } else if (process.platform === "darwin") {
+        outputFormat = "avfoundation";
+      }
+
+      const outboundArgs = [
+        "-f", "s16le",
+        "-ac", "1",
+        "-ar", "44100",
+        "-i", "pipe:0",
+        "-f", outputFormat,
+        outputDevice
+      ];
+
+      const ffmpegPath = getFfmpegPath();
+      outboundAudioProcess = spawn(ffmpegPath, outboundArgs);
+
+      outboundAudioProcess.stderr?.on("data", (data) => {
+        // console.log(`[AUDIO-OUT] ${data.toString()}`);
+      });
+    }
+
+    audioStatus = "playing";
+    io.emit("audio-status", audioStatus);
   };
 
   const stopVideo = () => {
@@ -1215,6 +1406,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
       socket.emit("video-status", videoStatus);
+      socket.emit("audio-status", audioStatus);
       socket.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
       socket.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
       socket.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
@@ -1230,6 +1422,36 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
       console.log(`[VIDEO] Found ${devices.length} devices: ${devices.join(", ")}`);
       socket.emit("video-devices-list", devices);
+    });
+
+    socket.on("get-audio-devices", async () => {
+      console.log("[AUDIO] Client requested audio devices list");
+      const { inputs, outputs, error } = await listAudioDevices();
+      if (error) {
+        socket.emit("audio-error", error);
+      }
+      socket.emit("audio-devices-list", { inputs, outputs });
+    });
+
+    socket.on("update-audio-settings", (settings: any) => {
+      console.log("[AUDIO] Updating audio settings:", settings);
+      audioSettings = { ...audioSettings, ...settings };
+      saveSettings();
+    });
+
+    socket.on("control-audio", (action: "start" | "stop") => {
+      console.log(`[AUDIO] Control action received: ${action}`);
+      if (action === "start") {
+        startAudio();
+      } else if (action === "stop") {
+        stopAudio();
+      }
+    });
+
+    socket.on("audio-outbound", (data: Buffer) => {
+      if (outboundAudioProcess && outboundAudioProcess.stdin) {
+        outboundAudioProcess.stdin.write(data);
+      }
     });
 
     socket.on("update-video-settings", (settings: any) => {

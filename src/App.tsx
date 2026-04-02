@@ -12,6 +12,9 @@ import {
   Gauge,
   RefreshCw,
   Download,
+  Volume2,
+  VolumeX,
+  MicOff,
   Monitor,
   Server,
   X,
@@ -20,7 +23,6 @@ import {
   Maximize2,
   Minimize2,
   Pencil,
-  Volume2,
   Check,
   AlertCircle
 } from "lucide-react";
@@ -182,6 +184,21 @@ export default function App() {
     resolution: "",
     framerate: ""
   });
+
+  const [audioStatus, setAudioStatus] = useState<"playing" | "stopped">("stopped");
+  const [audioDevices, setAudioDevices] = useState<{ inputs: string[], outputs: string[] }>({ inputs: [], outputs: [] });
+  const [audioSettings, setAudioSettings] = useState({
+    inputDevice: "",
+    outputDevice: "",
+    inboundEnabled: false,
+    outboundEnabled: false
+  });
+  const [inboundMuted, setInboundMuted] = useState(false);
+  const [outboundMuted, setOutboundMuted] = useState(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micProcessorRef = useRef<ScriptProcessorNode | null>(null);
+
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [preampLevels, setPreampLevels] = useState<string[]>([]);
   const [attenuatorLevels, setAttenuatorLevels] = useState<string[]>([]);
@@ -308,6 +325,9 @@ export default function App() {
         if (data.videoSettings) {
           setVideoSettings(data.videoSettings);
         }
+        if (data.audioSettings) {
+          setAudioSettings(data.audioSettings);
+        }
         if (data.pollRate) {
           setPollRate(data.pollRate);
         }
@@ -345,6 +365,16 @@ export default function App() {
         if (status === "playing") {
           setVideoError(null);
         }
+      });
+      socket.on("audio-status", (status: "playing" | "stopped") => {
+        setAudioStatus(status);
+      });
+      socket.on("audio-devices-list", (devices: { inputs: string[], outputs: string[] }) => {
+        setAudioDevices(devices);
+      });
+      socket.on("audio-inbound", (data: ArrayBuffer) => {
+        if (inboundMuted || audioStatus !== "playing") return;
+        playInboundAudio(data);
       });
       socket.on("video-error", (msg: string) => {
         setVideoError(msg);
@@ -841,6 +871,76 @@ export default function App() {
     socket?.emit("vfo-op", op);
   };
 
+  // Audio Playback Logic
+  const playInboundAudio = (data: ArrayBuffer) => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioContextRef.current;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const int16Data = new Int16Array(data);
+    const float32Data = new Float32Array(int16Data.length);
+    for (let i = 0; i < int16Data.length; i++) {
+      float32Data[i] = int16Data[i] / 32768.0;
+    }
+
+    const buffer = ctx.createBuffer(1, float32Data.length, 48000);
+    buffer.getChannelData(0).set(float32Data);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start();
+  };
+
+  const startMicCapture = async () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioContextRef.current;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
+      const source = ctx.createMediaStreamSource(stream);
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      micProcessorRef.current = processor;
+      processor.onaudioprocess = (e) => {
+        if (outboundMuted || audioStatus !== "playing") return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        const int16Data = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
+        }
+        socket?.emit("audio-outbound", int16Data.buffer);
+      };
+      source.connect(processor);
+      processor.connect(ctx.destination);
+    } catch (err) {
+      console.error("Error starting mic capture:", err);
+    }
+  };
+
+  const stopMicCapture = () => {
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current = null;
+    }
+    if (micProcessorRef.current) {
+      micProcessorRef.current.disconnect();
+      micProcessorRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (audioStatus === "playing" && audioSettings.outboundEnabled && !outboundMuted) {
+      startMicCapture();
+    } else {
+      stopMicCapture();
+    }
+    return () => stopMicCapture();
+  }, [audioStatus, audioSettings.outboundEnabled, outboundMuted]);
+
   const handleSendRaw = (e: React.FormEvent) => {
     e.preventDefault();
     if (!connected || !rawCommand.trim()) return;
@@ -1089,6 +1189,32 @@ export default function App() {
                   <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Video Feed</span>
                 </div>
                 <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1 mr-1">
+                    <button
+                      onClick={() => setInboundMuted(!inboundMuted)}
+                      disabled={audioStatus !== "playing"}
+                      className={cn(
+                        "p-1 rounded-lg transition-all",
+                        audioStatus !== "playing" ? "opacity-30 cursor-not-allowed" :
+                        inboundMuted ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
+                      )}
+                      title={inboundMuted ? "Unmute Inbound Audio" : "Mute Inbound Audio"}
+                    >
+                      {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                    </button>
+                    <button
+                      onClick={() => setOutboundMuted(!outboundMuted)}
+                      disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled}
+                      className={cn(
+                        "p-1 rounded-lg transition-all",
+                        (audioStatus !== "playing" || !audioSettings.outboundEnabled) ? "opacity-30 cursor-not-allowed" :
+                        outboundMuted ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10 hover:bg-blue-500/20"
+                      )}
+                      title={outboundMuted ? "Unmute Outbound Audio" : "Mute Outbound Audio"}
+                    >
+                      {outboundMuted ? <MicOff size={12} /> : <Mic size={12} />}
+                    </button>
+                  </div>
                   <div className={cn(
                     "w-2 h-2 rounded-full",
                     videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
@@ -1098,6 +1224,7 @@ export default function App() {
                     onClick={() => {
                       setIsVideoSettingsOpen(true);
                       socket?.emit("get-video-devices");
+                      socket?.emit("get-audio-devices");
                     }}
                     className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
                     title="Video Settings"
@@ -1775,6 +1902,32 @@ export default function App() {
                     <span className="text-xs uppercase tracking-widest font-bold">Video Feed</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 mr-1">
+                      <button
+                        onClick={() => setInboundMuted(!inboundMuted)}
+                        disabled={audioStatus !== "playing"}
+                        className={cn(
+                          "p-1 rounded-lg transition-all",
+                          audioStatus !== "playing" ? "opacity-30 cursor-not-allowed" :
+                          inboundMuted ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
+                        )}
+                        title={inboundMuted ? "Unmute Inbound Audio" : "Mute Inbound Audio"}
+                      >
+                        {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      </button>
+                      <button
+                        onClick={() => setOutboundMuted(!outboundMuted)}
+                        disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled}
+                        className={cn(
+                          "p-1 rounded-lg transition-all",
+                          (audioStatus !== "playing" || !audioSettings.outboundEnabled) ? "opacity-30 cursor-not-allowed" :
+                          outboundMuted ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10 hover:bg-blue-500/20"
+                        )}
+                        title={outboundMuted ? "Unmute Outbound Audio" : "Mute Outbound Audio"}
+                      >
+                        {outboundMuted ? <MicOff size={12} /> : <Mic size={12} />}
+                      </button>
+                    </div>
                     <div className={cn(
                       "w-2 h-2 rounded-full",
                       videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
@@ -1784,6 +1937,7 @@ export default function App() {
                       onClick={() => {
                         setIsVideoSettingsOpen(true);
                         socket?.emit("get-video-devices");
+                        socket?.emit("get-audio-devices");
                       }}
                       className="p-1 hover:bg-[#2a2b2e] rounded text-[#8e9299] transition-all"
                       title="Video Settings"
@@ -2549,6 +2703,32 @@ export default function App() {
                   <span className="text-[0.625rem] uppercase tracking-widest font-bold">Video Feed</span>
                 </div>
                 <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1 mr-1">
+                    <button
+                      onClick={() => setInboundMuted(!inboundMuted)}
+                      disabled={audioStatus !== "playing"}
+                      className={cn(
+                        "p-1 rounded-lg transition-all",
+                        audioStatus !== "playing" ? "opacity-30 cursor-not-allowed" :
+                        inboundMuted ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
+                      )}
+                      title={inboundMuted ? "Unmute Inbound Audio" : "Mute Inbound Audio"}
+                    >
+                      {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                    </button>
+                    <button
+                      onClick={() => setOutboundMuted(!outboundMuted)}
+                      disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled}
+                      className={cn(
+                        "p-1 rounded-lg transition-all",
+                        (audioStatus !== "playing" || !audioSettings.outboundEnabled) ? "opacity-30 cursor-not-allowed" :
+                        outboundMuted ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10 hover:bg-blue-500/20"
+                      )}
+                      title={outboundMuted ? "Unmute Outbound Audio" : "Mute Outbound Audio"}
+                    >
+                      {outboundMuted ? <MicOff size={12} /> : <Mic size={12} />}
+                    </button>
+                  </div>
                   <div className={cn(
                     "w-2 h-2 rounded-full",
                     videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
@@ -2558,6 +2738,7 @@ export default function App() {
                     onClick={() => {
                       setIsVideoSettingsOpen(true);
                       socket?.emit("get-video-devices");
+                      socket?.emit("get-audio-devices");
                     }}
                     className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
                     title="Video Settings"
@@ -3189,8 +3370,9 @@ export default function App() {
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
               <div className="space-y-4">
+                <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Video Settings</h3>
                 <div className="space-y-2">
                   <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Video Device</label>
                   <select 
@@ -3248,7 +3430,127 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              {/* Audio Settings Section */}
+              <div className="space-y-4 pt-4 border-t border-[#2a2b2e]">
+                <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold border-b border-blue-500/20 pb-1">Audio Settings (Bi-Directional)</h3>
+                
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Backend Input (Mic/Line)</label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[0.5rem] uppercase text-[#4a4b4e]">Enabled</span>
+                        <button 
+                          onClick={() => {
+                            const newSettings = { ...audioSettings, inboundEnabled: !audioSettings.inboundEnabled };
+                            setAudioSettings(newSettings);
+                            socket?.emit("update-audio-settings", newSettings);
+                          }}
+                          className={cn(
+                            "w-8 h-4 rounded-full transition-all relative",
+                            audioSettings.inboundEnabled ? "bg-blue-500" : "bg-[#2a2b2e]"
+                          )}
+                        >
+                          <div className={cn(
+                            "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+                            audioSettings.inboundEnabled ? "left-4.5" : "left-0.5"
+                          )} />
+                        </button>
+                      </div>
+                    </div>
+                    <select 
+                      value={audioSettings.inputDevice}
+                      onChange={(e) => {
+                        const newSettings = { ...audioSettings, inputDevice: e.target.value };
+                        setAudioSettings(newSettings);
+                        socket?.emit("update-audio-settings", newSettings);
+                      }}
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
+                    >
+                      <option value="">Select Backend Input</option>
+                      {audioDevices.inputs.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Backend Output (Speakers)</label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[0.5rem] uppercase text-[#4a4b4e]">Enabled</span>
+                        <button 
+                          onClick={() => {
+                            const newSettings = { ...audioSettings, outboundEnabled: !audioSettings.outboundEnabled };
+                            setAudioSettings(newSettings);
+                            socket?.emit("update-audio-settings", newSettings);
+                          }}
+                          className={cn(
+                            "w-8 h-4 rounded-full transition-all relative",
+                            audioSettings.outboundEnabled ? "bg-blue-500" : "bg-[#2a2b2e]"
+                          )}
+                        >
+                          <div className={cn(
+                            "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+                            audioSettings.outboundEnabled ? "left-4.5" : "left-0.5"
+                          )} />
+                        </button>
+                      </div>
+                    </div>
+                    <select 
+                      value={audioSettings.outputDevice}
+                      onChange={(e) => {
+                        const newSettings = { ...audioSettings, outputDevice: e.target.value };
+                        setAudioSettings(newSettings);
+                        socket?.emit("update-audio-settings", newSettings);
+                      }}
+                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
+                    >
+                      <option value="">Select Backend Output</option>
+                      {audioDevices.outputs.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    onClick={() => socket?.emit("control-audio", "start")}
+                    disabled={(!audioSettings.inputDevice && !audioSettings.outputDevice) || audioStatus === "playing"}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
+                      audioStatus === "playing" 
+                        ? "bg-blue-500/20 text-blue-500 cursor-not-allowed" 
+                        : "bg-blue-500 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                    )}
+                  >
+                    <Power size={16} />
+                    Start Audio
+                  </button>
+                  <button 
+                    onClick={() => socket?.emit("control-audio", "stop")}
+                    disabled={audioStatus === "stopped"}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
+                      audioStatus === "stopped"
+                        ? "bg-red-500/20 text-red-500 cursor-not-allowed"
+                        : "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
+                    )}
+                  >
+                    <X size={16} />
+                    Stop Audio
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 p-3 bg-[#0a0a0a] border border-[#2a2b2e] rounded-xl">
+                  <div className={cn(
+                    "w-2 h-2 rounded-full",
+                    audioStatus === "playing" ? "bg-blue-500 animate-pulse" : "bg-[#2a2b2e]"
+                  )} />
+                  <span className="text-[0.625rem] uppercase font-bold text-[#8e9299]">
+                    Audio Status: {audioStatus.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-[#2a2b2e]">
                 <button 
                   onClick={() => socket?.emit("control-video", "play")}
                   disabled={!videoSettings.device || videoStatus === "playing"}
@@ -3260,7 +3562,7 @@ export default function App() {
                   )}
                 >
                   <Power size={16} />
-                  Play
+                  Play Video
                 </button>
                 <button 
                   onClick={() => socket?.emit("control-video", "pause")}
@@ -3273,7 +3575,7 @@ export default function App() {
                   )}
                 >
                   <Power size={16} className="rotate-90" />
-                  Pause
+                  Pause Video
                 </button>
                 <button 
                   onClick={() => socket?.emit("control-video", "stop")}
@@ -3286,7 +3588,7 @@ export default function App() {
                   )}
                 >
                   <X size={16} />
-                  Stop
+                  Stop Video
                 </button>
               </div>
             </div>
