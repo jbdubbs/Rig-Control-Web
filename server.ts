@@ -604,9 +604,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     // Inbound: Backend -> Frontend
     if (audioSettings.inputDevice) {
-      let inputFormat = "";
       let inputDevice = audioSettings.inputDevice;
-
       // Extract hw:x,x from "Name [hw:x,x]" if present
       const hwMatch = inputDevice.match(/\[(hw:\d+,\d+)\]/);
       if (hwMatch) {
@@ -614,53 +612,78 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
 
       if (process.platform === "linux") {
-        inputFormat = "alsa";
-      } else if (process.platform === "win32") {
-        inputFormat = "dshow";
-        inputDevice = `audio=${audioSettings.inputDevice}`;
-      } else if (process.platform === "darwin") {
-        inputFormat = "avfoundation";
+        // Workaround for bundled FFmpeg missing ALSA support: use arecord directly
+        const arecordArgs = [
+          "-D", inputDevice,
+          "-f", "S16_LE",
+          "-r", "44100",
+          "-c", "1",
+          "-t", "raw"
+        ];
+        console.log(`[AUDIO-IN] Spawning arecord: arecord ${arecordArgs.join(" ")}`);
+        inboundAudioProcess = spawn("arecord", arecordArgs);
+        
+        inboundAudioProcess.stdout?.on("data", (data) => {
+          io.emit("audio-inbound", data);
+        });
+
+        inboundAudioProcess.stderr?.on("data", (data) => {
+          console.log(`[AUDIO-IN-ARECORD] ${data.toString()}`);
+        });
+
+        inboundAudioProcess.on("error", (err) => {
+          console.error("[AUDIO-IN] arecord process error:", err);
+        });
+
+        inboundAudioProcess.on("close", (code) => {
+          console.log(`[AUDIO-IN] arecord process closed with code ${code}`);
+        });
+      } else {
+        let inputFormat = "";
+        if (process.platform === "win32") {
+          inputFormat = "dshow";
+          inputDevice = `audio=${audioSettings.inputDevice}`;
+        } else if (process.platform === "darwin") {
+          inputFormat = "avfoundation";
+        }
+
+        const inboundArgs = [
+          "-f", inputFormat,
+          "-thread_queue_size", "1024",
+          "-ar", "44100",
+          "-ac", "1",
+          "-i", inputDevice,
+          "-f", "s16le",
+          "-ac", "1",
+          "-ar", "44100",
+          "pipe:1"
+        ];
+
+        const ffmpegPath = getFfmpegPath();
+        console.log(`[AUDIO-IN] Spawning FFmpeg: ${ffmpegPath} ${inboundArgs.join(" ")}`);
+        inboundAudioProcess = spawn(ffmpegPath, inboundArgs);
+        
+        inboundAudioProcess.stdout?.on("data", (data) => {
+          io.emit("audio-inbound", data);
+        });
+
+        inboundAudioProcess.stderr?.on("data", (data) => {
+          console.log(`[AUDIO-IN-FFMPEG] ${data.toString()}`);
+        });
+
+        inboundAudioProcess.on("error", (err) => {
+          console.error("[AUDIO-IN] FFmpeg process error:", err);
+        });
+
+        inboundAudioProcess.on("close", (code) => {
+          console.log(`[AUDIO-IN] FFmpeg process closed with code ${code}`);
+        });
       }
-
-      const inboundArgs = [
-        "-f", inputFormat,
-        "-thread_queue_size", "1024",
-        "-ar", "44100",
-        "-ac", "1",
-        "-i", inputDevice,
-        "-f", "s16le",
-        "-ac", "1",
-        "-ar", "44100",
-        "pipe:1"
-      ];
-
-      const ffmpegPath = getFfmpegPath();
-      console.log(`[AUDIO-IN] Spawning FFmpeg: ${ffmpegPath} ${inboundArgs.join(" ")}`);
-      inboundAudioProcess = spawn(ffmpegPath, inboundArgs);
-      
-      inboundAudioProcess.stdout?.on("data", (data) => {
-        // console.log(`[AUDIO-IN] Received ${data.length} bytes`);
-        io.emit("audio-inbound", data);
-      });
-
-      inboundAudioProcess.stderr?.on("data", (data) => {
-        console.log(`[AUDIO-IN-FFMPEG] ${data.toString()}`);
-      });
-
-      inboundAudioProcess.on("error", (err) => {
-        console.error("[AUDIO-IN] FFmpeg process error:", err);
-      });
-
-      inboundAudioProcess.on("close", (code) => {
-        console.log(`[AUDIO-IN] FFmpeg process closed with code ${code}`);
-      });
     }
 
     // Outbound: Frontend -> Backend
     if (audioSettings.outputDevice) {
-      let outputFormat = "";
       let outputDevice = audioSettings.outputDevice;
-
       // Extract hw:x,x from "Name [hw:x,x]" if present
       const hwMatch = outputDevice.match(/\[(hw:\d+,\d+)\]/);
       if (hwMatch) {
@@ -668,29 +691,62 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
 
       if (process.platform === "linux") {
-        outputFormat = "alsa";
-      } else if (process.platform === "win32") {
-        outputFormat = "dshow";
-        outputDevice = `audio=${audioSettings.outputDevice}`;
-      } else if (process.platform === "darwin") {
-        outputFormat = "avfoundation";
+        // Workaround for bundled FFmpeg missing ALSA support: use aplay directly
+        const aplayArgs = [
+          "-D", outputDevice,
+          "-f", "S16_LE",
+          "-r", "44100",
+          "-c", "1",
+          "-t", "raw"
+        ];
+        console.log(`[AUDIO-OUT] Spawning aplay: aplay ${aplayArgs.join(" ")}`);
+        outboundAudioProcess = spawn("aplay", aplayArgs);
+        
+        outboundAudioProcess.stderr?.on("data", (data) => {
+          console.log(`[AUDIO-OUT-APLAY] ${data.toString()}`);
+        });
+
+        outboundAudioProcess.on("error", (err) => {
+          console.error("[AUDIO-OUT] aplay process error:", err);
+        });
+
+        outboundAudioProcess.on("close", (code) => {
+          console.log(`[AUDIO-OUT] aplay process closed with code ${code}`);
+        });
+      } else {
+        let outputFormat = "";
+        if (process.platform === "win32") {
+          outputFormat = "dshow";
+          outputDevice = `audio=${audioSettings.outputDevice}`;
+        } else if (process.platform === "darwin") {
+          outputFormat = "avfoundation";
+        }
+
+        const outboundArgs = [
+          "-f", "s16le",
+          "-ac", "1",
+          "-ar", "44100",
+          "-i", "pipe:0",
+          "-f", outputFormat,
+          outputDevice
+        ];
+
+        const ffmpegPath = getFfmpegPath();
+        console.log(`[AUDIO-OUT] Spawning FFmpeg: ${ffmpegPath} ${outboundArgs.join(" ")}`);
+        outboundAudioProcess = spawn(ffmpegPath, outboundArgs);
+
+        outboundAudioProcess.stderr?.on("data", (data) => {
+          console.log(`[AUDIO-OUT-FFMPEG] ${data.toString()}`);
+        });
+
+        outboundAudioProcess.on("error", (err) => {
+          console.error("[AUDIO-OUT] FFmpeg process error:", err);
+        });
+
+        outboundAudioProcess.on("close", (code) => {
+          console.log(`[AUDIO-OUT] FFmpeg process closed with code ${code}`);
+        });
       }
-
-      const outboundArgs = [
-        "-f", "s16le",
-        "-ac", "1",
-        "-ar", "44100",
-        "-i", "pipe:0",
-        "-f", outputFormat,
-        outputDevice
-      ];
-
-      const ffmpegPath = getFfmpegPath();
-      outboundAudioProcess = spawn(ffmpegPath, outboundArgs);
-
-      outboundAudioProcess.stderr?.on("data", (data) => {
-        // console.log(`[AUDIO-OUT] ${data.toString()}`);
-      });
     }
 
     audioStatus = "playing";
