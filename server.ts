@@ -624,6 +624,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
       const inboundArgs = [
         "-f", inputFormat,
+        "-thread_queue_size", "1024",
+        "-ar", "44100",
+        "-ac", "1",
         "-i", inputDevice,
         "-f", "s16le",
         "-ac", "1",
@@ -632,14 +635,24 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       ];
 
       const ffmpegPath = getFfmpegPath();
+      console.log(`[AUDIO-IN] Spawning FFmpeg: ${ffmpegPath} ${inboundArgs.join(" ")}`);
       inboundAudioProcess = spawn(ffmpegPath, inboundArgs);
       
       inboundAudioProcess.stdout?.on("data", (data) => {
+        // console.log(`[AUDIO-IN] Received ${data.length} bytes`);
         io.emit("audio-inbound", data);
       });
 
       inboundAudioProcess.stderr?.on("data", (data) => {
-        // console.log(`[AUDIO-IN] ${data.toString()}`);
+        console.log(`[AUDIO-IN-FFMPEG] ${data.toString()}`);
+      });
+
+      inboundAudioProcess.on("error", (err) => {
+        console.error("[AUDIO-IN] FFmpeg process error:", err);
+      });
+
+      inboundAudioProcess.on("close", (code) => {
+        console.log(`[AUDIO-IN] FFmpeg process closed with code ${code}`);
       });
     }
 

@@ -879,7 +879,10 @@ export default function App() {
   useEffect(() => {
     if (!socket) return;
     const handler = (data: ArrayBuffer | Uint8Array) => {
-      if (inboundMutedRef.current || !audioSettingsRef.current.inboundEnabled || audioStatusRef.current !== "playing") return;
+      // console.count("[AUDIO-IN] Packets received");
+      if (inboundMutedRef.current || !audioSettingsRef.current.inboundEnabled || audioStatusRef.current !== "playing") {
+        return;
+      }
       playInboundAudio(data);
     };
     socket.on("audio-inbound", handler);
@@ -900,40 +903,55 @@ export default function App() {
 
   // Audio Playback Logic
   const playInboundAudio = (data: ArrayBuffer | Uint8Array) => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
+        console.log("[AUDIO] Initialized AudioContext at 44100Hz");
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(err => console.error("Failed to resume AudioContext:", err));
+      }
+
+      let bufferData: ArrayBuffer;
+      let byteOffset = 0;
+      let byteLength = 0;
+
+      if (data instanceof Uint8Array) {
+        bufferData = data.buffer;
+        byteOffset = data.byteOffset;
+        byteLength = data.byteLength;
+      } else {
+        bufferData = data;
+        byteLength = data.byteLength;
+      }
+
+      if (byteLength === 0) return;
+
+      // Ensure byteOffset is a multiple of 2 for Int16Array
+      if (byteOffset % 2 !== 0) {
+        // If not aligned, we need to copy the data to a new aligned buffer
+        const alignedData = new Uint8Array(data);
+        bufferData = alignedData.buffer;
+        byteOffset = alignedData.byteOffset;
+      }
+
+      const int16Data = new Int16Array(bufferData, byteOffset, byteLength / 2);
+      const float32Data = new Float32Array(int16Data.length);
+      for (let i = 0; i < int16Data.length; i++) {
+        float32Data[i] = int16Data[i] / 32768.0;
+      }
+
+      const buffer = ctx.createBuffer(1, float32Data.length, 44100);
+      buffer.getChannelData(0).set(float32Data);
+
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start();
+    } catch (err) {
+      console.error("[AUDIO] Playback error:", err);
     }
-    const ctx = audioContextRef.current;
-    if (ctx.state === 'suspended') {
-      ctx.resume().catch(err => console.error("Failed to resume AudioContext:", err));
-    }
-
-    let bufferData: ArrayBuffer;
-    let byteOffset = 0;
-    let byteLength = 0;
-
-    if (data instanceof Uint8Array) {
-      bufferData = data.buffer;
-      byteOffset = data.byteOffset;
-      byteLength = data.byteLength;
-    } else {
-      bufferData = data;
-      byteLength = data.byteLength;
-    }
-
-    const int16Data = new Int16Array(bufferData, byteOffset, byteLength / 2);
-    const float32Data = new Float32Array(int16Data.length);
-    for (let i = 0; i < int16Data.length; i++) {
-      float32Data[i] = int16Data[i] / 32768.0;
-    }
-
-    const buffer = ctx.createBuffer(1, float32Data.length, 44100);
-    buffer.getChannelData(0).set(float32Data);
-
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.start();
   };
 
   const handleStartAudio = () => {
@@ -943,6 +961,19 @@ export default function App() {
     if (audioContextRef.current.state === 'suspended') {
       audioContextRef.current.resume();
     }
+    
+    // Auto-enable streams if devices are selected
+    const newSettings = { 
+      ...audioSettings, 
+      inboundEnabled: audioSettings.inputDevice !== "" ? true : audioSettings.inboundEnabled,
+      outboundEnabled: audioSettings.outputDevice !== "" ? true : audioSettings.outboundEnabled
+    };
+    
+    if (newSettings.inboundEnabled !== audioSettings.inboundEnabled || newSettings.outboundEnabled !== audioSettings.outboundEnabled) {
+      setAudioSettings(newSettings);
+      socket?.emit("update-audio-settings", newSettings);
+    }
+
     socket?.emit("control-audio", "start");
   };
 
