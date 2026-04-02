@@ -282,6 +282,10 @@ export default function App() {
   }, [isCompact, isPhone]);
 
   useEffect(() => {
+    if (!navigator.mediaDevices) {
+      console.warn("navigator.mediaDevices is not available. Audio device selection will be disabled.");
+      return;
+    }
     const getLocalDevices = async () => {
       try {
         // Request permission first to get device labels if not already granted
@@ -1021,6 +1025,10 @@ export default function App() {
 
   const startMicCapture = async () => {
     try {
+      if (!navigator.mediaDevices) {
+        console.error("navigator.mediaDevices is not available.");
+        return;
+      }
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
       }
