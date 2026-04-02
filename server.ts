@@ -514,26 +514,30 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
         if (process.platform === "linux") {
           // Parse arecord -l for inputs
-          const inputLines = stdout.split("\n");
-          inputLines.forEach(line => {
-            if (line.startsWith("card")) {
-              const match = line.match(/card (\d+):.*device (\d+):/);
-              if (match) {
-                inputs.push(`hw:${match[1]},${match[2]}`);
-              }
-            }
-          });
-          // Parse aplay -l for outputs
-          const outputLines = stderr.split("\n"); // exec combines them or arecord/aplay might use stderr
-          // Actually exec(cmd) for "arecord -l && aplay -l" will have both in stdout
           const combinedLines = output.split("\n");
           let parsingOutputs = false;
+          
           combinedLines.forEach(line => {
-            if (line.includes("List of PLAYBACK Hardware Devices")) parsingOutputs = true;
-            if (parsingOutputs && line.startsWith("card")) {
-              const match = line.match(/card (\d+):.*device (\d+):/);
+            if (line.includes("List of PLAYBACK Hardware Devices")) {
+              parsingOutputs = true;
+              return;
+            }
+            
+            if (line.startsWith("card")) {
+              const match = line.match(/card (\d+): (.*), device (\d+): (.*)/);
               if (match) {
-                outputs.push(`hw:${match[1]},${match[2]}`);
+                const cardNum = match[1];
+                const cardName = match[2].trim();
+                const deviceNum = match[3];
+                const deviceName = match[4].trim();
+                const hwId = `hw:${cardNum},${deviceNum}`;
+                const displayName = `${cardName}: ${deviceName} [${hwId}]`;
+                
+                if (parsingOutputs) {
+                  outputs.push(displayName);
+                } else {
+                  inputs.push(displayName);
+                }
               }
             }
           });
@@ -603,6 +607,12 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       let inputFormat = "";
       let inputDevice = audioSettings.inputDevice;
 
+      // Extract hw:x,x from "Name [hw:x,x]" if present
+      const hwMatch = inputDevice.match(/\[(hw:\d+,\d+)\]/);
+      if (hwMatch) {
+        inputDevice = hwMatch[1];
+      }
+
       if (process.platform === "linux") {
         inputFormat = "alsa";
       } else if (process.platform === "win32") {
@@ -637,6 +647,12 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     if (audioSettings.outputDevice) {
       let outputFormat = "";
       let outputDevice = audioSettings.outputDevice;
+
+      // Extract hw:x,x from "Name [hw:x,x]" if present
+      const hwMatch = outputDevice.match(/\[(hw:\d+,\d+)\]/);
+      if (hwMatch) {
+        outputDevice = hwMatch[1];
+      }
 
       if (process.platform === "linux") {
         outputFormat = "alsa";
