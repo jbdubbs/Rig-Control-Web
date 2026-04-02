@@ -193,6 +193,11 @@ export default function App() {
     inboundEnabled: false,
     outboundEnabled: false
   });
+  const [localAudioDevices, setLocalAudioDevices] = useState<{ inputs: MediaDeviceInfo[], outputs: MediaDeviceInfo[] }>({ inputs: [], outputs: [] });
+  const [localAudioSettings, setLocalAudioSettings] = useState({
+    inputDevice: localStorage.getItem("local-audio-input") || "default",
+    outputDevice: localStorage.getItem("local-audio-output") || "default"
+  });
   const [inboundMuted, setInboundMuted] = useState(false);
   const [outboundMuted, setOutboundMuted] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -275,6 +280,27 @@ export default function App() {
       document.body.style.overflow = 'auto';
     };
   }, [isCompact, isPhone]);
+
+  useEffect(() => {
+    const getLocalDevices = async () => {
+      try {
+        // Request permission first to get device labels if not already granted
+        // We do this quietly by just checking if we can get a stream
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+        
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputs = devices.filter(d => d.kind === 'audioinput');
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+        setLocalAudioDevices({ inputs, outputs });
+      } catch (err) {
+        console.error("Error enumerating local audio devices:", err);
+      }
+    };
+    getLocalDevices();
+    navigator.mediaDevices.addEventListener('devicechange', getLocalDevices);
+    return () => navigator.mediaDevices.removeEventListener('devicechange', getLocalDevices);
+  }, []);
 
   useEffect(() => {
     if (videoSettings.device && !videoSettingsInitialized.current) {
@@ -907,6 +933,11 @@ export default function App() {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
         console.log("[AUDIO] Initialized AudioContext at 44100Hz");
+        
+        // Apply local output device if supported
+        if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (audioContextRef.current as any).setSinkId === 'function') {
+          (audioContextRef.current as any).setSinkId(localAudioSettings.outputDevice).catch(console.error);
+        }
       }
       const ctx = audioContextRef.current;
       if (ctx.state === 'suspended') {
@@ -954,12 +985,23 @@ export default function App() {
     }
   };
 
-  const handleStartAudio = () => {
+  const handleStartAudio = async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
     }
-    if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume();
+    const ctx = audioContextRef.current;
+    
+    // Handle output device if supported
+    if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (ctx as any).setSinkId === 'function') {
+      try {
+        await (ctx as any).setSinkId(localAudioSettings.outputDevice);
+      } catch (e) {
+        console.error("Error setting sink ID:", e);
+      }
+    }
+
+    if (ctx.state === 'suspended') {
+      ctx.resume();
     }
     
     // Auto-enable streams if devices are selected
@@ -980,10 +1022,16 @@ export default function App() {
   const startMicCapture = async () => {
     try {
       if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
       }
       const ctx = audioContextRef.current;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      const constraints = {
+        audio: localAudioSettings.inputDevice && localAudioSettings.inputDevice !== 'default' 
+          ? { deviceId: { exact: localAudioSettings.inputDevice } } 
+          : true
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micStreamRef.current = stream;
       const source = ctx.createMediaStreamSource(stream);
       const processor = ctx.createScriptProcessor(4096, 1, 1);
@@ -3590,6 +3638,57 @@ export default function App() {
                       <option value="">Select Backend Output</option>
                       {audioDevices.outputs.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
+                  </div>
+
+                  {/* Local Client Audio Settings */}
+                  <div className="space-y-4 pt-4 border-t border-[#2a2b2e]/50">
+                    <h4 className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Local Client Audio (Your System)</h4>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold">Local Input (Microphone)</label>
+                      <select 
+                        value={localAudioSettings.inputDevice}
+                        onChange={(e) => {
+                          const newSettings = { ...localAudioSettings, inputDevice: e.target.value };
+                          setLocalAudioSettings(newSettings);
+                          localStorage.setItem("local-audio-input", e.target.value);
+                          // Re-trigger mic capture if active
+                          if (audioStatus === "playing" && audioSettings.outboundEnabled && !outboundMuted) {
+                            stopMicCapture();
+                            startMicCapture();
+                          }
+                        }}
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
+                      >
+                        <option value="default">Default Input</option>
+                        {localAudioDevices.inputs.map(d => (
+                          <option key={d.deviceId} value={d.deviceId}>{d.label || `Input ${d.deviceId.slice(0, 5)}`}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold">Local Output (Speakers/Headphones)</label>
+                      <select 
+                        value={localAudioSettings.outputDevice}
+                        onChange={(e) => {
+                          const newSettings = { ...localAudioSettings, outputDevice: e.target.value };
+                          setLocalAudioSettings(newSettings);
+                          localStorage.setItem("local-audio-output", e.target.value);
+                          
+                          // Update AudioContext sink if supported
+                          if (audioContextRef.current && typeof (audioContextRef.current as any).setSinkId === 'function') {
+                            (audioContextRef.current as any).setSinkId(e.target.value).catch(console.error);
+                          }
+                        }}
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
+                      >
+                        <option value="default">Default Output</option>
+                        {localAudioDevices.outputs.map(d => (
+                          <option key={d.deviceId} value={d.deviceId}>{d.label || `Output ${d.deviceId.slice(0, 5)}`}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
