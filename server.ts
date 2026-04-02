@@ -1413,6 +1413,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         settings: rigctldSettings,
         autoStart: autoStartEnabled,
         videoSettings: videoSettings,
+        audioSettings: audioSettings,
         pollRate: pollRate,
         autoconnectEligible: autoconnectEligible,
         clientHost: clientHost,

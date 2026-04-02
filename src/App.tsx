@@ -372,10 +372,6 @@ export default function App() {
       socket.on("audio-devices-list", (devices: { inputs: string[], outputs: string[] }) => {
         setAudioDevices(devices);
       });
-      socket.on("audio-inbound", (data: ArrayBuffer) => {
-        if (inboundMuted || audioStatus !== "playing") return;
-        playInboundAudio(data);
-      });
       socket.on("video-error", (msg: string) => {
         setVideoError(msg);
       });
@@ -871,27 +867,83 @@ export default function App() {
     socket?.emit("vfo-op", op);
   };
 
+  // Audio Context Refs
+  const audioSettingsRef = useRef(audioSettings);
+  const audioStatusRef = useRef(audioStatus);
+  const inboundMutedRef = useRef(inboundMuted);
+
+  useEffect(() => { audioSettingsRef.current = audioSettings; }, [audioSettings]);
+  useEffect(() => { audioStatusRef.current = audioStatus; }, [audioStatus]);
+  useEffect(() => { inboundMutedRef.current = inboundMuted; }, [inboundMuted]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (data: ArrayBuffer | Uint8Array) => {
+      if (inboundMutedRef.current || !audioSettingsRef.current.inboundEnabled || audioStatusRef.current !== "playing") return;
+      playInboundAudio(data);
+    };
+    socket.on("audio-inbound", handler);
+    return () => {
+      socket.off("audio-inbound", handler);
+    };
+  }, [socket]);
+
+  useEffect(() => {
+    const resumeAudio = () => {
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
+    };
+    window.addEventListener('click', resumeAudio);
+    return () => window.removeEventListener('click', resumeAudio);
+  }, []);
+
   // Audio Playback Logic
-  const playInboundAudio = (data: ArrayBuffer) => {
+  const playInboundAudio = (data: ArrayBuffer | Uint8Array) => {
     if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
     }
     const ctx = audioContextRef.current;
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(err => console.error("Failed to resume AudioContext:", err));
+    }
 
-    const int16Data = new Int16Array(data);
+    let bufferData: ArrayBuffer;
+    let byteOffset = 0;
+    let byteLength = 0;
+
+    if (data instanceof Uint8Array) {
+      bufferData = data.buffer;
+      byteOffset = data.byteOffset;
+      byteLength = data.byteLength;
+    } else {
+      bufferData = data;
+      byteLength = data.byteLength;
+    }
+
+    const int16Data = new Int16Array(bufferData, byteOffset, byteLength / 2);
     const float32Data = new Float32Array(int16Data.length);
     for (let i = 0; i < int16Data.length; i++) {
       float32Data[i] = int16Data[i] / 32768.0;
     }
 
-    const buffer = ctx.createBuffer(1, float32Data.length, 48000);
+    const buffer = ctx.createBuffer(1, float32Data.length, 44100);
     buffer.getChannelData(0).set(float32Data);
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(ctx.destination);
     source.start();
+  };
+
+  const handleStartAudio = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
+    }
+    if (audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+    socket?.emit("control-audio", "start");
   };
 
   const startMicCapture = async () => {
@@ -3461,7 +3513,7 @@ export default function App() {
                     <select 
                       value={audioSettings.inputDevice}
                       onChange={(e) => {
-                        const newSettings = { ...audioSettings, inputDevice: e.target.value };
+                        const newSettings = { ...audioSettings, inputDevice: e.target.value, inboundEnabled: e.target.value !== "" };
                         setAudioSettings(newSettings);
                         socket?.emit("update-audio-settings", newSettings);
                       }}
@@ -3498,7 +3550,7 @@ export default function App() {
                     <select 
                       value={audioSettings.outputDevice}
                       onChange={(e) => {
-                        const newSettings = { ...audioSettings, outputDevice: e.target.value };
+                        const newSettings = { ...audioSettings, outputDevice: e.target.value, outboundEnabled: e.target.value !== "" };
                         setAudioSettings(newSettings);
                         socket?.emit("update-audio-settings", newSettings);
                       }}
@@ -3512,7 +3564,7 @@ export default function App() {
 
                 <div className="flex gap-3 pt-2">
                   <button 
-                    onClick={() => socket?.emit("control-audio", "start")}
+                    onClick={handleStartAudio}
                     disabled={(!audioSettings.inputDevice && !audioSettings.outputDevice) || audioStatus === "playing"}
                     className={cn(
                       "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
