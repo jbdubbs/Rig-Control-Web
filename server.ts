@@ -609,6 +609,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const hwMatch = inputDevice.match(/\[(hw:\d+,\d+)\]/);
       if (hwMatch) {
         inputDevice = hwMatch[1];
+        // Use plughw for better compatibility with different sample rates/channels
+        if (process.platform === "linux") {
+          inputDevice = inputDevice.replace("hw:", "plughw:");
+        }
       }
 
       if (process.platform === "linux") {
@@ -688,6 +692,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const hwMatch = outputDevice.match(/\[(hw:\d+,\d+)\]/);
       if (hwMatch) {
         outputDevice = hwMatch[1];
+        // Use plughw for better compatibility with different sample rates/channels
+        if (process.platform === "linux") {
+          outputDevice = outputDevice.replace("hw:", "plughw:");
+        }
       }
 
       if (process.platform === "linux") {
