@@ -204,7 +204,8 @@ export default function App() {
   const [outboundMuted, setOutboundMuted] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
-  const micProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const micNodeRef = useRef<AudioWorkletNode | null>(null);
+  const nextStartTimeRef = useRef(0);
 
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [preampLevels, setPreampLevels] = useState<string[]>([]);
@@ -958,8 +959,11 @@ export default function App() {
   const playInboundAudio = (data: ArrayBuffer | Uint8Array) => {
     try {
       if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
-        console.log("[AUDIO] Initialized AudioContext at 44100Hz");
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
+          sampleRate: 16000,
+          latencyHint: 'interactive'
+        });
+        console.log("[AUDIO] Initialized AudioContext at 16000Hz");
         
         // Apply local output device if supported
         if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (audioContextRef.current as any).setSinkId === 'function') {
@@ -969,6 +973,12 @@ export default function App() {
       const ctx = audioContextRef.current;
       if (ctx.state === 'suspended') {
         ctx.resume().catch(err => console.error("Failed to resume AudioContext:", err));
+      }
+
+      const now = ctx.currentTime;
+      // If we're too far behind, catch up
+      if (nextStartTimeRef.current < now) {
+        nextStartTimeRef.current = now + 0.02; // 20ms buffer
       }
 
       let bufferData: ArrayBuffer;
@@ -1000,13 +1010,14 @@ export default function App() {
         float32Data[i] = int16Data[i] / 32768.0;
       }
 
-      const buffer = ctx.createBuffer(1, float32Data.length, 44100);
+      const buffer = ctx.createBuffer(1, float32Data.length, 16000);
       buffer.getChannelData(0).set(float32Data);
 
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.connect(ctx.destination);
-      source.start();
+      source.start(nextStartTimeRef.current);
+      nextStartTimeRef.current += buffer.duration;
     } catch (err) {
       console.error("[AUDIO] Playback error:", err);
     }
@@ -1014,7 +1025,10 @@ export default function App() {
 
   const handleStartAudio = async () => {
     if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
+        sampleRate: 16000,
+        latencyHint: 'interactive'
+      });
     }
     const ctx = audioContextRef.current;
     
@@ -1053,35 +1067,60 @@ export default function App() {
         return;
       }
       if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
+          sampleRate: 16000,
+          latencyHint: 'interactive'
+        });
       }
       const ctx = audioContextRef.current;
       
       const constraints = {
         audio: localAudioSettings.inputDevice && localAudioSettings.inputDevice !== 'default' 
           ? { deviceId: { exact: localAudioSettings.inputDevice } } 
-          : true
+          : { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micStreamRef.current = stream;
       const source = ctx.createMediaStreamSource(stream);
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
-      micProcessorRef.current = processor;
-      processor.onaudioprocess = (e) => {
+
+      // AudioWorklet for lower latency
+      const micWorkletCode = `
+        class MicProcessor extends AudioWorkletProcessor {
+          process(inputs, outputs, parameters) {
+            const input = inputs[0];
+            if (input.length > 0) {
+              const channelData = input[0];
+              // Send a copy of the data
+              this.port.postMessage(new Float32Array(channelData));
+            }
+            return true;
+          }
+        }
+        registerProcessor('mic-processor', MicProcessor);
+      `;
+      const blob = new Blob([micWorkletCode], { type: 'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      await ctx.audioWorklet.addModule(url);
+      
+      const micNode = new AudioWorkletNode(ctx, 'mic-processor');
+      micNodeRef.current = micNode;
+      
+      micNode.port.onmessage = (e) => {
         if (outboundMuted || audioStatus !== "playing") return;
         
         // Only emit if we are the active client
         if (activeAudioClientId && socket?.id !== activeAudioClientId) return;
 
-        const inputData = e.inputBuffer.getChannelData(0);
+        const inputData = e.data;
         const int16Data = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
         }
         socket?.emit("audio-outbound", int16Data.buffer);
       };
-      source.connect(processor);
-      processor.connect(ctx.destination);
+
+      source.connect(micNode);
+      micNode.connect(ctx.destination); // Required for processing to happen in some browsers
     } catch (err) {
       console.error("Error starting mic capture:", err);
     }
@@ -1092,9 +1131,9 @@ export default function App() {
       micStreamRef.current.getTracks().forEach(track => track.stop());
       micStreamRef.current = null;
     }
-    if (micProcessorRef.current) {
-      micProcessorRef.current.disconnect();
-      micProcessorRef.current = null;
+    if (micNodeRef.current) {
+      micNodeRef.current.disconnect();
+      micNodeRef.current = null;
     }
   };
 

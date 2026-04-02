@@ -10,7 +10,9 @@ import { EventEmitter } from "events";
 export async function startServer(appPath?: string, userDataPath?: string) {
   const app = express();
   const httpServer = createServer(app);
-  const io = new Server(httpServer);
+  const io = new Server(httpServer, {
+    perMessageDeflate: false
+  });
   const PORT = 3000;
 
   // appPath is for read-only bundled assets (like radios.json and dist/)
@@ -685,9 +687,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const parecordArgs = [
             "--device", pulseDevice,
             "--format", "s16le",
-            "--rate", "44100",
+            "--rate", "16000",
             "--channels", "1",
-            "--raw"
+            "--raw",
+            "--latency-msec=20"
           ];
           console.log(`[AUDIO-IN] Spawning parecord: parecord ${parecordArgs.join(" ")}`);
           inboundAudioProcess = spawn("parecord", parecordArgs);
@@ -712,9 +715,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const arecordArgs = [
             "-D", inputDevice,
             "-f", "S16_LE",
-            "-r", "44100",
+            "-r", "16000",
             "-c", "1",
-            "-t", "raw"
+            "-t", "raw",
+            "--buffer-size=1024"
           ];
           console.log(`[AUDIO-IN] Spawning arecord: arecord ${arecordArgs.join(" ")}`);
           inboundAudioProcess = spawn("arecord", arecordArgs);
@@ -747,12 +751,15 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         const inboundArgs = [
           "-f", inputFormat,
           "-thread_queue_size", "1024",
-          "-ar", "44100",
+          "-ar", "16000",
           "-ac", "1",
           "-i", inputDevice,
+          "-fflags", "nobuffer",
+          "-probesize", "32",
+          "-analyzeduration", "0",
           "-f", "s16le",
           "-ac", "1",
-          "-ar", "44100",
+          "-ar", "16000",
           "pipe:1"
         ];
 
@@ -797,9 +804,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const paplayArgs = [
             "--device", pulseDevice,
             "--format", "s16le",
-            "--rate", "44100",
+            "--rate", "16000",
             "--channels", "1",
-            "--raw"
+            "--raw",
+            "--latency-msec=20"
           ];
           console.log(`[AUDIO-OUT] Spawning paplay: paplay ${paplayArgs.join(" ")}`);
           outboundAudioProcess = spawn("paplay", paplayArgs);
@@ -820,9 +828,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const aplayArgs = [
             "-D", outputDevice,
             "-f", "S16_LE",
-            "-r", "44100",
+            "-r", "16000",
             "-c", "1",
-            "-t", "raw"
+            "-t", "raw",
+            "--buffer-size=1024"
           ];
           console.log(`[AUDIO-OUT] Spawning aplay: aplay ${aplayArgs.join(" ")}`);
           outboundAudioProcess = spawn("aplay", aplayArgs);
@@ -851,8 +860,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         const outboundArgs = [
           "-f", "s16le",
           "-ac", "1",
-          "-ar", "44100",
+          "-ar", "16000",
           "-i", "pipe:0",
+          "-fflags", "nobuffer",
+          "-probesize", "32",
+          "-analyzeduration", "0",
           "-f", outputFormat,
           outputDevice
         ];

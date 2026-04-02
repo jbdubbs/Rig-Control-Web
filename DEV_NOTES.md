@@ -20,6 +20,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - [x] Implement client-side local audio device selection (input/output).
 - [x] Fix "white screen" crash in non-secure browser contexts.
 - [x] Implement "last-interacted-wins" policy for multi-client microphone recording.
+- [x] Optimize audio latency (16kHz, AudioWorklet, jitter buffering, Socket.io tuning).
 - [ ] Implement a test-driven development framework with unit tests.
 - [ ] Verify `rigctld` binary availability in the production environment.
 
@@ -43,6 +44,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 | MediaDevices Safety | Added null-checks for `navigator.mediaDevices` to prevent app crashes in non-secure browser contexts where the API is restricted. | 2026-04-02 |
 | PulseAudio Integration | Switched Linux backend to use `pactl`/`parecord`/`paplay` when available, providing a robust abstraction over ALSA and fixing "Device busy" errors. | 2026-04-02 |
 | Last-Interacted-Wins | Implemented a policy where only the most recently interacted-with window can record mic audio, preventing multi-client audio collisions. | 2026-04-02 |
+| Audio Latency Opt | Reduced sample rate to 16kHz, switched to AudioWorklet, implemented jitter buffering, and tuned Socket.io/FFmpeg for near real-time performance. | 2026-04-02 |
 
 ## Known Issues / Tech Debt
 - `rigctld` path is assumed to be in the system PATH.
@@ -62,6 +64,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - **Client Audio Routing**: Uses `getUserMedia` with specific `deviceId` for input and `setSinkId` for output, allowing full control over local audio hardware.
 - **Linux Audio Abstraction**: Prioritizes sound server (PulseAudio/Pipewire) utilities to ensure multi-app compatibility and stable hardware access.
 - **Multi-Client Mic Policy**: Server tracks `activeAudioClientId` based on client interaction events, enforcing a single-source audio stream to the backend.
+- **Low-Latency Audio Pipeline**: Uses 16kHz mono PCM, `AudioWorklet` for capture, and scheduled playback with a 20ms jitter buffer to minimize lag and pops.
 
 ## Breadcrumbs
 > [2026-04-02 13:00 UTC] Refactored the core codebase into modular files and components. This significantly reduces the size of `server.ts` and `App.tsx`, making the project easier to maintain and test.
@@ -69,5 +72,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 > [2026-04-02 19:00 UTC] Implemented local audio device selection and fixed browser stability issues. The app now handles missing `mediaDevices` gracefully and allows users to choose their local hardware for bi-directional audio.
 
 > [2026-04-02 19:20 UTC] Added "last-interacted-wins" policy for microphone recording. This prevents multiple windows from sending audio simultaneously, ensuring only the active window's mic is routed to the server.
+
+> [2026-04-02 19:40 UTC] Optimized audio latency across the entire stack. Switched to 16kHz sample rate, implemented `AudioWorklet` for mic capture, added jitter buffering for playback, and disabled Socket.io compression to achieve near real-time performance.
 
 > **Next Step**: Implement the test-driven development framework and write unit tests for the new modules and components.
