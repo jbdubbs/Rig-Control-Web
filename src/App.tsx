@@ -24,7 +24,8 @@ import {
   Minimize2,
   Pencil,
   Check,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from "lucide-react";
 import { 
   LineChart, 
@@ -185,6 +186,7 @@ export default function App() {
     framerate: ""
   });
 
+  const [activeAudioClientId, setActiveAudioClientId] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<"playing" | "stopped">("stopped");
   const [audioDevices, setAudioDevices] = useState<{ inputs: string[], outputs: string[] }>({ inputs: [], outputs: [] });
   const [audioSettings, setAudioSettings] = useState({
@@ -399,6 +401,9 @@ export default function App() {
       socket.on("audio-status", (status: "playing" | "stopped") => {
         setAudioStatus(status);
       });
+      socket.on("active-audio-client", (id: string | null) => {
+        setActiveAudioClientId(id);
+      });
       socket.on("audio-devices-list", (devices: { inputs: string[], outputs: string[] }) => {
         setAudioDevices(devices);
       });
@@ -465,6 +470,24 @@ export default function App() {
       logEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [rigctldLogs]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleInteraction = () => {
+      socket.emit("audio-interaction");
+    };
+
+    window.addEventListener('mousedown', handleInteraction);
+    window.addEventListener('keydown', handleInteraction);
+    window.addEventListener('focus', handleInteraction);
+
+    return () => {
+      window.removeEventListener('mousedown', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+      window.removeEventListener('focus', handleInteraction);
+    };
+  }, [socket]);
 
   const isSettingsValid = () => {
     return (
@@ -1046,6 +1069,10 @@ export default function App() {
       micProcessorRef.current = processor;
       processor.onaudioprocess = (e) => {
         if (outboundMuted || audioStatus !== "playing") return;
+        
+        // Only emit if we are the active client
+        if (activeAudioClientId && socket?.id !== activeAudioClientId) return;
+
         const inputData = e.inputBuffer.getChannelData(0);
         const int16Data = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
@@ -3652,6 +3679,15 @@ export default function App() {
                   <div className="space-y-4 pt-4 border-t border-[#2a2b2e]/50">
                     <h4 className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Local Client Audio (Your System)</h4>
                     
+                    {activeAudioClientId && socket?.id !== activeAudioClientId && (
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 flex items-center gap-3">
+                        <AlertTriangle className="text-amber-500 shrink-0" size={16} />
+                        <p className="text-[0.625rem] text-amber-500/80 font-medium leading-tight">
+                          Microphone is currently active in another window. Click or interact with this window to take control.
+                        </p>
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold">Local Input (Microphone)</label>
                       <select 

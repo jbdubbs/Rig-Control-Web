@@ -108,6 +108,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let audioStatus: "playing" | "stopped" = "stopped";
   let inboundAudioProcess: ChildProcess | null = null;
   let outboundAudioProcess: ChildProcess | null = null;
+  let activeAudioClientId: string | null = null;
 
   let rigctldSettings = {
     rigNumber: "",
@@ -1653,13 +1654,27 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     socket.on("control-audio", (action: "start" | "stop") => {
       console.log(`[AUDIO] Control action received: ${action}`);
       if (action === "start") {
+        // Set initial active client if none exists
+        if (!activeAudioClientId) {
+          activeAudioClientId = socket.id;
+          io.emit("active-audio-client", activeAudioClientId);
+        }
         startAudio();
       } else if (action === "stop") {
         stopAudio();
       }
     });
 
+    socket.on("audio-interaction", () => {
+      if (activeAudioClientId !== socket.id) {
+        activeAudioClientId = socket.id;
+        console.log(`[AUDIO] Active recording client switched to: ${socket.id}`);
+        io.emit("active-audio-client", activeAudioClientId);
+      }
+    });
+
     socket.on("audio-outbound", (data: Buffer) => {
+      if (socket.id !== activeAudioClientId) return;
       if (outboundAudioProcess && outboundAudioProcess.stdin) {
         outboundAudioProcess.stdin.write(data);
       }
@@ -1840,6 +1855,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("disconnect", () => {
       console.log("Client disconnected");
+      if (activeAudioClientId === socket.id) {
+        activeAudioClientId = null;
+        // Notify others that the active client is gone
+        io.emit("active-audio-client", null);
+      }
     });
   });
 

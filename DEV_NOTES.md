@@ -17,6 +17,9 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - [x] Increment app version to 03.31.2026-Alpha1.
 - [x] Refactor monolithic `server.ts` into modular managers (`RigctldManager`, `VideoStreamManager`, `SettingsManager`).
 - [x] Refactor monolithic `App.tsx` into smaller React components and custom hooks.
+- [x] Implement client-side local audio device selection (input/output).
+- [x] Fix "white screen" crash in non-secure browser contexts.
+- [x] Implement "last-interacted-wins" policy for multi-client microphone recording.
 - [ ] Implement a test-driven development framework with unit tests.
 - [ ] Verify `rigctld` binary availability in the production environment.
 
@@ -36,6 +39,10 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 | Stable `videoSessionId` | Prevented multiple video streams from being opened when switching between UI views (Phone/Compact/Desktop) by making the session ID stable per window. | 2026-03-31 |
 | Removed `DEBUG_RIG` env var | Cleaned up unused legacy configuration to simplify the user setup experience in AI Studio. | 2026-04-02 |
 | Modular Refactoring | Broke down `server.ts` and `App.tsx` into smaller, task-specific files to improve maintainability and simplify future development. | 2026-04-02 |
+| Local Audio Selection | Enabled users to select their local system mic and speakers in the client UI, persisting choices in `localStorage`. | 2026-04-02 |
+| MediaDevices Safety | Added null-checks for `navigator.mediaDevices` to prevent app crashes in non-secure browser contexts where the API is restricted. | 2026-04-02 |
+| PulseAudio Integration | Switched Linux backend to use `pactl`/`parecord`/`paplay` when available, providing a robust abstraction over ALSA and fixing "Device busy" errors. | 2026-04-02 |
+| Last-Interacted-Wins | Implemented a policy where only the most recently interacted-with window can record mic audio, preventing multi-client audio collisions. | 2026-04-02 |
 
 ## Known Issues / Tech Debt
 - `rigctld` path is assumed to be in the system PATH.
@@ -52,7 +59,15 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - **Split VFO State**: Managed as a boolean in the rig status, triggering specific UI color overrides.
 - **Multi-Window Awareness**: The backend now avoids resetting the rig connection if a new client connects to the same host/port, ensuring stability across multiple tabs.
 - **Video Session Management**: Uses a `sessionId` query parameter to enforce a "last-one-wins" policy per window, preventing resource exhaustion from multiple concurrent streams.
+- **Client Audio Routing**: Uses `getUserMedia` with specific `deviceId` for input and `setSinkId` for output, allowing full control over local audio hardware.
+- **Linux Audio Abstraction**: Prioritizes sound server (PulseAudio/Pipewire) utilities to ensure multi-app compatibility and stable hardware access.
+- **Multi-Client Mic Policy**: Server tracks `activeAudioClientId` based on client interaction events, enforcing a single-source audio stream to the backend.
 
 ## Breadcrumbs
 > [2026-04-02 13:00 UTC] Refactored the core codebase into modular files and components. This significantly reduces the size of `server.ts` and `App.tsx`, making the project easier to maintain and test.
+
+> [2026-04-02 19:00 UTC] Implemented local audio device selection and fixed browser stability issues. The app now handles missing `mediaDevices` gracefully and allows users to choose their local hardware for bi-directional audio.
+
+> [2026-04-02 19:20 UTC] Added "last-interacted-wins" policy for microphone recording. This prevents multiple windows from sending audio simultaneously, ensuring only the active window's mic is routed to the server.
+
 > **Next Step**: Implement the test-driven development framework and write unit tests for the new modules and components.
