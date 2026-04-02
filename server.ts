@@ -497,7 +497,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       const ffmpegPath = getFfmpegPath();
       let cmd = "";
       if (process.platform === "linux") {
-        cmd = "arecord -l && aplay -l";
+        // Try pactl first for PulseAudio/Pipewire, fallback to arecord/aplay
+        cmd = "pactl list short sources && pactl list short sinks || (arecord -l && aplay -l)";
       } else if (process.platform === "win32") {
         cmd = `"${ffmpegPath}" -list_devices true -f dshow -i dummy 2>&1`;
       } else if (process.platform === "darwin") {
@@ -513,34 +514,66 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         let error: string | undefined;
 
         if (process.platform === "linux") {
-          // Parse arecord -l for inputs
-          const combinedLines = output.split("\n");
-          let parsingOutputs = false;
+          const lines = output.split("\n");
           
-          combinedLines.forEach(line => {
-            if (line.includes("List of PLAYBACK Hardware Devices")) {
-              parsingOutputs = true;
-              return;
-            }
-            
-            if (line.startsWith("card")) {
-              const match = line.match(/card (\d+): (.*), device (\d+): (.*)/);
-              if (match) {
-                const cardNum = match[1];
-                const cardName = match[2].trim();
-                const deviceNum = match[3];
-                const deviceName = match[4].trim();
-                const hwId = `hw:${cardNum},${deviceNum}`;
-                const displayName = `${cardName}: ${deviceName} [${hwId}]`;
-                
-                if (parsingOutputs) {
-                  outputs.push(displayName);
-                } else {
-                  inputs.push(displayName);
-                }
+          // Check if we got pactl output (usually starts with numbers or has tab-separated fields)
+          const isPactl = output.includes("\t") || lines.some(l => /^\d+\s+/.test(l));
+          
+          if (isPactl) {
+            let parsingSinks = false;
+            lines.forEach(line => {
+              if (line.includes("List of PLAYBACK Hardware Devices")) {
+                // This means we fell back to aplay -l mid-stream or it's mixed
+                return;
               }
-            }
-          });
+              const parts = line.split("\t");
+              if (parts.length >= 2) {
+                const name = parts[1];
+                // Sources are usually inputs, Sinks are outputs
+                // pactl list short sources lists sources
+                // pactl list short sinks lists sinks
+                // We need to know which is which. 
+                // Let's re-run them separately if needed, but for now let's try to parse
+                if (name.includes(".monitor")) {
+                  // Usually monitors are not what we want for primary input
+                  // but we'll include them for now
+                }
+                
+                // In our combined command, we'll just try to guess or use a better approach
+              }
+            });
+            
+            // Better approach: run them separately to be sure
+            exec("pactl list short sources", (errS, stdoutS) => {
+              const inLines = stdoutS.split("\n");
+              inLines.forEach(l => {
+                const p = l.split("\t");
+                if (p.length >= 2) inputs.push(`${p[1]} [pulse]`);
+              });
+              
+              exec("pactl list short sinks", (errO, stdoutO) => {
+                const outLines = stdoutO.split("\n");
+                outLines.forEach(l => {
+                  const p = l.split("\t");
+                  if (p.length >= 2) outputs.push(`${p[1]} [pulse]`);
+                });
+                
+                // If we got nothing from pulse, try ALSA
+                if (inputs.length === 0 && outputs.length === 0) {
+                  // Fallback to ALSA parsing (already implemented below, but we'll just re-run it)
+                  exec("arecord -l && aplay -l", (errA, stdoutA) => {
+                    parseAlsa(stdoutA, inputs, outputs);
+                    resolve({ inputs, outputs });
+                  });
+                } else {
+                  resolve({ inputs, outputs });
+                }
+              });
+            });
+            return;
+          } else {
+            parseAlsa(output, inputs, outputs);
+          }
         } else if (process.platform === "win32") {
           const lines = output.split("\n");
           let inAudio = false;
@@ -593,6 +626,36 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     io.emit("audio-status", audioStatus);
   };
 
+  const parseAlsa = (output: string, inputs: string[], outputs: string[]) => {
+    const combinedLines = output.split("\n");
+    let parsingOutputs = false;
+    
+    combinedLines.forEach(line => {
+      if (line.includes("List of PLAYBACK Hardware Devices")) {
+        parsingOutputs = true;
+        return;
+      }
+      
+      if (line.startsWith("card")) {
+        const match = line.match(/card (\d+): (.*), device (\d+): (.*)/);
+        if (match) {
+          const cardNum = match[1];
+          const cardName = match[2].trim();
+          const deviceNum = match[3];
+          const deviceName = match[4].trim();
+          const hwId = `hw:${cardNum},${deviceNum}`;
+          const displayName = `${cardName}: ${deviceName} [${hwId}]`;
+          
+          if (parsingOutputs) {
+            outputs.push(displayName);
+          } else {
+            inputs.push(displayName);
+          }
+        }
+      }
+    });
+  };
+
   const startAudio = () => {
     console.log("[AUDIO] Starting audio streaming...");
     stopAudio();
@@ -616,32 +679,61 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
 
       if (process.platform === "linux") {
-        // Workaround for bundled FFmpeg missing ALSA support: use arecord directly
-        const arecordArgs = [
-          "-D", inputDevice,
-          "-f", "S16_LE",
-          "-r", "44100",
-          "-c", "1",
-          "-t", "raw"
-        ];
-        console.log(`[AUDIO-IN] Spawning arecord: arecord ${arecordArgs.join(" ")}`);
-        inboundAudioProcess = spawn("arecord", arecordArgs);
-        
-        inboundAudioProcess.stdout?.on("data", (data) => {
-          io.emit("audio-inbound", data);
-        });
+        if (inputDevice.includes("[pulse]")) {
+          const pulseDevice = inputDevice.split(" [pulse]")[0];
+          const parecordArgs = [
+            "--device", pulseDevice,
+            "--format", "s16le",
+            "--rate", "44100",
+            "--channels", "1",
+            "--raw"
+          ];
+          console.log(`[AUDIO-IN] Spawning parecord: parecord ${parecordArgs.join(" ")}`);
+          inboundAudioProcess = spawn("parecord", parecordArgs);
+          
+          inboundAudioProcess.stdout?.on("data", (data) => {
+            io.emit("audio-inbound", data);
+          });
 
-        inboundAudioProcess.stderr?.on("data", (data) => {
-          console.log(`[AUDIO-IN-ARECORD] ${data.toString()}`);
-        });
+          inboundAudioProcess.stderr?.on("data", (data) => {
+            console.log(`[AUDIO-IN-PARECORD] ${data.toString()}`);
+          });
 
-        inboundAudioProcess.on("error", (err) => {
-          console.error("[AUDIO-IN] arecord process error:", err);
-        });
+          inboundAudioProcess.on("error", (err) => {
+            console.error("[AUDIO-IN] parecord process error:", err);
+          });
 
-        inboundAudioProcess.on("close", (code) => {
-          console.log(`[AUDIO-IN] arecord process closed with code ${code}`);
-        });
+          inboundAudioProcess.on("close", (code) => {
+            console.log(`[AUDIO-IN] parecord process closed with code ${code}`);
+          });
+        } else {
+          // Workaround for bundled FFmpeg missing ALSA support: use arecord directly
+          const arecordArgs = [
+            "-D", inputDevice,
+            "-f", "S16_LE",
+            "-r", "44100",
+            "-c", "1",
+            "-t", "raw"
+          ];
+          console.log(`[AUDIO-IN] Spawning arecord: arecord ${arecordArgs.join(" ")}`);
+          inboundAudioProcess = spawn("arecord", arecordArgs);
+          
+          inboundAudioProcess.stdout?.on("data", (data) => {
+            io.emit("audio-inbound", data);
+          });
+
+          inboundAudioProcess.stderr?.on("data", (data) => {
+            console.log(`[AUDIO-IN-ARECORD] ${data.toString()}`);
+          });
+
+          inboundAudioProcess.on("error", (err) => {
+            console.error("[AUDIO-IN] arecord process error:", err);
+          });
+
+          inboundAudioProcess.on("close", (code) => {
+            console.log(`[AUDIO-IN] arecord process closed with code ${code}`);
+          });
+        }
       } else {
         let inputFormat = "";
         if (process.platform === "win32") {
@@ -699,28 +791,53 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
 
       if (process.platform === "linux") {
-        // Workaround for bundled FFmpeg missing ALSA support: use aplay directly
-        const aplayArgs = [
-          "-D", outputDevice,
-          "-f", "S16_LE",
-          "-r", "44100",
-          "-c", "1",
-          "-t", "raw"
-        ];
-        console.log(`[AUDIO-OUT] Spawning aplay: aplay ${aplayArgs.join(" ")}`);
-        outboundAudioProcess = spawn("aplay", aplayArgs);
-        
-        outboundAudioProcess.stderr?.on("data", (data) => {
-          console.log(`[AUDIO-OUT-APLAY] ${data.toString()}`);
-        });
+        if (outputDevice.includes("[pulse]")) {
+          const pulseDevice = outputDevice.split(" [pulse]")[0];
+          const paplayArgs = [
+            "--device", pulseDevice,
+            "--format", "s16le",
+            "--rate", "44100",
+            "--channels", "1",
+            "--raw"
+          ];
+          console.log(`[AUDIO-OUT] Spawning paplay: paplay ${paplayArgs.join(" ")}`);
+          outboundAudioProcess = spawn("paplay", paplayArgs);
+          
+          outboundAudioProcess.stderr?.on("data", (data) => {
+            console.log(`[AUDIO-OUT-PAPLAY] ${data.toString()}`);
+          });
 
-        outboundAudioProcess.on("error", (err) => {
-          console.error("[AUDIO-OUT] aplay process error:", err);
-        });
+          outboundAudioProcess.on("error", (err) => {
+            console.error("[AUDIO-OUT] paplay process error:", err);
+          });
 
-        outboundAudioProcess.on("close", (code) => {
-          console.log(`[AUDIO-OUT] aplay process closed with code ${code}`);
-        });
+          outboundAudioProcess.on("close", (code) => {
+            console.log(`[AUDIO-OUT] paplay process closed with code ${code}`);
+          });
+        } else {
+          // Workaround for bundled FFmpeg missing ALSA support: use aplay directly
+          const aplayArgs = [
+            "-D", outputDevice,
+            "-f", "S16_LE",
+            "-r", "44100",
+            "-c", "1",
+            "-t", "raw"
+          ];
+          console.log(`[AUDIO-OUT] Spawning aplay: aplay ${aplayArgs.join(" ")}`);
+          outboundAudioProcess = spawn("aplay", aplayArgs);
+          
+          outboundAudioProcess.stderr?.on("data", (data) => {
+            console.log(`[AUDIO-OUT-APLAY] ${data.toString()}`);
+          });
+
+          outboundAudioProcess.on("error", (err) => {
+            console.error("[AUDIO-OUT] aplay process error:", err);
+          });
+
+          outboundAudioProcess.on("close", (code) => {
+            console.log(`[AUDIO-OUT] aplay process closed with code ${code}`);
+          });
+        }
       } else {
         let outputFormat = "";
         if (process.platform === "win32") {
