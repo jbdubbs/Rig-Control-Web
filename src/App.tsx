@@ -1391,7 +1391,7 @@ export default function App() {
               <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
                 <div className="flex items-center gap-2 text-[#8e9299]">
                   <Monitor size={12} />
-                  <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Video Feed</span>
+                  <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Video & Audio</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1 mr-1">
@@ -1432,14 +1432,14 @@ export default function App() {
                       socket?.emit("get-audio-devices");
                     }}
                     className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
-                    title="Video Settings"
+                    title="Video & Audio Settings"
                   >
                     <Settings size={14} />
                   </button>
                   <button 
                     onClick={() => setIsVideoCollapsed(!isVideoCollapsed)}
                     className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
-                    title={isVideoCollapsed ? "Expand Video Feed" : "Collapse Video Feed"}
+                    title={isVideoCollapsed ? "Expand Video & Audio" : "Collapse Video & Audio"}
                   >
                     {isVideoCollapsed ? <ChevronDown size={isPhone ? 16 : 18} /> : <ChevronUp size={isPhone ? 16 : 18} />}
                   </button>
@@ -2104,7 +2104,7 @@ export default function App() {
                 <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
                   <div className="flex items-center gap-2 text-[#8e9299]">
                     <Monitor size={12} />
-                    <span className="text-xs uppercase tracking-widest font-bold">Video Feed</span>
+                    <span className="text-xs uppercase tracking-widest font-bold">Video & Audio</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1 mr-1">
@@ -2145,7 +2145,7 @@ export default function App() {
                         socket?.emit("get-audio-devices");
                       }}
                       className="p-1 hover:bg-[#2a2b2e] rounded text-[#8e9299] transition-all"
-                      title="Video Settings"
+                      title="Video & Audio Settings"
                     >
                       <Settings size={12} />
                     </button>
@@ -2905,7 +2905,7 @@ export default function App() {
               <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
                 <div className="flex items-center gap-2 text-[#8e9299]">
                   <Monitor size={14} />
-                  <span className="text-[0.625rem] uppercase tracking-widest font-bold">Video Feed</span>
+                  <span className="text-[0.625rem] uppercase tracking-widest font-bold">Video & Audio</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1 mr-1">
@@ -2946,14 +2946,14 @@ export default function App() {
                       socket?.emit("get-audio-devices");
                     }}
                     className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
-                    title="Video Settings"
+                    title="Video & Audio Settings"
                   >
                     <Settings size={16} />
                   </button>
                   <button 
                     onClick={() => setIsVideoCollapsed(!isVideoCollapsed)}
                     className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
-                    title={isVideoCollapsed ? "Expand Video Feed" : "Collapse Video Feed"}
+                    title={isVideoCollapsed ? "Expand Video & Audio" : "Collapse Video & Audio"}
                   >
                     {isVideoCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
                   </button>
@@ -3563,8 +3563,7 @@ export default function App() {
                   <Monitor size={20} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold tracking-tight uppercase italic">Video Settings</h2>
-                  <p className="text-[0.625rem] text-[#8e9299] font-bold uppercase tracking-widest">Configure System Camera</p>
+                  <h2 className="text-lg font-bold tracking-tight uppercase italic">Video & Audio Settings</h2>
                 </div>
               </div>
               <button 
@@ -3577,7 +3576,7 @@ export default function App() {
 
             <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
               <div className="space-y-4">
-                <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Video Settings</h3>
+                <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Video & Audio Settings</h3>
                 <div className="space-y-2">
                   <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Video Device</label>
                   <select 
@@ -3632,6 +3631,35 @@ export default function App() {
                       <option value="30">30 fps</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    onClick={() => socket?.emit("control-video", "play")}
+                    disabled={!videoSettings.device || videoStatus === "playing"}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
+                      videoStatus === "playing" 
+                        ? "bg-emerald-500/20 text-emerald-500 cursor-not-allowed" 
+                        : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
+                    )}
+                  >
+                    <Power size={16} />
+                    Play Video
+                  </button>
+                  <button 
+                    onClick={() => socket?.emit("control-video", "stop")}
+                    disabled={videoStatus === "stopped"}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
+                      videoStatus === "stopped"
+                        ? "bg-red-500/20 text-red-500 cursor-not-allowed"
+                        : "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
+                    )}
+                  >
+                    <X size={16} />
+                    Stop Video
+                  </button>
                 </div>
               </div>
 
@@ -3814,57 +3842,6 @@ export default function App() {
                   </span>
                 </div>
               </div>
-
-              <div className="flex gap-3 pt-4 border-t border-[#2a2b2e]">
-                <button 
-                  onClick={() => socket?.emit("control-video", "play")}
-                  disabled={!videoSettings.device || videoStatus === "playing"}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
-                    videoStatus === "playing" 
-                      ? "bg-emerald-500/20 text-emerald-500 cursor-not-allowed" 
-                      : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
-                  )}
-                >
-                  <Power size={16} />
-                  Play Video
-                </button>
-                <button 
-                  onClick={() => socket?.emit("control-video", "pause")}
-                  disabled={videoStatus !== "playing"}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
-                    videoStatus !== "playing"
-                      ? "bg-amber-500/20 text-amber-500 cursor-not-allowed"
-                      : "bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20"
-                  )}
-                >
-                  <Power size={16} className="rotate-90" />
-                  Pause Video
-                </button>
-                <button 
-                  onClick={() => socket?.emit("control-video", "stop")}
-                  disabled={videoStatus === "stopped"}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
-                    videoStatus === "stopped"
-                      ? "bg-red-500/20 text-red-500 cursor-not-allowed"
-                      : "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
-                  )}
-                >
-                  <X size={16} />
-                  Stop Video
-                </button>
-              </div>
-            </div>
-            
-            <div className="p-4 bg-[#1a1b1e] border-t border-[#2a2b2e] text-center">
-              <button 
-                onClick={() => setIsVideoSettingsOpen(false)}
-                className="text-[0.625rem] uppercase font-bold text-[#8e9299] hover:text-white transition-all"
-              >
-                Close Settings
-              </button>
             </div>
           </div>
         </div>
