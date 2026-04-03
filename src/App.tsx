@@ -974,7 +974,17 @@ export default function App() {
     try {
       if (!audioContextRef.current) return;
       
-      // console.log(`[AUDIO-IN] Received ${data.byteLength} bytes`);
+      const currentTime = Date.now();
+      // @ts-ignore
+      if (!window.lastAudioPacketTime) window.lastAudioPacketTime = currentTime;
+      // @ts-ignore
+      const jitter = currentTime - window.lastAudioPacketTime;
+      // @ts-ignore
+      window.lastAudioPacketTime = currentTime;
+      
+      if (jitter > 100) {
+        // console.log(`[AUDIO-IN] Jitter detected: ${jitter}ms since last packet. Size: ${data.byteLength} bytes`);
+      }
 
       if (opusNodeRef.current) {
         // Send Opus data to AudioWorklet for decoding

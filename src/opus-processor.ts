@@ -273,6 +273,10 @@ class OpusProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
     const channel = output[0];
     
+    if (this.bufferCount === 0 && this.wasmInstance) {
+      // this.log("Buffer underrun - playing silence");
+    }
+
     for (let i = 0; i < channel.length; i++) {
       if (this.bufferCount > 0) {
         channel[i] = this.outputRingBuffer[this.readIndex];
@@ -413,6 +417,9 @@ class OpusProcessor extends AudioWorkletProcessor {
   }
 
   private writeToRingBuffer(data: Float32Array) {
+    if (this.bufferCount + data.length > this.outputRingBuffer.length) {
+      this.log(`Ring buffer overflow: count=${this.bufferCount}, adding=${data.length}`);
+    }
     for (let i = 0; i < data.length; i++) {
       this.outputRingBuffer[this.writeIndex] = data[i];
       this.writeIndex = (this.writeIndex + 1) % this.outputRingBuffer.length;
