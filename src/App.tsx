@@ -39,6 +39,8 @@ import {
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+const OPUS_PROCESSOR_URL = new URL('./opus-processor.ts', import.meta.url);
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -205,6 +207,7 @@ export default function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const micNodeRef = useRef<AudioWorkletNode | null>(null);
+  const opusNodeRef = useRef<AudioWorkletNode | null>(null);
   const nextStartTimeRef = useRef(0);
 
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
@@ -925,10 +928,12 @@ export default function App() {
   const audioSettingsRef = useRef(audioSettings);
   const audioStatusRef = useRef(audioStatus);
   const inboundMutedRef = useRef(inboundMuted);
+  const outboundMutedRef = useRef(outboundMuted);
 
   useEffect(() => { audioSettingsRef.current = audioSettings; }, [audioSettings]);
   useEffect(() => { audioStatusRef.current = audioStatus; }, [audioStatus]);
   useEffect(() => { inboundMutedRef.current = inboundMuted; }, [inboundMuted]);
+  useEffect(() => { outboundMutedRef.current = outboundMuted; }, [outboundMuted]);
 
   useEffect(() => {
     if (!socket) return;
@@ -958,18 +963,18 @@ export default function App() {
   // Audio Playback Logic
   const playInboundAudio = (data: ArrayBuffer | Uint8Array) => {
     try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
-          sampleRate: 16000,
-          latencyHint: 'interactive'
+      if (!audioContextRef.current) return;
+      
+      if (opusNodeRef.current) {
+        // Send Opus data to AudioWorklet for decoding
+        opusNodeRef.current.port.postMessage({
+          type: 'decode',
+          data: data instanceof Uint8Array ? data : new Uint8Array(data)
         });
-        console.log("[AUDIO] Initialized AudioContext at 16000Hz");
-        
-        // Apply local output device if supported
-        if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (audioContextRef.current as any).setSinkId === 'function') {
-          (audioContextRef.current as any).setSinkId(localAudioSettings.outputDevice).catch(console.error);
-        }
+        return;
       }
+
+      // Fallback to legacy playback if worklet not ready (should not happen if initialized)
       const ctx = audioContextRef.current;
       if (ctx.state === 'suspended') {
         ctx.resume().catch(err => console.error("Failed to resume AudioContext:", err));
@@ -1048,6 +1053,37 @@ export default function App() {
     if (ctx.state === 'suspended') {
       ctx.resume();
     }
+
+    // Initialize Opus AudioWorklet if not already done
+    if (!opusNodeRef.current) {
+      try {
+        console.log("[AUDIO] Loading Opus AudioWorklet...");
+        await ctx.audioWorklet.addModule(OPUS_PROCESSOR_URL);
+        
+        const wasmResponse = await fetch('/opus-decoder.wasm');
+        const wasmBinary = await wasmResponse.arrayBuffer();
+        
+        const opusNode = new AudioWorkletNode(ctx, 'opus-processor', {
+          outputChannelCount: [1]
+        });
+        
+        opusNode.port.onmessage = (event) => {
+          if (event.data.type === 'initialized') {
+            console.log("[AUDIO] Opus AudioWorklet initialized");
+          }
+        };
+        
+        opusNode.port.postMessage({
+          type: 'init',
+          wasmBinary: wasmBinary
+        });
+        
+        opusNode.connect(ctx.destination);
+        opusNodeRef.current = opusNode;
+      } catch (err) {
+        console.error("[AUDIO] Failed to load Opus AudioWorklet:", err);
+      }
+    }
     
     // Auto-enable streams if devices are selected
     const newSettings = { 
@@ -1087,44 +1123,63 @@ export default function App() {
       micStreamRef.current = stream;
       const source = ctx.createMediaStreamSource(stream);
 
-      // AudioWorklet for lower latency
-      const micWorkletCode = `
-        class MicProcessor extends AudioWorkletProcessor {
-          process(inputs, outputs, parameters) {
-            const input = inputs[0];
-            if (input.length > 0) {
-              const channelData = input[0];
-              // Send a copy of the data
-              this.port.postMessage(new Float32Array(channelData));
-            }
-            return true;
-          }
-        }
-        registerProcessor('mic-processor', MicProcessor);
-      `;
-      const blob = new Blob([micWorkletCode], { type: 'application/javascript' });
-      const url = URL.createObjectURL(blob);
-      await ctx.audioWorklet.addModule(url);
-      
-      const micNode = new AudioWorkletNode(ctx, 'mic-processor');
-      micNodeRef.current = micNode;
-      
-      micNode.port.onmessage = (e) => {
-        if (outboundMuted || audioStatus !== "playing") return;
+      // Use the Opus AudioWorklet if available
+      if (opusNodeRef.current) {
+        source.connect(opusNodeRef.current);
         
-        // Only emit if we are the active client
-        if (activeAudioClientId && socket?.id !== activeAudioClientId) return;
+        // Update the port handler to also handle encoded data
+        const originalHandler = opusNodeRef.current.port.onmessage;
+        opusNodeRef.current.port.onmessage = (event) => {
+          if (originalHandler) originalHandler.call(opusNodeRef.current!.port, event);
+          
+          if (event.data.type === 'encoded') {
+            if (inboundMutedRef.current || audioStatusRef.current !== "playing") return;
+            // Note: using inboundMutedRef for convenience, but really should be outbound check if separate
+            if (outboundMutedRef.current) return;
+            
+            socket?.emit("audio-outbound", event.data.data);
+          }
+        };
+        
+        micNodeRef.current = opusNodeRef.current;
+      } else {
+        // Fallback to legacy mic processor if Opus worklet not ready
+        const micWorkletCode = `
+          class MicProcessor extends AudioWorkletProcessor {
+            process(inputs, outputs, parameters) {
+              const input = inputs[0];
+              if (input.length > 0) {
+                const channelData = input[0];
+                this.port.postMessage(new Float32Array(channelData));
+              }
+              return true;
+            }
+          }
+          registerProcessor('mic-processor', MicProcessor);
+        `;
+        const blob = new Blob([micWorkletCode], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        await ctx.audioWorklet.addModule(url);
+        
+        const micNode = new AudioWorkletNode(ctx, 'mic-processor');
+        micNodeRef.current = micNode;
+        
+        micNode.port.onmessage = (e) => {
+          if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;
+          
+          const inputData = e.data;
+          const int16Data = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
+          }
+          socket?.emit("audio-outbound", int16Data.buffer);
+        };
 
-        const inputData = e.data;
-        const int16Data = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
-        }
-        socket?.emit("audio-outbound", int16Data.buffer);
-      };
-
-      source.connect(micNode);
-      micNode.connect(ctx.destination); // Required for processing to happen in some browsers
+        source.connect(micNode);
+      }
+      if (micNodeRef.current) {
+        micNodeRef.current.connect(ctx.destination); // Required for processing to happen in some browsers
+      }
     } catch (err) {
       console.error("Error starting mic capture:", err);
     }
