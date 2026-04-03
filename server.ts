@@ -34,16 +34,17 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   const settings = settingsManager.getSettings();
   rigConnectionManager.setPollRate(settings.pollRate);
-  if (settings.clientHost && settings.clientPort) {
-    rigConnectionManager.connectToRig(settings.clientHost, settings.clientPort);
-  }
 
   // Auto-start services if enabled
   if (settings.autoStart) {
-    rigctldManager.startRigctld();
+    await rigctldManager.startRigctld();
   }
   if (settings.videoAutoStart) {
-    videoStreamManager.startVideo();
+    await videoStreamManager.startVideo();
+  }
+
+  if (settings.clientHost && settings.clientPort) {
+    rigConnectionManager.connectToRig(settings.clientHost, settings.clientPort);
   }
 
   // API Routes

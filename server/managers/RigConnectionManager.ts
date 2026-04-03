@@ -88,17 +88,25 @@ export class RigConnectionManager {
     this.rigConfig = { host, port };
     this.rigSocket = new net.Socket();
     
+    // Start polling even if not connected yet, it will handle retries
+    this.startPolling();
+
     this.rigSocket.connect(port, host, () => {
       console.log(`Connected to rigctld at ${host}:${port}`);
       this.isConnected = true;
       this.io.emit("rig-connected", { host, port });
-      this.startPolling();
     });
 
-    this.rigSocket.on("error", (err) => {
-      console.error("Rig socket error:", err);
+    this.rigSocket.on("error", (err: any) => {
       this.isConnected = false;
-      this.io.emit("rig-error", `Connection Error: ${err.message}`);
+      // Only log and emit error if it's not a connection refusal during polling
+      if (err.code !== 'ECONNREFUSED') {
+        console.error("Rig socket error:", err);
+        this.io.emit("rig-error", `Connection Error: ${err.message}`);
+      } else {
+        // Silent log for refusal
+        console.log(`Connection to rigctld at ${host}:${port} refused (rigctld might still be starting)`);
+      }
     });
 
     this.rigSocket.on("close", () => {
@@ -134,7 +142,6 @@ export class RigConnectionManager {
   private startPolling() {
     this.stopPolling();
     const runPoll = async () => {
-      if (!this.isConnected) return;
       const startTime = Date.now();
       await this.pollRig();
       const duration = Date.now() - startTime;
