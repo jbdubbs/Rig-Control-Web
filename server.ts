@@ -691,6 +691,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             "--rate", "16000",
             "--channels", "1",
             "--raw",
+            "--latency-msec=20",
             "--process-time-msec=10"
           ];
           console.log(`[AUDIO-IN] Spawning pacat: pacat ${pacatArgs.join(" ")}`);
@@ -809,6 +810,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             "--rate", "16000",
             "--channels", "1",
             "--raw",
+            "--latency-msec=20",
             "--process-time-msec=10"
           ];
           console.log(`[AUDIO-OUT] Spawning pacat: pacat ${pacatArgs.join(" ")}`);
