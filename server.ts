@@ -53,12 +53,12 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   });
 
   app.get("/opus-decoder.wasm", (req, res) => {
-    const wasmPath = path.join(process.cwd(), "node_modules", "opus-recorder", "dist", "decoderWorker.min.wasm");
+    const wasmPath = path.join(baseDir, "node_modules", "opus-recorder", "dist", "decoderWorker.min.wasm");
     res.sendFile(wasmPath);
   });
 
   app.get("/opus-encoder.wasm", (req, res) => {
-    const wasmPath = path.join(process.cwd(), "node_modules", "opus-recorder", "dist", "decoderWorker.min.wasm");
+    const wasmPath = path.join(baseDir, "node_modules", "opus-recorder", "dist", "decoderWorker.min.wasm");
     res.sendFile(wasmPath);
   });
 
@@ -294,21 +294,36 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   // Static files and Vite middleware
   if (process.env.NODE_ENV !== "production") {
     try {
+      console.log(`[SERVER] Initializing Vite middleware with root: ${baseDir}`);
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
+        root: baseDir,
         server: { middlewareMode: true },
         appType: "spa",
       });
       app.use(vite.middlewares);
     } catch (e) {
-      console.warn("Vite middleware not loaded:", e);
+      console.warn("[SERVER] Vite middleware not loaded:", e);
     }
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    // In production (Electron or standalone), serve static files from dist
+    const distPath = path.join(baseDir, "dist");
+    console.log(`[SERVER] Serving static files from: ${distPath}`);
+    
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));
       app.get("*", (req, res) => {
-        res.sendFile(path.join(distPath, "index.html"));
+        const indexPath = path.join(distPath, "index.html");
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).send(`index.html not found at ${indexPath}`);
+        }
+      });
+    } else {
+      console.error(`[SERVER] Error: dist directory not found at ${distPath}`);
+      app.get("*", (req, res) => {
+        res.status(500).send(`Server Error: Static files not found at ${distPath}. Please ensure the app is built correctly.`);
       });
     }
   }
