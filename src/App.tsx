@@ -343,18 +343,20 @@ export default function App() {
     if (socket) {
       socket.on("settings-data", (data: any) => {
         console.log("[SOCKET] Received settings-data", data);
-        setRigctldSettings(data.settings);
-        if (data.settings.preampCapabilities) {
-          setPreampLevels(data.settings.preampCapabilities);
-        }
-        if (data.settings.attenuatorCapabilities) {
-          setAttenuatorLevels(data.settings.attenuatorCapabilities);
-        }
-        if (data.settings.agcCapabilities) {
-          setAgcLevels(data.settings.agcCapabilities);
-        }
-        if (data.settings.rfPowerRange) {
-          setRfPowerCapabilities({ range: data.settings.rfPowerRange });
+        if (data.settings) {
+          setRigctldSettings(data.settings);
+          if (data.settings.preampCapabilities) {
+            setPreampLevels(data.settings.preampCapabilities);
+          }
+          if (data.settings.attenuatorCapabilities) {
+            setAttenuatorLevels(data.settings.attenuatorCapabilities);
+          }
+          if (data.settings.agcCapabilities) {
+            setAgcLevels(data.settings.agcCapabilities);
+          }
+          if (data.settings.rfPowerRange) {
+            setRfPowerCapabilities({ range: data.settings.rfPowerRange });
+          }
         }
         if (data.isConnected !== undefined) {
           setConnected(data.isConnected);
@@ -1128,6 +1130,7 @@ export default function App() {
         if (activeAudioClientId && socket?.id !== activeAudioClientId) return;
 
         const inputData = e.data;
+        if (Math.random() < 0.01) console.log("[AUDIO] Sending outbound chunk, active client:", activeAudioClientId, "my id:", socket?.id);
         const int16Data = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
@@ -1160,7 +1163,7 @@ export default function App() {
       stopMicCapture();
     }
     return () => stopMicCapture();
-  }, [audioStatus, audioSettings.outboundEnabled, outboundMuted]);
+  }, [audioStatus, audioSettings.outboundEnabled, outboundMuted, localAudioSettings.inputDevice]);
 
   const handleSendRaw = (e: React.FormEvent) => {
     e.preventDefault();

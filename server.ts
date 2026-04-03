@@ -1638,6 +1638,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       socket.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
       socket.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
       socket.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
+      socket.emit("active-audio-client", activeAudioClientId);
       socket.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
       socket.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
     });
@@ -1665,6 +1666,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       console.log("[AUDIO] Updating audio settings:", settings);
       audioSettings = { ...audioSettings, ...settings };
       saveSettings();
+      io.emit("settings-data", { audioSettings });
     });
 
     socket.on("control-audio", (action: "start" | "stop") => {
