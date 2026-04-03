@@ -38,6 +38,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   // Auto-start services if enabled
   if (settings.autoStart) {
     await rigctldManager.startRigctld();
+    rigctldManager.fetchRadioCapabilities(settings.settings.rigNumber);
   }
   if (settings.videoAutoStart) {
     await videoStreamManager.startVideo();
@@ -250,6 +251,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     socket.on("start-rigctld", () => {
       settingsManager.saveSettings({ autoStart: true });
       rigctldManager.startRigctld();
+      rigctldManager.fetchRadioCapabilities(settingsManager.getSettings().settings.rigNumber);
     });
 
     socket.on("kill-existing-rigctld", async () => {

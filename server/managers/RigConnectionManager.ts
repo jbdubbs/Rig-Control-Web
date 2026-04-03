@@ -95,6 +95,8 @@ export class RigConnectionManager {
       console.log(`Connected to rigctld at ${host}:${port}`);
       this.isConnected = true;
       this.io.emit("rig-connected", { host, port });
+      // Fetch capabilities once connected
+      this.fetchCapabilities();
     });
 
     this.rigSocket.on("error", (err: any) => {
@@ -115,6 +117,45 @@ export class RigConnectionManager {
       this.io.emit("rig-disconnected");
       this.stopPolling();
     });
+  }
+
+  private async fetchCapabilities() {
+    if (!this.isConnected) return;
+    try {
+      // Command '1' is dump_caps in rigctld
+      const caps = await this.sendToRig("1", false);
+      const lines = caps.split('\n');
+      
+      const hasNB = lines.some(l => l.includes('NB'));
+      const hasNR = lines.some(l => l.includes('NR'));
+      const hasANF = lines.some(l => l.includes('ANF'));
+
+      const preampLine = lines.find(line => line.trim().startsWith('Preamp:'));
+      const preampLevels = preampLine ? preampLine.replace('Preamp:', '').trim().split(/\s+/).filter(Boolean) : [];
+
+      const attenuatorLine = lines.find(line => line.trim().startsWith('Attenuator:'));
+      const attenuatorLevels = attenuatorLine ? attenuatorLine.replace('Attenuator:', '').trim().split(/\s+/).filter(Boolean) : [];
+
+      const agcLine = lines.find(line => line.trim().startsWith('AGC levels:'));
+      const agcLevels = agcLine ? agcLine.replace('AGC levels:', '').trim().split(/\s+/).filter(Boolean) : [];
+
+      const rfPowerMatch = caps.match(/RFPOWER\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+      const rfPowerRange = rfPowerMatch 
+        ? { min: parseFloat(rfPowerMatch[1]), max: parseFloat(rfPowerMatch[2]), step: parseFloat(rfPowerMatch[3]) }
+        : { min: 0, max: 1, step: 0.01 };
+
+      this.io.emit("nb-capabilities", { supported: hasNB, range: { min: 0, max: 1, step: 0.1 } });
+      this.io.emit("nr-capabilities", { supported: hasNR, range: { min: 0, max: 1, step: 0.066667 } });
+      this.io.emit("anf-capabilities", { supported: hasANF });
+      this.io.emit("preamp-capabilities", preampLevels);
+      this.io.emit("attenuator-capabilities", attenuatorLevels);
+      this.io.emit("agc-capabilities", agcLevels);
+      this.io.emit("rfpower-capabilities", { range: rfPowerRange });
+      
+      console.log(`[RIG] Capabilities fetched: NB=${hasNB}, NR=${hasNR}, ANF=${hasANF}, Preamp=${preampLevels.length}, Att=${attenuatorLevels.length}, AGC=${agcLevels.length}, RFPower=${rfPowerRange.max}`);
+    } catch (err) {
+      console.error("Error fetching capabilities:", err);
+    }
   }
 
   public disconnectRig() {

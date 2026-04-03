@@ -230,13 +230,23 @@ export class RigctldManager {
         const getLevelLine = lines.find(line => line.trim().startsWith('Get level:'));
         if (getLevelLine) {
           const nbMatch = getLevelLine.match(/NB\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
-          if (nbMatch) updates.nbLevelRange = { min: parseFloat(nbMatch[1]), max: parseFloat(nbMatch[2]), step: parseFloat(nbMatch[3]) };
+          updates.nbLevelRange = nbMatch 
+            ? { min: parseFloat(nbMatch[1]), max: parseFloat(nbMatch[2]), step: parseFloat(nbMatch[3]) }
+            : { min: 0, max: 1, step: 0.1 };
           
           const nrMatch = getLevelLine.match(/NR\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
-          if (nrMatch) updates.nrLevelRange = { min: parseFloat(nrMatch[1]), max: parseFloat(nrMatch[2]), step: parseFloat(nrMatch[3]) };
+          updates.nrLevelRange = nrMatch 
+            ? { min: parseFloat(nrMatch[1]), max: parseFloat(nrMatch[2]), step: parseFloat(nrMatch[3]) }
+            : { min: 0, max: 1, step: 0.1 };
 
           const rfPowerMatch = getLevelLine.match(/RFPOWER\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
-          if (rfPowerMatch) updates.rfPowerRange = { min: parseFloat(rfPowerMatch[1]), max: parseFloat(rfPowerMatch[2]), step: parseFloat(rfPowerMatch[3]) };
+          updates.rfPowerRange = rfPowerMatch 
+            ? { min: parseFloat(rfPowerMatch[1]), max: parseFloat(rfPowerMatch[2]), step: parseFloat(rfPowerMatch[3]) }
+            : { min: 0, max: 1, step: 0.01 };
+        } else {
+          updates.nbLevelRange = { min: 0, max: 1, step: 0.1 };
+          updates.nrLevelRange = { min: 0, max: 1, step: 0.1 };
+          updates.rfPowerRange = { min: 0, max: 1, step: 0.01 };
         }
 
         this.settingsManager.updateRigctldSettings(updates);

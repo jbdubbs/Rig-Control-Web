@@ -351,6 +351,15 @@ export default function App() {
         if (data.settings.agcCapabilities) {
           setAgcLevels(data.settings.agcCapabilities);
         }
+        if (data.settings.nbSupported !== undefined) {
+          setNbCapabilities({ supported: data.settings.nbSupported, range: data.settings.nbLevelRange });
+        }
+        if (data.settings.nrSupported !== undefined) {
+          setNrCapabilities({ supported: data.settings.nrSupported, range: data.settings.nrLevelRange });
+        }
+        if (data.settings.anfSupported !== undefined) {
+          setAnfCapabilities({ supported: data.settings.anfSupported });
+        }
         if (data.settings.rfPowerRange) {
           setRfPowerCapabilities({ range: data.settings.rfPowerRange });
         }
@@ -1816,7 +1825,7 @@ export default function App() {
                           )}
                         />
                       </div>
-                      {nbCapabilities.supported && showAdvanced && (
+                      {nbCapabilities.supported && (
                         <div className="space-y-2 animate-in slide-in-from-top-1 duration-300">
                           <div className="flex justify-between items-center">
                             <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
