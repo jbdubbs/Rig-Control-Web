@@ -139,13 +139,26 @@ export class RigConnectionManager {
       const agcLine = lines.find(line => line.trim().startsWith('AGC levels:'));
       const agcLevels = agcLine ? agcLine.replace('AGC levels:', '').trim().split(/\s+/).filter(Boolean) : [];
 
-      const rfPowerMatch = caps.match(/RFPOWER\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+      const nbMatch = caps.match(/NB\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/) || 
+                      caps.match(/NB:\s*([\d.-]+),\s*([\d.-]+),\s*([\d.-]+)/);
+      const nbRange = nbMatch 
+        ? { min: parseFloat(nbMatch[1]), max: parseFloat(nbMatch[2]), step: parseFloat(nbMatch[3]) }
+        : { min: 0, max: 1, step: 0.1 };
+
+      const nrMatch = caps.match(/NR\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/) ||
+                      caps.match(/NR:\s*([\d.-]+),\s*([\d.-]+),\s*([\d.-]+)/);
+      const nrRange = nrMatch 
+        ? { min: parseFloat(nrMatch[1]), max: parseFloat(nrMatch[2]), step: parseFloat(nrMatch[3]) }
+        : { min: 0, max: 1, step: 0.066667 };
+
+      const rfPowerMatch = caps.match(/RFPOWER\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/) ||
+                           caps.match(/RFPOWER:\s*([\d.-]+),\s*([\d.-]+),\s*([\d.-]+)/);
       const rfPowerRange = rfPowerMatch 
         ? { min: parseFloat(rfPowerMatch[1]), max: parseFloat(rfPowerMatch[2]), step: parseFloat(rfPowerMatch[3]) }
         : { min: 0, max: 1, step: 0.01 };
 
-      this.io.emit("nb-capabilities", { supported: hasNB, range: { min: 0, max: 1, step: 0.1 } });
-      this.io.emit("nr-capabilities", { supported: hasNR, range: { min: 0, max: 1, step: 0.066667 } });
+      this.io.emit("nb-capabilities", { supported: hasNB, range: nbRange });
+      this.io.emit("nr-capabilities", { supported: hasNR, range: nrRange });
       this.io.emit("anf-capabilities", { supported: hasANF });
       this.io.emit("preamp-capabilities", preampLevels);
       this.io.emit("attenuator-capabilities", attenuatorLevels);

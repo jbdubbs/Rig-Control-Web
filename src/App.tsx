@@ -1829,7 +1829,7 @@ export default function App() {
                         <div className="space-y-2 animate-in slide-in-from-top-1 duration-300">
                           <div className="flex justify-between items-center">
                             <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
-                            <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round(localNBLevel)}</span>
+                            <span className="text-sm text-emerald-500 font-bold">Lvl {Math.max(1, Math.round((localNBLevel - nbCapabilities.range.min) / nbCapabilities.range.step))}</span>
                           </div>
                           <input 
                             type="range" 
@@ -2466,7 +2466,7 @@ export default function App() {
                       <>
                         <div className="flex justify-between items-center mt-3">
                           <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
-                          <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round(localNBLevel)}</span>
+                          <span className="text-sm text-emerald-500 font-bold">Lvl {Math.max(1, Math.round((localNBLevel - nbCapabilities.range.min) / nbCapabilities.range.step))}</span>
                         </div>
                         <input 
                           type="range" 
@@ -3169,7 +3169,7 @@ export default function App() {
                           <Waves size={14} />
                           <span className="text-[0.625rem] uppercase tracking-widest">NB Level</span>
                         </div>
-                        <span className="text-emerald-500 font-bold">Level {Math.round(localNBLevel)}</span>
+                        <span className="text-emerald-500 font-bold">Level {Math.max(1, Math.round((localNBLevel - nbCapabilities.range.min) / nbCapabilities.range.step))}</span>
                       </div>
                       <input 
                         type="range" 
