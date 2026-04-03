@@ -15,13 +15,10 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - [x] Optimize multi-window connection stability.
 - [x] Stabilize video streaming session management.
 - [x] Increment app version to 03.31.2026-Alpha1.
-- [x] Refactor monolithic `server.ts` into modular managers (`RigctldManager`, `VideoStreamManager`, `SettingsManager`).
-- [x] Refactor monolithic `App.tsx` into smaller React components and custom hooks.
 - [x] Implement client-side local audio device selection (input/output).
 - [x] Fix "white screen" crash in non-secure browser contexts.
 - [x] Implement "last-interacted-wins" policy for multi-client microphone recording.
 - [x] Optimize audio latency (16kHz, AudioWorklet, jitter buffering, Socket.io tuning).
-- [ ] Implement a test-driven development framework with unit tests.
 - [ ] Verify `rigctld` binary availability in the production environment.
 
 ## Decisions Log
