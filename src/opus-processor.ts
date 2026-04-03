@@ -30,6 +30,8 @@ class OpusProcessor extends AudioWorkletProcessor {
   private HEAPU8: Uint8Array | null = null;
   private HEAP32: Int32Array | null = null;
   private HEAPF32: Float32Array | null = null;
+  
+  private dataBuffer: Uint8Array = new Uint8Array(0);
 
   private outputRingBuffer: Float32Array = new Float32Array(16000 * 2); // 2 seconds of buffer
   private readIndex: number = 0;
@@ -39,7 +41,7 @@ class OpusProcessor extends AudioWorkletProcessor {
   private config = {
     decoderSampleRate: 48000,
     encoderSampleRate: 48000,
-    outputBufferSampleRate: 16000,
+    outputBufferSampleRate: 16000, // Will be updated to match AudioContext sampleRate
     inputBufferSampleRate: 16000,
     resampleQuality: 3,
     numberOfChannels: 1,
@@ -56,6 +58,12 @@ class OpusProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.port.onmessage = this.handleMessage.bind(this);
+    // @ts-ignore
+    this.config.outputBufferSampleRate = sampleRate;
+    // @ts-ignore
+    this.config.inputBufferSampleRate = sampleRate;
+    this.outputRingBuffer = new Float32Array(this.config.outputBufferSampleRate * 2);
+    this.pcmBuffer = new Float32Array(this.config.outputBufferSampleRate * 20 / 1000);
   }
 
   private async handleMessage(event: MessageEvent) {
@@ -70,12 +78,17 @@ class OpusProcessor extends AudioWorkletProcessor {
     }
   }
 
+  private log(msg: string) {
+    this.port.postMessage({ type: 'log', message: msg });
+  }
+
   private async initWasm(wasmBinary: ArrayBuffer) {
+    this.log("Initializing Opus WASM...");
     const importObject = {
       env: {
         memory: new WebAssembly.Memory({ initial: 256, maximum: 256 }),
-        abort: () => { console.error("WASM aborted"); },
-        _abort: () => { console.error("WASM aborted"); },
+        abort: () => { this.log("WASM aborted"); },
+        _abort: () => { this.log("WASM aborted"); },
         _emscripten_memcpy_big: (dest: number, src: number, num: number) => {
           this.HEAPU8!.copyWithin(dest, src, src + num);
         },
@@ -86,7 +99,7 @@ class OpusProcessor extends AudioWorkletProcessor {
         __wasm_call_ctors: () => {}
       },
       a: { // Emscripten often uses 'a' for some exports
-        c: () => { console.error("WASM aborted"); },
+        c: () => { this.log("WASM aborted"); },
         e: (dest: number, src: number, num: number) => {
           this.HEAPU8!.copyWithin(dest, src, src + num);
         },
@@ -121,7 +134,7 @@ class OpusProcessor extends AudioWorkletProcessor {
       this.decoderOutputMaxLength = this.config.decoderSampleRate * this.config.numberOfChannels * 120 / 1000;
       this.decoderOutputPointer = exports.o(4 * this.decoderOutputMaxLength); // malloc
 
-      // Initialize Decoder Resampler
+      // Initialize Decoder Resampler (48k -> AudioContext sampleRate)
       const resampleErrPtr = exports.o(4); // malloc
       this.resampler = exports.l(this.config.numberOfChannels, this.config.decoderSampleRate, this.config.outputBufferSampleRate, this.config.resampleQuality, resampleErrPtr); // _speex_resampler_init
       exports.p(resampleErrPtr); // free
@@ -141,7 +154,7 @@ class OpusProcessor extends AudioWorkletProcessor {
       exports.r(this.encoder, 4002, bitratePtr); // _opus_encoder_ctl (4002 = OPUS_SET_BITRATE)
       exports.p(bitratePtr);
 
-      // Initialize Encoder Resampler (Input 16k -> Encoder 48k)
+      // Initialize Encoder Resampler (AudioContext sampleRate -> Encoder 48k)
       const encResampleErrPtr = exports.o(4);
       this.encoderResampler = exports.l(this.config.numberOfChannels, this.config.inputBufferSampleRate, this.config.encoderSampleRate, this.config.resampleQuality, encResampleErrPtr);
       exports.p(encResampleErrPtr);
@@ -155,8 +168,9 @@ class OpusProcessor extends AudioWorkletProcessor {
       this.sendOggHeaders();
 
       this.port.postMessage({ type: 'initialized' });
+      this.log("Opus WASM initialized successfully");
     } catch (e) {
-      console.error("Failed to initialize Opus WASM:", e);
+      this.log(`Failed to initialize Opus WASM: ${e}`);
     }
   }
 
@@ -220,7 +234,7 @@ class OpusProcessor extends AudioWorkletProcessor {
   private encodePcm(data: Float32Array) {
     if (!this.wasmInstance) return;
 
-    // Resample 16k -> 48k
+    // Resample AudioContext sampleRate -> 48k
     const inputSamples = data.length;
     const outputSamples = Math.ceil(inputSamples * this.config.encoderSampleRate / this.config.inputBufferSampleRate);
     
@@ -286,55 +300,104 @@ class OpusProcessor extends AudioWorkletProcessor {
   }
 
   private decodeOgg(data: Uint8Array) {
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    const pages = this.getPageBoundaries(view);
+    // Append new data to buffer
+    const newBuffer = new Uint8Array(this.dataBuffer.length + data.length);
+    newBuffer.set(this.dataBuffer, 0);
+    newBuffer.set(data, this.dataBuffer.length);
+    this.dataBuffer = newBuffer;
 
-    for (const pageStart of pages) {
-      const headerType = view.getUint8(pageStart + 5);
-      const segmentCount = view.getUint8(pageStart + 26);
-      let segmentOffset = pageStart + 27 + segmentCount;
-
-      for (let i = 0; i < segmentCount; i++) {
-        const segmentLength = view.getUint8(pageStart + 27 + i);
+    let offset = 0;
+    while (offset <= this.dataBuffer.length - 27) {
+      // Search for "OggS"
+      if (this.dataBuffer[offset] === 0x4F && this.dataBuffer[offset+1] === 0x67 && 
+          this.dataBuffer[offset+2] === 0x67 && this.dataBuffer[offset+3] === 0x53) {
         
-        // Copy segment to decoder buffer
-        this.decoderBuffer!.set(data.subarray(segmentOffset - data.byteOffset, segmentOffset - data.byteOffset + segmentLength), this.decoderBufferIndex);
-        this.decoderBufferIndex += segmentLength;
-        segmentOffset += segmentLength;
+        const view = new DataView(this.dataBuffer.buffer, this.dataBuffer.byteOffset + offset, this.dataBuffer.byteLength - offset);
+        const segmentCount = view.getUint8(26);
+        
+        // Check if we have all segment lengths
+        if (this.dataBuffer.length < offset + 27 + segmentCount) break;
+        
+        let pageSize = 27 + segmentCount;
+        for (let i = 0; i < segmentCount; i++) {
+          pageSize += view.getUint8(27 + i);
+        }
 
-        // If segment length < 255, it's the end of an Opus packet
-        if (segmentLength < 255) {
-          const decodedSamples = this.wasmInstance.exports.j( // _opus_decode_float
-            this.decoder,
-            this.decoderBufferPointer,
-            this.decoderBufferIndex,
-            this.decoderOutputPointer,
-            this.decoderOutputMaxLength,
-            0
+        // Check if we have the full page
+        if (this.dataBuffer.length < offset + pageSize) break;
+
+        // Process the full page
+        this.processOggPage(this.dataBuffer.subarray(offset, offset + pageSize));
+        offset += pageSize;
+      } else {
+        offset++;
+      }
+    }
+
+    // Keep remaining data
+    this.dataBuffer = this.dataBuffer.slice(offset);
+  }
+
+  private processOggPage(page: Uint8Array) {
+    const view = new DataView(page.buffer, page.byteOffset, page.byteLength);
+    const segmentCount = view.getUint8(26);
+    let segmentOffset = 27 + segmentCount;
+
+    for (let i = 0; i < segmentCount; i++) {
+      const segmentLength = view.getUint8(27 + i);
+      const packet = page.subarray(segmentOffset, segmentOffset + segmentLength);
+      
+      // Copy packet to decoder buffer
+      if (this.decoderBufferIndex + packet.length <= this.decoderBuffer!.length) {
+        this.decoderBuffer!.set(packet, this.decoderBufferIndex);
+        this.decoderBufferIndex += packet.length;
+      }
+      segmentOffset += segmentLength;
+
+      // If segment length < 255, it's the end of an Opus packet
+      if (segmentLength < 255) {
+        if (this.decoderBufferIndex > 0) {
+          // Skip header packets
+          const isHeader = this.decoderBufferIndex >= 8 && (
+            (this.decoderBuffer![0] === 0x4F && this.decoderBuffer![1] === 0x70 && this.decoderBuffer![2] === 0x75 && this.decoderBuffer![3] === 0x73 &&
+             this.decoderBuffer![4] === 0x48 && this.decoderBuffer![5] === 0x65 && this.decoderBuffer![6] === 0x61 && this.decoderBuffer![7] === 0x64) ||
+            (this.decoderBuffer![0] === 0x4F && this.decoderBuffer![1] === 0x70 && this.decoderBuffer![2] === 0x75 && this.decoderBuffer![3] === 0x73 &&
+             this.decoderBuffer![4] === 0x54 && this.decoderBuffer![5] === 0x61 && this.decoderBuffer![6] === 0x67 && this.decoderBuffer![7] === 0x73)
           );
 
-          if (decodedSamples > 0) {
-            const resampledSamples = Math.ceil(decodedSamples * this.config.outputBufferSampleRate / this.config.decoderSampleRate);
-            this.HEAP32![this.decoderOutputLengthPointer >> 2] = decodedSamples;
-            this.HEAP32![this.resampleOutputLengthPointer >> 2] = resampledSamples;
-
-            this.wasmInstance.exports.n( // _speex_resampler_process_interleaved_float
-              this.resampler,
+          if (!isHeader) {
+            const decodedSamples = this.wasmInstance.exports.j( // _opus_decode_float
+              this.decoder,
+              this.decoderBufferPointer,
+              this.decoderBufferIndex,
               this.decoderOutputPointer,
-              this.decoderOutputLengthPointer,
-              this.resampleOutputBufferPointer,
-              this.resampleOutputLengthPointer
+              this.decoderOutputMaxLength,
+              0
             );
 
-            const outputData = this.HEAPF32!.subarray(
-              this.resampleOutputBufferPointer >> 2,
-              (this.resampleOutputBufferPointer >> 2) + resampledSamples * this.config.numberOfChannels
-            );
+            if (decodedSamples > 0) {
+              const resampledSamples = Math.ceil(decodedSamples * this.config.outputBufferSampleRate / this.config.decoderSampleRate);
+              this.HEAP32![this.decoderOutputLengthPointer >> 2] = decodedSamples;
+              this.HEAP32![this.resampleOutputLengthPointer >> 2] = resampledSamples;
 
-            this.writeToRingBuffer(outputData);
+              this.wasmInstance.exports.n( // _speex_resampler_process_interleaved_float
+                this.resampler,
+                this.decoderOutputPointer,
+                this.decoderOutputLengthPointer,
+                this.resampleOutputBufferPointer,
+                this.resampleOutputLengthPointer
+              );
+
+              const outputData = this.HEAPF32!.subarray(
+                this.resampleOutputBufferPointer >> 2,
+                (this.resampleOutputBufferPointer >> 2) + resampledSamples * this.config.numberOfChannels
+              );
+
+              this.writeToRingBuffer(outputData);
+            }
           }
-          this.decoderBufferIndex = 0;
         }
+        this.decoderBufferIndex = 0;
       }
     }
   }

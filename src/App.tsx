@@ -974,6 +974,8 @@ export default function App() {
     try {
       if (!audioContextRef.current) return;
       
+      // console.log(`[AUDIO-IN] Received ${data.byteLength} bytes`);
+
       if (opusNodeRef.current) {
         // Send Opus data to AudioWorklet for decoding
         opusNodeRef.current.port.postMessage({
@@ -1079,6 +1081,8 @@ export default function App() {
         opusNode.port.onmessage = (event) => {
           if (event.data.type === 'initialized') {
             console.log("[AUDIO] Opus AudioWorklet initialized");
+          } else if (event.data.type === 'log') {
+            console.log(`[AUDIO-WORKLET] ${event.data.message}`);
           }
         };
         

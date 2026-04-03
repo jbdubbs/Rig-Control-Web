@@ -168,14 +168,22 @@ export class AudioManager {
           const pulseDevice = inputDevice.split(" [pulse]")[0];
           const pacatProcess = spawn("pacat", ["--record", "--device", pulseDevice, "--format", "s16le", "--rate", "16000", "--channels", "1", "--raw", "--process-time-msec=10"]);
           this.inboundAudioProcess = pacatProcess;
-          const encoderProcess = spawn(this.getFfmpegPath(), ["-f", "s16le", "-ar", "16000", "-ac", "1", "-i", "pipe:0", "-c:a", "libopus", "-application", "voip", "-b:a", "24k", "-vbr", "on", "-compression_level", "10", "-frame_duration", "20", "-f", "ogg", "pipe:1"]);
+          const encoderProcess = spawn(this.getFfmpegPath(), ["-f", "s16le", "-ar", "16000", "-ac", "1", "-i", "pipe:0", "-c:a", "libopus", "-application", "voip", "-b:a", "24k", "-vbr", "on", "-compression_level", "10", "-frame_duration", "20", "-f", "ogg", "-flush_packets", "1", "pipe:1"]);
+          
+          pacatProcess.stderr?.on("data", (data) => console.error(`[AUDIO-PACAT-IN-ERR] ${data}`));
+          encoderProcess.stderr?.on("data", (data) => console.error(`[AUDIO-FFMPEG-IN-ERR] ${data}`));
+
           pacatProcess.stdout?.pipe(encoderProcess.stdin!);
           encoderProcess.stdout?.on("data", (data) => this.io.emit("audio-inbound", data));
           encoderProcess.on("close", () => pacatProcess.kill());
         } else {
           const arecordProcess = spawn("arecord", ["-D", inputDevice, "-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "raw", "--buffer-size=1024"]);
           this.inboundAudioProcess = arecordProcess;
-          const encoderProcess = spawn(this.getFfmpegPath(), ["-f", "s16le", "-ar", "16000", "-ac", "1", "-i", "pipe:0", "-c:a", "libopus", "-application", "voip", "-b:a", "24k", "-vbr", "on", "-compression_level", "10", "-frame_duration", "20", "-f", "ogg", "pipe:1"]);
+          const encoderProcess = spawn(this.getFfmpegPath(), ["-f", "s16le", "-ar", "16000", "-ac", "1", "-i", "pipe:0", "-c:a", "libopus", "-application", "voip", "-b:a", "24k", "-vbr", "on", "-compression_level", "10", "-frame_duration", "20", "-f", "ogg", "-flush_packets", "1", "pipe:1"]);
+          
+          arecordProcess.stderr?.on("data", (data) => console.error(`[AUDIO-ARECORD-ERR] ${data}`));
+          encoderProcess.stderr?.on("data", (data) => console.error(`[AUDIO-FFMPEG-IN-ERR] ${data}`));
+
           arecordProcess.stdout?.pipe(encoderProcess.stdin!);
           encoderProcess.stdout?.on("data", (data) => this.io.emit("audio-inbound", data));
           arecordProcess.on("close", () => encoderProcess.kill());
@@ -183,8 +191,9 @@ export class AudioManager {
       } else {
         let inputFormat = process.platform === "win32" ? "dshow" : "avfoundation";
         let dev = process.platform === "win32" ? `audio=${rawInput}` : rawInput;
-        const inboundArgs = ["-f", inputFormat, "-thread_queue_size", "1024", "-ar", "16000", "-ac", "1", "-i", dev, "-fflags", "nobuffer", "-probesize", "32", "-analyzeduration", "0", "-c:a", "libopus", "-application", "voip", "-b:a", "24k", "-vbr", "on", "-compression_level", "10", "-frame_duration", "20", "-f", "ogg", "pipe:1"];
+        const inboundArgs = ["-f", inputFormat, "-thread_queue_size", "1024", "-ar", "16000", "-ac", "1", "-i", dev, "-fflags", "nobuffer", "-probesize", "32", "-analyzeduration", "0", "-c:a", "libopus", "-application", "voip", "-b:a", "24k", "-vbr", "on", "-compression_level", "10", "-frame_duration", "20", "-f", "ogg", "-flush_packets", "1", "pipe:1"];
         this.inboundAudioProcess = spawn(this.getFfmpegPath(), inboundArgs);
+        this.inboundAudioProcess.stderr?.on("data", (data) => console.error(`[AUDIO-FFMPEG-IN-ERR] ${data}`));
         this.inboundAudioProcess.stdout?.on("data", (data) => this.io.emit("audio-inbound", data));
       }
     }
@@ -200,13 +209,16 @@ export class AudioManager {
       if (process.platform === "linux") {
         const decoderProcess = spawn(this.getFfmpegPath(), ["-f", "ogg", "-i", "pipe:0", "-f", "s16le", "-ar", "16000", "-ac", "1", "pipe:1"]);
         this.outboundAudioProcess = decoderProcess;
+        decoderProcess.stderr?.on("data", (data) => console.error(`[AUDIO-FFMPEG-OUT-ERR] ${data}`));
         if (outputDevice.includes("[pulse]")) {
           const pulseDevice = outputDevice.split(" [pulse]")[0];
           const pacatProcess = spawn("pacat", ["--playback", "--device", pulseDevice, "--format", "s16le", "--rate", "16000", "--channels", "1", "--raw", "--process-time-msec=10"]);
+          pacatProcess.stderr?.on("data", (data) => console.error(`[AUDIO-PACAT-OUT-ERR] ${data}`));
           decoderProcess.stdout?.pipe(pacatProcess.stdin!);
           pacatProcess.on("close", () => decoderProcess.kill());
         } else {
           const aplayProcess = spawn("aplay", ["-D", outputDevice, "-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "raw", "--buffer-size=1024"]);
+          aplayProcess.stderr?.on("data", (data) => console.error(`[AUDIO-APLAY-ERR] ${data}`));
           decoderProcess.stdout?.pipe(aplayProcess.stdin!);
           aplayProcess.on("close", () => decoderProcess.kill());
         }
@@ -214,6 +226,7 @@ export class AudioManager {
         let outputFormat = process.platform === "win32" ? "dshow" : "avfoundation";
         let dev = process.platform === "win32" ? `audio=${rawOutput}` : rawOutput;
         this.outboundAudioProcess = spawn(this.getFfmpegPath(), ["-f", "ogg", "-i", "pipe:0", "-fflags", "nobuffer", "-f", outputFormat, dev]);
+        this.outboundAudioProcess.stderr?.on("data", (data) => console.error(`[AUDIO-FFMPEG-OUT-ERR] ${data}`));
       }
     }
 
