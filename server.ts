@@ -684,31 +684,32 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (process.platform === "linux") {
         if (inputDevice.includes("[pulse]")) {
           const pulseDevice = inputDevice.split(" [pulse]")[0];
-          const parecordArgs = [
+          const pacatArgs = [
+            "--record",
             "--device", pulseDevice,
             "--format", "s16le",
             "--rate", "16000",
             "--channels", "1",
             "--raw",
-            "--latency-msec=20"
+            "--process-time-msec=10"
           ];
-          console.log(`[AUDIO-IN] Spawning parecord: parecord ${parecordArgs.join(" ")}`);
-          inboundAudioProcess = spawn("parecord", parecordArgs);
+          console.log(`[AUDIO-IN] Spawning pacat: pacat ${pacatArgs.join(" ")}`);
+          inboundAudioProcess = spawn("pacat", pacatArgs);
           
           inboundAudioProcess.stdout?.on("data", (data) => {
             io.emit("audio-inbound", data);
           });
 
           inboundAudioProcess.stderr?.on("data", (data) => {
-            console.log(`[AUDIO-IN-PARECORD] ${data.toString()}`);
+            console.log(`[AUDIO-IN-PACAT] ${data.toString()}`);
           });
 
           inboundAudioProcess.on("error", (err) => {
-            console.error("[AUDIO-IN] parecord process error:", err);
+            console.error("[AUDIO-IN] pacat process error:", err);
           });
 
           inboundAudioProcess.on("close", (code) => {
-            console.log(`[AUDIO-IN] parecord process closed with code ${code}`);
+            console.log(`[AUDIO-IN] pacat process closed with code ${code}`);
           });
         } else {
           // Workaround for bundled FFmpeg missing ALSA support: use arecord directly
@@ -801,27 +802,28 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (process.platform === "linux") {
         if (outputDevice.includes("[pulse]")) {
           const pulseDevice = outputDevice.split(" [pulse]")[0];
-          const paplayArgs = [
+          const pacatArgs = [
+            "--playback",
             "--device", pulseDevice,
             "--format", "s16le",
             "--rate", "16000",
             "--channels", "1",
             "--raw",
-            "--latency-msec=20"
+            "--process-time-msec=10"
           ];
-          console.log(`[AUDIO-OUT] Spawning paplay: paplay ${paplayArgs.join(" ")}`);
-          outboundAudioProcess = spawn("paplay", paplayArgs);
+          console.log(`[AUDIO-OUT] Spawning pacat: pacat ${pacatArgs.join(" ")}`);
+          outboundAudioProcess = spawn("pacat", pacatArgs);
           
           outboundAudioProcess.stderr?.on("data", (data) => {
-            console.log(`[AUDIO-OUT-PAPLAY] ${data.toString()}`);
+            console.log(`[AUDIO-OUT-PACAT] ${data.toString()}`);
           });
 
           outboundAudioProcess.on("error", (err) => {
-            console.error("[AUDIO-OUT] paplay process error:", err);
+            console.error("[AUDIO-OUT] pacat process error:", err);
           });
 
           outboundAudioProcess.on("close", (code) => {
-            console.log(`[AUDIO-OUT] paplay process closed with code ${code}`);
+            console.log(`[AUDIO-OUT] pacat process closed with code ${code}`);
           });
         } else {
           // Workaround for bundled FFmpeg missing ALSA support: use aplay directly

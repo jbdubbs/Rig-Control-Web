@@ -42,7 +42,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 | Modular Refactoring | Broke down `server.ts` and `App.tsx` into smaller, task-specific files to improve maintainability and simplify future development. | 2026-04-02 |
 | Local Audio Selection | Enabled users to select their local system mic and speakers in the client UI, persisting choices in `localStorage`. | 2026-04-02 |
 | MediaDevices Safety | Added null-checks for `navigator.mediaDevices` to prevent app crashes in non-secure browser contexts where the API is restricted. | 2026-04-02 |
-| PulseAudio Integration | Switched Linux backend to use `pactl`/`parecord`/`paplay` when available, providing a robust abstraction over ALSA and fixing "Device busy" errors. | 2026-04-02 |
+| PulseAudio Integration | Switched Linux backend to use `pactl`/`pacat` when available, providing a robust abstraction over ALSA and fixing "Device busy" errors. | 2026-04-02 |
 | Last-Interacted-Wins | Implemented a policy where only the most recently interacted-with window can record mic audio, preventing multi-client audio collisions. | 2026-04-02 |
 | Audio Latency Opt | Reduced sample rate to 16kHz, switched to AudioWorklet, implemented jitter buffering, and tuned Socket.io/FFmpeg for near real-time performance. | 2026-04-02 |
 
@@ -62,7 +62,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - **Multi-Window Awareness**: The backend now avoids resetting the rig connection if a new client connects to the same host/port, ensuring stability across multiple tabs.
 - **Video Session Management**: Uses a `sessionId` query parameter to enforce a "last-one-wins" policy per window, preventing resource exhaustion from multiple concurrent streams.
 - **Client Audio Routing**: Uses `getUserMedia` with specific `deviceId` for input and `setSinkId` for output, allowing full control over local audio hardware.
-- **Linux Audio Abstraction**: Prioritizes sound server (PulseAudio/Pipewire) utilities to ensure multi-app compatibility and stable hardware access.
+- **Linux Audio Abstraction**: Prioritizes `pacat` (PulseAudio/Pipewire) with `--process-time-msec=10` to ensure low-latency, multi-app compatibility, and stable hardware access.
 - **Multi-Client Mic Policy**: Server tracks `activeAudioClientId` based on client interaction events, enforcing a single-source audio stream to the backend.
 - **Low-Latency Audio Pipeline**: Uses 16kHz mono PCM, `AudioWorklet` for capture, and scheduled playback with a 20ms jitter buffer to minimize lag and pops.
 

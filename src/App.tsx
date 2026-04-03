@@ -980,6 +980,10 @@ export default function App() {
       if (nextStartTimeRef.current < now) {
         nextStartTimeRef.current = now + 0.02; // 20ms buffer
       }
+      // If we're too far ahead, trim it back to prevent latency creep (hard cap at 40ms)
+      if (nextStartTimeRef.current > now + 0.04) {
+        nextStartTimeRef.current = now + 0.04;
+      }
 
       let bufferData: ArrayBuffer;
       let byteOffset = 0;
