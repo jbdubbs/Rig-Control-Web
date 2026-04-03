@@ -293,8 +293,13 @@ export default function App() {
       try {
         // Request permission first to get device labels if not already granted
         // We do this quietly by just checking if we can get a stream
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach(t => t.stop());
+        } catch (permErr) {
+          // If permission is denied, we still want to enumerate devices (though labels will be empty)
+          console.warn("Microphone permission not yet granted or denied:", permErr);
+        }
         
         const devices = await navigator.mediaDevices.enumerateDevices();
         const inputs = devices.filter(d => d.kind === 'audioinput');
@@ -587,7 +592,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    const newSocket = io(backendUrl);
+    const newSocket = io(backendUrl, { transports: ['websocket'] });
     setSocket(newSocket);
 
     newSocket.on("rig-connected", () => {
@@ -1090,12 +1095,19 @@ export default function App() {
       // AudioWorklet for lower latency
       const micWorkletCode = `
         class MicProcessor extends AudioWorkletProcessor {
+          constructor() {
+            super();
+            this._buf = [];
+          }
           process(inputs, outputs, parameters) {
-            const input = inputs[0];
-            if (input.length > 0) {
-              const channelData = input[0];
-              // Send a copy of the data
-              this.port.postMessage(new Float32Array(channelData));
+            const ch = inputs[0]?.[0];
+            if (ch) {
+              for (let i = 0; i < ch.length; i++) {
+                this._buf.push(ch[i]);
+              }
+              while (this._buf.length >= 320) {
+                this.port.postMessage(new Float32Array(this._buf.splice(0, 320)));
+              }
             }
             return true;
           }
@@ -3760,7 +3772,29 @@ export default function App() {
                     )}
 
                     <div className="space-y-2">
-                      <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold">Local Input (Microphone)</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold">Local Input (Microphone)</label>
+                        {localAudioDevices.inputs.length > 0 && !localAudioDevices.inputs[0].label && (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                                stream.getTracks().forEach(t => t.stop());
+                                // Re-enumerate devices to get labels
+                                const devices = await navigator.mediaDevices.enumerateDevices();
+                                const inputs = devices.filter(d => d.kind === 'audioinput');
+                                const outputs = devices.filter(d => d.kind === 'audiooutput');
+                                setLocalAudioDevices({ inputs, outputs });
+                              } catch (err) {
+                                console.error("Failed to get mic permission:", err);
+                              }
+                            }}
+                            className="text-[0.5rem] uppercase font-bold text-blue-500 hover:text-blue-400 transition-colors"
+                          >
+                            Request Permission
+                          </button>
+                        )}
+                      </div>
                       <select 
                         value={localAudioSettings.inputDevice}
                         onChange={(e) => {
