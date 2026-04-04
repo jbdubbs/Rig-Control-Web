@@ -810,8 +810,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             "--rate", "16000",
             "--channels", "1",
             "--raw",
-            "--latency-msec=20",
-            "--process-time-msec=10"
+            "--latency-msec=100",
+            "--process-time-msec=50"
           ];
           console.log(`[AUDIO-OUT] Spawning pacat: pacat ${pacatArgs.join(" ")}`);
           outboundAudioProcess = spawn("pacat", pacatArgs);

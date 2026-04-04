@@ -59,7 +59,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - **Multi-Window Awareness**: The backend now avoids resetting the rig connection if a new client connects to the same host/port, ensuring stability across multiple tabs.
 - **Video Session Management**: Uses a `sessionId` query parameter to enforce a "last-one-wins" policy per window, preventing resource exhaustion from multiple concurrent streams.
 - **Client Audio Routing**: Uses `getUserMedia` with specific `deviceId` for input and `setSinkId` for output, allowing full control over local audio hardware.
-- **Linux Audio Abstraction**: Prioritizes `pacat` (PulseAudio/Pipewire) with `--latency-msec=20` and `--process-time-msec=10` to ensure low-latency, multi-app compatibility, and stable hardware access.
+- **Linux Audio Abstraction**: Prioritizes `pacat` (PulseAudio/Pipewire) with `--latency-msec=20` (inbound) and `--latency-msec=100` (outbound) to ensure low-latency, multi-app compatibility, and stable hardware access while absorbing network jitter.
 - **Multi-Client Mic Policy**: Server tracks `activeAudioClientId` based on client interaction events, enforcing a single-source audio stream to the backend.
 - **Low-Latency Audio Pipeline**: Uses 16kHz mono PCM, `AudioWorklet` for capture, and scheduled playback with a 20ms jitter buffer to minimize lag and pops.
 
