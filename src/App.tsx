@@ -186,7 +186,7 @@ export default function App() {
     framerate: ""
   });
 
-  const [activeAudioClientId, setActiveAudioClientId] = useState<string | null>(null);
+  const [activeMicClientId, setActiveMicClientId] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<"playing" | "stopped">("stopped");
   const [audioDevices, setAudioDevices] = useState<{ inputs: string[], outputs: string[] }>({ inputs: [], outputs: [] });
   const [audioSettings, setAudioSettings] = useState({
@@ -409,8 +409,11 @@ export default function App() {
       socket.on("audio-status", (status: "playing" | "stopped") => {
         setAudioStatus(status);
       });
-      socket.on("active-audio-client", (id: string | null) => {
-        setActiveAudioClientId(id);
+      socket.on("mic-active-client", (id: string | null) => {
+        setActiveMicClientId(id);
+      });
+      socket.on("mic-mute-forced", () => {
+        setOutboundMuted(true);
       });
       socket.on("audio-devices-list", (devices: { inputs: string[], outputs: string[] }) => {
         setAudioDevices(devices);
@@ -478,24 +481,6 @@ export default function App() {
       logEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [rigctldLogs]);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleInteraction = () => {
-      socket.emit("audio-interaction");
-    };
-
-    window.addEventListener('mousedown', handleInteraction);
-    window.addEventListener('keydown', handleInteraction);
-    window.addEventListener('focus', handleInteraction);
-
-    return () => {
-      window.removeEventListener('mousedown', handleInteraction);
-      window.removeEventListener('keydown', handleInteraction);
-      window.removeEventListener('focus', handleInteraction);
-    };
-  }, [socket]);
 
   const isSettingsValid = () => {
     return (
@@ -932,10 +917,12 @@ export default function App() {
   const audioSettingsRef = useRef(audioSettings);
   const audioStatusRef = useRef(audioStatus);
   const inboundMutedRef = useRef(inboundMuted);
+  const outboundMutedRef = useRef(outboundMuted);
 
   useEffect(() => { audioSettingsRef.current = audioSettings; }, [audioSettings]);
   useEffect(() => { audioStatusRef.current = audioStatus; }, [audioStatus]);
   useEffect(() => { inboundMutedRef.current = inboundMuted; }, [inboundMuted]);
+  useEffect(() => { outboundMutedRef.current = outboundMuted; }, [outboundMuted]);
 
   useEffect(() => {
     if (!socket) return;
@@ -1124,13 +1111,10 @@ export default function App() {
       micNodeRef.current = micNode;
       
       micNode.port.onmessage = (e) => {
-        if (outboundMuted || audioStatus !== "playing") return;
+        if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;
         
-        // Only emit if we are the active client
-        if (activeAudioClientId && socket?.id !== activeAudioClientId) return;
-
         const inputData = e.data;
-        if (Math.random() < 0.01) console.log("[AUDIO] Sending outbound chunk, active client:", activeAudioClientId, "my id:", socket?.id);
+        if (Math.random() < 0.01) console.log("[AUDIO] Sending outbound chunk, active client:", activeMicClientId, "my id:", socket?.id);
         const int16Data = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
@@ -1157,13 +1141,13 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (audioStatus === "playing" && audioSettings.outboundEnabled && !outboundMuted) {
+    if (audioStatus === "playing" && audioSettings.outboundEnabled) {
       startMicCapture();
     } else {
       stopMicCapture();
     }
     return () => stopMicCapture();
-  }, [audioStatus, audioSettings.outboundEnabled, outboundMuted, localAudioSettings.inputDevice]);
+  }, [audioStatus, audioSettings.outboundEnabled, localAudioSettings.inputDevice]);
 
   const handleSendRaw = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1427,7 +1411,15 @@ export default function App() {
                       {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
                     </button>
                     <button
-                      onClick={() => setOutboundMuted(!outboundMuted)}
+                      onClick={() => {
+                        const newMuted = !outboundMuted;
+                        setOutboundMuted(newMuted);
+                        if (newMuted) {
+                          socket?.emit("mic-mute-notify");
+                        } else {
+                          socket?.emit("mic-unmute-request");
+                        }
+                      }}
                       disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled}
                       className={cn(
                         "p-1 rounded-lg transition-all",
@@ -2140,7 +2132,15 @@ export default function App() {
                         {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
                       </button>
                       <button
-                        onClick={() => setOutboundMuted(!outboundMuted)}
+                        onClick={() => {
+                          const newMuted = !outboundMuted;
+                          setOutboundMuted(newMuted);
+                          if (newMuted) {
+                            socket?.emit("mic-mute-notify");
+                          } else {
+                            socket?.emit("mic-unmute-request");
+                          }
+                        }}
                         disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled}
                         className={cn(
                           "p-1 rounded-lg transition-all",
@@ -2941,7 +2941,15 @@ export default function App() {
                       {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
                     </button>
                     <button
-                      onClick={() => setOutboundMuted(!outboundMuted)}
+                      onClick={() => {
+                        const newMuted = !outboundMuted;
+                        setOutboundMuted(newMuted);
+                        if (newMuted) {
+                          socket?.emit("mic-mute-notify");
+                        } else {
+                          socket?.emit("mic-unmute-request");
+                        }
+                      }}
                       disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled}
                       className={cn(
                         "p-1 rounded-lg transition-all",
@@ -3765,11 +3773,11 @@ export default function App() {
                   <div className="space-y-4 pt-4 border-t border-[#2a2b2e]/50">
                     <h4 className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Local Client Audio (Your System)</h4>
                     
-                    {activeAudioClientId && socket?.id !== activeAudioClientId && (
+                    {activeMicClientId && socket?.id !== activeMicClientId && (
                       <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 flex items-center gap-3">
                         <AlertTriangle className="text-amber-500 shrink-0" size={16} />
                         <p className="text-[0.625rem] text-amber-500/80 font-medium leading-tight">
-                          Microphone is currently active in another window. Click or interact with this window to take control.
+                          Microphone is active in another session. Unmute your mic button to take over.
                         </p>
                       </div>
                     )}

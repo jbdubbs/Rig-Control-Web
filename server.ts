@@ -110,7 +110,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let audioStatus: "playing" | "stopped" = "stopped";
   let inboundAudioProcess: ChildProcess | null = null;
   let outboundAudioProcess: ChildProcess | null = null;
-  let activeAudioClientId: string | null = null;
+  let activeMicClientId: string | null = null;
 
   let rigctldSettings = {
     rigNumber: "",
@@ -1638,7 +1638,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       socket.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
       socket.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
       socket.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
-      socket.emit("active-audio-client", activeAudioClientId);
+      socket.emit("mic-active-client", activeMicClientId);
       socket.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
       socket.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
     });
@@ -1672,27 +1672,32 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     socket.on("control-audio", (action: "start" | "stop") => {
       console.log(`[AUDIO] Control action received: ${action}`);
       if (action === "start") {
-        // Set initial active client if none exists
-        if (!activeAudioClientId) {
-          activeAudioClientId = socket.id;
-          io.emit("active-audio-client", activeAudioClientId);
-        }
         startAudio();
       } else if (action === "stop") {
         stopAudio();
       }
     });
 
-    socket.on("audio-interaction", () => {
-      if (activeAudioClientId !== socket.id) {
-        activeAudioClientId = socket.id;
-        console.log(`[AUDIO] Active recording client switched to: ${socket.id}`);
-        io.emit("active-audio-client", activeAudioClientId);
+    socket.on("mic-unmute-request", () => {
+      activeMicClientId = socket.id;
+      console.log(`[AUDIO] Mic claimed by client: ${socket.id}`);
+      
+      // Tell all OTHER clients to mute themselves
+      socket.broadcast.emit("mic-mute-forced");
+      
+      // Tell everyone who currently holds the mic (for UI indicator)
+      io.emit("mic-active-client", activeMicClientId);
+    });
+
+    socket.on("mic-mute-notify", () => {
+      // Client is voluntarily muting — release the mic if they held it
+      if (activeMicClientId === socket.id) {
+        activeMicClientId = null;
+        io.emit("mic-active-client", null);
       }
     });
 
     socket.on("audio-outbound", (data: Buffer) => {
-      if (socket.id !== activeAudioClientId) return;
       if (outboundAudioProcess && outboundAudioProcess.stdin) {
         outboundAudioProcess.stdin.write(data);
       }
@@ -1873,10 +1878,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("disconnect", () => {
       console.log("Client disconnected");
-      if (activeAudioClientId === socket.id) {
-        activeAudioClientId = null;
+      if (activeMicClientId === socket.id) {
+        activeMicClientId = null;
         // Notify others that the active client is gone
-        io.emit("active-audio-client", null);
+        io.emit("mic-active-client", null);
       }
     });
   });
