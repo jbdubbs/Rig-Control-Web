@@ -201,7 +201,7 @@ export default function App() {
     outputDevice: localStorage.getItem("local-audio-output") || "default"
   });
   const [inboundMuted, setInboundMuted] = useState(false);
-  const [outboundMuted, setOutboundMuted] = useState(false);
+  const [outboundMuted, setOutboundMuted] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const micNodeRef = useRef<AudioWorkletNode | null>(null);

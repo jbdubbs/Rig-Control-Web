@@ -1698,9 +1698,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("audio-outbound", (data: Buffer) => {
-      if (outboundAudioProcess && outboundAudioProcess.stdin) {
+      if (outboundAudioProcess?.stdin && !outboundAudioProcess.stdin.writableNeedDrain) {
         outboundAudioProcess.stdin.write(data);
       }
+      // If writableNeedDrain is set the pipe is congested — drop this frame.
+      // For real-time audio, silence is always preferable to a growing queue.
     });
 
     socket.on("update-video-settings", (settings: any) => {
