@@ -1072,10 +1072,12 @@ export default function App() {
       }
       const ctx = audioContextRef.current;
       
+      const isPhoneDefault = !localAudioSettings.inputDevice || localAudioSettings.inputDevice === 'default';
       const constraints = {
-        audio: localAudioSettings.inputDevice && localAudioSettings.inputDevice !== 'default' 
-          ? { deviceId: { exact: localAudioSettings.inputDevice } } 
-          : { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        audio: isPhoneDefault
+          ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          : { deviceId: { exact: localAudioSettings.inputDevice },
+              echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micStreamRef.current = stream;

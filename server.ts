@@ -698,7 +698,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           inboundAudioProcess = spawn("pacat", pacatArgs);
           
           inboundAudioProcess.stdout?.on("data", (data) => {
-            io.emit("audio-inbound", data);
+            // Don't send inbound audio back to the client currently transmitting —
+            // they're talking, not listening, and it creates an acoustic echo loop
+            // on phone/loudspeaker setups.
+            if (activeMicClientId) {
+              // Send to everyone except the active mic holder
+              for (const [id, s] of io.sockets.sockets) {
+                if (id !== activeMicClientId) {
+                  s.emit("audio-inbound", data);
+                }
+              }
+            } else {
+              io.emit("audio-inbound", data);
+            }
           });
 
           inboundAudioProcess.stderr?.on("data", (data) => {
@@ -726,7 +738,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           inboundAudioProcess = spawn("arecord", arecordArgs);
           
           inboundAudioProcess.stdout?.on("data", (data) => {
-            io.emit("audio-inbound", data);
+            // Don't send inbound audio back to the client currently transmitting —
+            // they're talking, not listening, and it creates an acoustic echo loop
+            // on phone/loudspeaker setups.
+            if (activeMicClientId) {
+              // Send to everyone except the active mic holder
+              for (const [id, s] of io.sockets.sockets) {
+                if (id !== activeMicClientId) {
+                  s.emit("audio-inbound", data);
+                }
+              }
+            } else {
+              io.emit("audio-inbound", data);
+            }
           });
 
           inboundAudioProcess.stderr?.on("data", (data) => {
@@ -770,7 +794,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         inboundAudioProcess = spawn(ffmpegPath, inboundArgs);
         
         inboundAudioProcess.stdout?.on("data", (data) => {
-          io.emit("audio-inbound", data);
+          // Don't send inbound audio back to the client currently transmitting —
+          // they're talking, not listening, and it creates an acoustic echo loop
+          // on phone/loudspeaker setups.
+          if (activeMicClientId) {
+            // Send to everyone except the active mic holder
+            for (const [id, s] of io.sockets.sockets) {
+              if (id !== activeMicClientId) {
+                s.emit("audio-inbound", data);
+              }
+            }
+          } else {
+            io.emit("audio-inbound", data);
+          }
         });
 
         inboundAudioProcess.stderr?.on("data", (data) => {
