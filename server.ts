@@ -701,7 +701,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             // Don't send inbound audio back to the client currently transmitting —
             // they're talking, not listening, and it creates an acoustic echo loop
             // on phone/loudspeaker setups.
-            if (activeMicClientId) {
+            if (activeMicClientId && lastStatus.ptt) {
               // Send to everyone except the active mic holder
               for (const [id, s] of io.sockets.sockets) {
                 if (id !== activeMicClientId) {
@@ -741,7 +741,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             // Don't send inbound audio back to the client currently transmitting —
             // they're talking, not listening, and it creates an acoustic echo loop
             // on phone/loudspeaker setups.
-            if (activeMicClientId) {
+            if (activeMicClientId && lastStatus.ptt) {
               // Send to everyone except the active mic holder
               for (const [id, s] of io.sockets.sockets) {
                 if (id !== activeMicClientId) {
@@ -797,7 +797,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           // Don't send inbound audio back to the client currently transmitting —
           // they're talking, not listening, and it creates an acoustic echo loop
           // on phone/loudspeaker setups.
-          if (activeMicClientId) {
+          if (activeMicClientId && lastStatus.ptt) {
             // Send to everyone except the active mic holder
             for (const [id, s] of io.sockets.sockets) {
               if (id !== activeMicClientId) {
