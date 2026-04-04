@@ -216,6 +216,7 @@ export default function App() {
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
   const [isVideoCollapsed, setIsVideoCollapsed] = useState(false);
+  const [pendingVfoOp, setPendingVfoOp] = useState<string | null>(null);
   const [isPhoneMeterCollapsed, setIsPhoneMeterCollapsed] = useState(false);
   const [isPhoneQuickControlsCollapsed, setIsPhoneQuickControlsCollapsed] = useState(false);
   const [isPhoneRFPowerCollapsed, setIsPhoneRFPowerCollapsed] = useState(false);
@@ -616,6 +617,8 @@ export default function App() {
     newSocket.on("rig-status", (newStatus: RigStatus) => {
       if (!newStatus) return;
       
+      setPendingVfoOp(null);
+      
       // Skip polls after a user change to allow rig to stabilize
       if (skipPollsCount.current > 0) {
         skipPollsCount.current--;
@@ -747,7 +750,7 @@ export default function App() {
   };
 
   const handleSetFreq = (freq: string) => {
-    skipPollsCount.current = 2;
+    skipPollsCount.current = 1;
     setStatus(prev => ({ ...prev, frequency: freq }));
     if (status.vfo === "VFOA") setVfoA(freq);
     else setVfoB(freq);
@@ -780,7 +783,7 @@ export default function App() {
   };
 
   const handleSetMode = (mode: string) => {
-    skipPollsCount.current = 2;
+    skipPollsCount.current = 1;
     setLocalMode(mode);
     setStatus(prev => ({ ...prev, mode }));
     targetModeRef.current = mode;
@@ -796,19 +799,19 @@ export default function App() {
   const handleSetBw = (bw: number) => {
     const currentMode = (status?.mode) || availableModes[0] || "USB";
     const bwStr = (bw ?? 2400).toString();
-    skipPollsCount.current = 2;
+    skipPollsCount.current = 1;
     setStatus(prev => ({ ...(prev || DEFAULT_STATUS), bandwidth: bwStr }));
     socket?.emit("set-mode", { mode: currentMode, bandwidth: bwStr });
   };
 
   const handleSetPTT = (state: boolean) => {
-    skipPollsCount.current = 2;
+    skipPollsCount.current = 1;
     setStatus(prev => ({ ...(prev || DEFAULT_STATUS), ptt: state }));
     socket?.emit("set-ptt", state);
   };
 
   const handleSetVFO = (vfo: string) => {
-    skipPollsCount.current = 2;
+    skipPollsCount.current = 1;
     setStatus(prev => ({ ...(prev || DEFAULT_STATUS), vfo }));
     socket?.emit("set-vfo", vfo);
   };
@@ -816,10 +819,14 @@ export default function App() {
   const handleToggleSplit = () => {
     if (status.isSplit) {
       const targetVFO = status.txVFO === "VFOA" ? "VFOB" : "VFOA";
+      skipPollsCount.current = 1;
+      setStatus(prev => ({ ...prev, isSplit: false }));
       socket?.emit("set-split-vfo", { split: 0, txVFO: status.txVFO });
       handleSetVFO(targetVFO);
     } else {
       const txVFO = status.vfo === "VFOA" ? "VFOB" : "VFOA";
+      skipPollsCount.current = 1;
+      setStatus(prev => ({ ...prev, isSplit: true, txVFO }));
       socket?.emit("set-split-vfo", { split: 1, txVFO });
     }
   };
@@ -831,7 +838,7 @@ export default function App() {
 
   const handleSetFunc = (func: string, state: boolean) => {
     const key = func.toLowerCase() as keyof RigStatus;
-    skipPollsCount.current = 2;
+    skipPollsCount.current = 1;
     setStatus(prev => ({ ...(prev || DEFAULT_STATUS), [key]: state }));
     socket?.emit("set-func", { func, state });
   };
@@ -845,7 +852,7 @@ export default function App() {
                 level.toLowerCase() === "nr" ? "nrLevel" :
                 level.toLowerCase() === "nb" ? "nbLevel" : null;
     if (key) {
-      skipPollsCount.current = 2;
+      skipPollsCount.current = 1;
       setStatus(prev => ({ ...(prev || DEFAULT_STATUS), [key]: val }));
     }
     socket?.emit("set-level", { level, val });
@@ -910,6 +917,20 @@ export default function App() {
   };
 
   const handleVfoOp = (op: string) => {
+    // Optimistic updates for known VFO operations
+    if (op === "CPY") {
+      // A=B: copy active VFO to other VFO
+      skipPollsCount.current = 1;
+      if (status.vfo === "VFOA") {
+        setVfoB(status.frequency);
+        localStorage.setItem("last-vfoB", status.frequency);
+      } else {
+        setVfoA(status.frequency);
+        localStorage.setItem("last-vfoA", status.frequency);
+      }
+    }
+    
+    setPendingVfoOp(op);
     socket?.emit("vfo-op", op);
   };
 
@@ -1635,14 +1656,14 @@ export default function App() {
                           handleVfoOp("TUNE");
                         }
                       }}
-                      disabled={!connected}
+                      disabled={!connected || pendingVfoOp === "TUNE"}
                       className={cn(
                         "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                        !connected && "opacity-50 cursor-not-allowed",
+                        (!connected || pendingVfoOp === "TUNE") && "opacity-50 cursor-not-allowed",
                         status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
-                      <RefreshCw size={24} className={cn(status.tuner && "animate-spin")} />
+                      <RefreshCw size={24} className={cn((status.tuner || pendingVfoOp === "TUNE") && "animate-spin")} />
                       <span className="text-xs uppercase font-bold leading-none">Tune</span>
                     </button>
                     <button 
@@ -2250,14 +2271,14 @@ export default function App() {
                           handleVfoOp("TUNE");
                         }
                       }}
-                      disabled={!connected}
+                      disabled={!connected || pendingVfoOp === "TUNE"}
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                        !connected && "opacity-50 cursor-not-allowed",
+                        (!connected || pendingVfoOp === "TUNE") && "opacity-50 cursor-not-allowed",
                         status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
-                      <RefreshCw size={16} className={cn(status.tuner && "animate-spin")} />
+                      <RefreshCw size={16} className={cn((status.tuner || pendingVfoOp === "TUNE") && "animate-spin")} />
                       <span className="text-xs uppercase font-bold leading-none">Tune</span>
                     </button>
                     <button 
@@ -2725,14 +2746,14 @@ export default function App() {
                         handleVfoOp("TUNE");
                       }
                     }}
-                    disabled={!connected}
+                    disabled={!connected || pendingVfoOp === "TUNE"}
                     className={cn(
                       "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2 group",
-                      !connected && "opacity-50 cursor-not-allowed",
+                      (!connected || pendingVfoOp === "TUNE") && "opacity-50 cursor-not-allowed",
                       status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                     )}
                   >
-                    <RefreshCw size={20} className={cn("transition-transform", status.tuner ? "animate-spin" : "group-active:rotate-180")} />
+                    <RefreshCw size={20} className={cn("transition-transform", (status.tuner || pendingVfoOp === "TUNE") ? "animate-spin" : "group-active:rotate-180")} />
                     <span className="text-[0.625rem] uppercase font-bold">Tune</span>
                   </button>
 

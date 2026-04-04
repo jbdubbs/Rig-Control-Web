@@ -1265,6 +1265,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   };
 
   let visibleMeters: string[] = ['swr', 'alc'];
+  let pollCycleCount = 0;
   let lastStatus: any = {
     frequency: "14074000",
     mode: "USB",
@@ -1284,6 +1285,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     attenuation: 0,
     preamp: 0,
     nb: false,
+    nbLevel: 0,
     nr: false,
     anf: false,
     nrLevel: 8 / 15,
@@ -1367,9 +1369,13 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     }
   };
 
-  const sendToRig = (cmd: string, useExtended = false): Promise<string> => {
+  const sendToRig = (cmd: string, useExtended = false, priority = false): Promise<string> => {
     return new Promise((resolve, reject) => {
-      rigCommandQueue.push({ cmd, useExtended, resolve, reject });
+      if (priority) {
+        rigCommandQueue.unshift({ cmd, useExtended, resolve, reject });
+      } else {
+        rigCommandQueue.push({ cmd, useExtended, resolve, reject });
+      }
       processRigQueue();
     });
   };
@@ -1446,15 +1452,17 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     }
     try {
       const now = Date.now();
-      
-      // Poll all items at the user-selected pollRate
+      const isSlowPoll = pollCycleCount % 10 === 0;
+      pollCycleCount++;
+
+      // Fast Tier: ptt, smeter, and TX meters if PTT
       const ptt = await sendToRig("t", true);
       const smeter = await sendToRig("l STRENGTH", true);
       const isPttActive = ptt === "1";
       
-      let alc = "0";
-      let powerMeter = "0";
-      let swr = "1.0";
+      let alc = lastStatus.alc?.toString() || "0";
+      let powerMeter = lastStatus.powerMeter?.toString() || "0";
+      let swr = lastStatus.swr?.toString() || "1.0";
 
       if (isPttActive) {
         try {
@@ -1466,29 +1474,54 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         }
       }
 
-      // VDD Poll (Conditional)
-      let vdd = lastStatus.vdd?.toString() || "13.8";
-      if (visibleMeters.includes('vdd')) {
-        vdd = await sendToRig("l VD_METER", true).catch(() => "13.8");
-      }
+      // Slow Tier: ATT, PREAMP, AGC, NB, NR, ANF, TUNER, RFPOWER, RF, VD_METER, frequency, mode, bandwidth, vfo, split
+      let frequency = lastStatus.frequency;
+      let mode = lastStatus.mode;
+      let bandwidth = lastStatus.bandwidth;
+      let rfpower = lastStatus.rfpower;
+      let rflevel = lastStatus.rfLevel;
+      let agc = lastStatus.agc;
+      let vfo = lastStatus.vfo;
+      let isSplit = lastStatus.isSplit;
+      let txVFO = lastStatus.txVFO;
+      let att = lastStatus.attenuation;
+      let preamp = lastStatus.preamp;
+      let nb = lastStatus.nb;
+      let nbLevel = lastStatus.nbLevel;
+      let nr = lastStatus.nr;
+      let nrLevel = lastStatus.nrLevel;
+      let anf = lastStatus.anf;
+      let tuner = lastStatus.tuner;
+      let vdd = lastStatus.vdd;
 
-      const frequency = await sendToRig("f", true);
-      const modeBw = await sendToRig("m", true);
-      const [mode, bandwidth] = modeBw.split("\n");
-      let rfpower = parseFloat(await sendToRig("l RFPOWER", true));
-      const rflevel = parseFloat(await sendToRig("l RF", true).catch(() => "0"));
-      const agc = parseInt(await sendToRig("l AGC", true).catch(() => "6"));
-      const vfo = await sendToRig("v", true);
-      const splitInfo = await sendToRig("s", true);
-      const [isSplitStr, txVFO] = splitInfo.split("\n");
-      const att = parseInt(await sendToRig("l ATT", true)) || 0;
-      const preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
-      const nb = (await sendToRig("u NB", true).catch(() => "0")) === "1";
-      const nbLevel = parseFloat(await sendToRig("l NB", true).catch(() => "0"));
-      const nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
-      const nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
-      const anf = (await sendToRig("u ANF", true).catch(() => "0")) === "1";
-      const tuner = (await sendToRig("u TUNER", true).catch(() => "0")) === "1";
+      if (isSlowPoll) {
+        // VDD Poll (Conditional)
+        if (visibleMeters.includes('vdd')) {
+          vdd = parseFloat(await sendToRig("l VD_METER", true).catch(() => "13.8"));
+        }
+
+        frequency = await sendToRig("f", true);
+        const modeBw = await sendToRig("m", true);
+        const [m, b] = modeBw.split("\n");
+        mode = m;
+        bandwidth = b;
+        rfpower = parseFloat(await sendToRig("l RFPOWER", true));
+        rflevel = parseFloat(await sendToRig("l RF", true).catch(() => "0"));
+        agc = parseInt(await sendToRig("l AGC", true).catch(() => "6"));
+        vfo = await sendToRig("v", true);
+        const splitInfo = await sendToRig("s", true);
+        const [isSplitStr, txVFOStr] = splitInfo.split("\n");
+        isSplit = isSplitStr === "1";
+        txVFO = txVFOStr || "VFOB";
+        att = parseInt(await sendToRig("l ATT", true)) || 0;
+        preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
+        nb = (await sendToRig("u NB", true).catch(() => "0")) === "1";
+        nbLevel = parseFloat(await sendToRig("l NB", true).catch(() => "0"));
+        nr = (await sendToRig("u NR", true).catch(() => "0")) === "1";
+        nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
+        anf = (await sendToRig("u ANF", true).catch(() => "0")) === "1";
+        tuner = (await sendToRig("u TUNER", true).catch(() => "0")) === "1";
+      }
 
       lastStatus = {
         frequency,
@@ -1504,8 +1537,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         agc,
         vdd: parseFloat(vdd),
         vfo,
-        isSplit: isSplitStr === "1",
-        txVFO: txVFO || "VFOB",
+        isSplit,
+        txVFO,
         attenuation: att,
         preamp,
         nb,
@@ -1545,8 +1578,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-func", async ({ func, state }) => {
       try {
-        await sendToRig(`U ${func} ${state ? "1" : "0"}`);
-        pollRig();
+        await sendToRig(`U ${func} ${state ? "1" : "0"}`, false, true);
+        const confirmedState = (await sendToRig(`u ${func}`, true, true)) === "1";
+        const key = func.toLowerCase() as any;
+        lastStatus = { ...lastStatus, [key]: confirmedState };
+        io.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", `Failed to set ${func}`);
       }
@@ -1554,8 +1590,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-level", async ({ level, val }) => {
       try {
-        await sendToRig(`L ${level} ${val}`);
-        pollRig();
+        await sendToRig(`L ${level} ${val}`, false, true);
+        const confirmedVal = parseFloat(await sendToRig(`l ${level}`, true, true));
+        const key = level.toLowerCase() === "rfpower" ? "rfpower" : 
+                    level.toLowerCase() === "rf" ? "rfLevel" :
+                    level.toLowerCase() === "agc" ? "agc" :
+                    level.toLowerCase() === "att" ? "attenuation" :
+                    level.toLowerCase() === "preamp" ? "preamp" :
+                    level.toLowerCase() === "nr" ? "nrLevel" :
+                    level.toLowerCase() === "nb" ? "nbLevel" : null;
+        if (key) {
+          lastStatus = { ...lastStatus, [key]: confirmedVal };
+          io.emit("rig-status", lastStatus);
+        }
       } catch (err) {
         socket.emit("rig-error", `Failed to set ${level}`);
       }
@@ -1563,8 +1610,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-frequency", async (freq) => {
       try {
-        await sendToRig(`F ${freq}`);
-        pollRig();
+        await sendToRig(`F ${freq}`, false, true);
+        const confirmedFreq = await sendToRig("f", true, true);
+        lastStatus = { ...lastStatus, frequency: confirmedFreq };
+        io.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set frequency");
       }
@@ -1572,8 +1621,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-mode", async ({ mode, bandwidth }) => {
       try {
-        await sendToRig(`M ${mode} ${bandwidth}`);
-        pollRig();
+        await sendToRig(`M ${mode} ${bandwidth}`, false, true);
+        const modeBw = await sendToRig("m", true, true);
+        const [confirmedMode, confirmedBw] = modeBw.split("\n");
+        lastStatus = { ...lastStatus, mode: confirmedMode, bandwidth: confirmedBw };
+        io.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set mode/bandwidth");
       }
@@ -1581,7 +1633,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("get-modes", async () => {
       try {
-        const modes = await sendToRig("M ?");
+        const modes = await sendToRig("M ?", false, true);
         // rigctld might return modes separated by spaces or newlines
         const modeList = modes.split(/[\s\n]+/).filter(Boolean);
         socket.emit("available-modes", modeList);
@@ -1592,8 +1644,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-ptt", async (ptt) => {
       try {
-        await sendToRig(`T ${ptt ? "1" : "0"}`);
-        pollRig();
+        await sendToRig(`T ${ptt ? "1" : "0"}`, false, true);
+        const confirmedPtt = (await sendToRig("t", true, true)) === "1";
+        lastStatus = { ...lastStatus, ptt: confirmedPtt };
+        io.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set PTT");
       }
@@ -1601,8 +1655,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-vfo", async (vfo) => {
       try {
-        await sendToRig(`V ${vfo}`);
-        pollRig();
+        await sendToRig(`V ${vfo}`, false, true);
+        const confirmedVfo = await sendToRig("v", true, true);
+        lastStatus = { ...lastStatus, vfo: confirmedVfo };
+        io.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set VFO");
       }
@@ -1610,8 +1666,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("set-split-vfo", async ({ split, txVFO }) => {
       try {
-        await sendToRig(`S ${split} ${txVFO}`);
-        pollRig();
+        await sendToRig(`S ${split} ${txVFO}`, false, true);
+        const splitInfo = await sendToRig("s", true, true);
+        const [isSplitStr, confirmedTxVFO] = splitInfo.split("\n");
+        lastStatus = { ...lastStatus, isSplit: isSplitStr === "1", txVFO: confirmedTxVFO || "VFOB" };
+        io.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set split VFO");
       }
@@ -1619,8 +1678,13 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("vfo-op", async (op) => {
       try {
-        await sendToRig(`G ${op}`);
-        pollRig();
+        await sendToRig(`G ${op}`, false, true);
+        const frequency = await sendToRig("f", true, true);
+        const modeBw = await sendToRig("m", true, true);
+        const [mode, bandwidth] = modeBw.split("\n");
+        const vfo = await sendToRig("v", true, true);
+        lastStatus = { ...lastStatus, frequency, mode, bandwidth, vfo };
+        io.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", `Failed to execute VFO operation: ${op}`);
       }
@@ -1907,7 +1971,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("send-raw", async (cmd) => {
       try {
-        const resp = await sendToRig(cmd);
+        const resp = await sendToRig(cmd, false, true);
         socket.emit("raw-response", { cmd, resp });
       } catch (err) {
         socket.emit("raw-response", { cmd, resp: `Error: ${err}` });
