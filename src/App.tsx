@@ -1123,7 +1123,10 @@ export default function App() {
       };
 
       source.connect(micNode);
-      micNode.connect(ctx.destination); // Required for processing to happen in some browsers
+      const silentGain = ctx.createGain();
+      silentGain.gain.value = 0;
+      micNode.connect(silentGain);
+      silentGain.connect(ctx.destination); // Required for processing to happen in some browsers
     } catch (err) {
       console.error("Error starting mic capture:", err);
     }
