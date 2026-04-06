@@ -789,7 +789,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         let inboundArgs: string[] = [];
         if (process.platform === "win32") {
           inputFormat = "dshow";
-          inputDevice = `audio=${audioSettings.inputDevice}`;
+          inputDevice = `audio="${audioSettings.inputDevice}"`;
           inboundArgs = [
             "-f", inputFormat,
             "-audio_buffer_size", "20",
@@ -922,17 +922,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         let outputFormat = "";
         let outboundArgs: string[] = [];
         if (process.platform === "win32") {
-          outputFormat = "waveout";
-          // waveout takes the device name directly without audio= prefix
-          outputDevice = audioSettings.outputDevice;
+          outputFormat = "wasapi";
           outboundArgs = [
             "-f", "mulaw",
             "-ac", "1",
             "-ar", "8000",
             "-i", "pipe:0",
-            "-fflags", "nobuffer",
             "-f", outputFormat,
-            outputDevice
+            `"${audioSettings.outputDevice}"`
           ];
         } else if (process.platform === "darwin") {
           outputFormat = "avfoundation";
