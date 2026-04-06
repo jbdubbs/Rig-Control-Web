@@ -565,38 +565,28 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             parseAlsa(output, inputs, outputs);
           }
         } else if (process.platform === "win32") {
+          // Modern ffmpeg (v5+) no longer uses section headers like "DirectShow audio devices".
+          // Each device is now a log line: [in#0 @ addr] "Device Name" (type)
+          // followed by:                   [in#0 @ addr]   Alternative name "@device_cm_..."
+          // We collect devices whose type annotation is (audio) and ignore (video) and (none).
           const lines = output.split("\n");
-          let inAudioInput = false;
-          let inAudioOutput = false;
-          let lastDeviceName = "";
+          let pendingAudioName = "";
           lines.forEach(line => {
-            const lowerLine = line.toLowerCase();
-            if (lowerLine.includes("directshow audio devices")) {
-              inAudioInput = true;
-              inAudioOutput = false;
-            } else if (lowerLine.includes("directshow audio renderers")) {
-              inAudioInput = false;
-              inAudioOutput = true;
-            } else if (lowerLine.includes("directshow video devices")) {
-              inAudioInput = false;
-              inAudioOutput = false;
+            // Device entry line: ] "Name" (type)
+            const deviceMatch = line.match(/\] "([^"]+)" \((\w+)\)/);
+            if (deviceMatch) {
+              const name = deviceMatch[1];
+              const type = deviceMatch[2];
+              pendingAudioName = type === "audio" ? name : "";
+              return;
             }
-
-            if (inAudioInput || inAudioOutput) {
-              if (line.includes("Alternative name") && lastDeviceName) {
-                const match = line.match(/Alternative name "([^"]+)"/);
-                if (match) {
-                  const altName = match[1];
-                  if (inAudioInput) inputs.push({ name: lastDeviceName, altName });
-                  if (inAudioOutput) outputs.push({ name: lastDeviceName, altName });
-                  lastDeviceName = "";
-                }
-              } else if (line.includes("\"")) {
-                const match = line.match(/"([^"]+)"/);
-                if (match) {
-                  lastDeviceName = match[1];
-                }
-              }
+            // Alternative name line — confirms the device is valid; add it to both lists
+            if (line.includes("Alternative name") && pendingAudioName) {
+              const altMatch = line.match(/Alternative name "([^"]+)"/);
+              const altName = altMatch ? altMatch[1] : pendingAudioName;
+              inputs.push({ name: pendingAudioName, altName });
+              outputs.push({ name: pendingAudioName, altName });
+              pendingAudioName = "";
             }
           });
         } else if (process.platform === "darwin") {
