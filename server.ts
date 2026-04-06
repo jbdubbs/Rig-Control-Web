@@ -502,20 +502,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   const listAudioDevices = (): Promise<{ inputs: string[], outputs: string[], error?: string }> => {
     return new Promise(async (resolve) => {
-      // In Electron mode, use the renderer's enumerateDevices instead of spawning ffmpeg
-      if (process.versions.electron && electronWin && process.platform === 'win32') {
-        try {
-          const devices = await electronWin.webContents.executeJavaScript(`
-            navigator.mediaDevices.enumerateDevices().then(d => d.map(x => ({kind: x.kind, label: x.label, deviceId: x.deviceId})))
-          `);
-          const inputs = devices.filter((d: any) => d.kind === 'audioinput').map((d: any) => d.label);
-          const outputs = devices.filter((d: any) => d.kind === 'audiooutput').map((d: any) => d.label);
-          return resolve({ inputs, outputs });
-        } catch (e) {
-          console.error("[AUDIO] Failed to enumerate devices via Electron:", e);
-        }
-      }
-
       const ffmpegPath = getFfmpegPath();
       let cmd = "";
       if (process.platform === "linux") {
@@ -789,7 +775,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         let inboundArgs: string[] = [];
         if (process.platform === "win32") {
           inputFormat = "dshow";
-          inputDevice = `audio="${audioSettings.inputDevice}"`;
+          inputDevice = `audio=${audioSettings.inputDevice}`;
           inboundArgs = [
             "-f", inputFormat,
             "-audio_buffer_size", "20",
@@ -922,14 +908,15 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         let outputFormat = "";
         let outboundArgs: string[] = [];
         if (process.platform === "win32") {
-          outputFormat = "wasapi";
+          outputFormat = "mediafoundation";
           outboundArgs = [
             "-f", "mulaw",
             "-ac", "1",
             "-ar", "8000",
             "-i", "pipe:0",
             "-f", outputFormat,
-            `"${audioSettings.outputDevice}"`
+            "-device_name", audioSettings.outputDevice,
+            ""
           ];
         } else if (process.platform === "darwin") {
           outputFormat = "avfoundation";
