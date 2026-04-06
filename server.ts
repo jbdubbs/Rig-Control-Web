@@ -503,7 +503,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const listAudioDevices = (): Promise<{ inputs: string[], outputs: string[], error?: string }> => {
     return new Promise(async (resolve) => {
       // In Electron mode, use the renderer's enumerateDevices instead of spawning ffmpeg
-      if (process.versions.electron && electronWin) {
+      if (process.versions.electron && electronWin && process.platform === 'win32') {
         try {
           const devices = await electronWin.webContents.executeJavaScript(`
             navigator.mediaDevices.enumerateDevices().then(d => d.map(x => ({kind: x.kind, label: x.label, deviceId: x.deviceId})))
