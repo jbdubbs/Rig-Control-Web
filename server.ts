@@ -1764,9 +1764,16 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("update-audio-settings", (settings: any) => {
       console.log("[AUDIO] Updating audio settings:", settings);
+      const wasPlaying = audioStatus === "playing";
       audioSettings = { ...audioSettings, ...settings };
       saveSettings();
       io.emit("settings-data", { audioSettings });
+      // If audio is running and the device changed, restart with the new device.
+      // Without this, the old pacat process keeps the old device open and the
+      // new selection has no effect until the user manually stops and restarts.
+      if (wasPlaying) {
+        startAudio();
+      }
     });
 
     socket.on("control-audio", (action: "start" | "stop") => {
@@ -1798,11 +1805,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("audio-outbound", (data: Buffer) => {
-      if (outboundAudioProcess?.stdin && !outboundAudioProcess.stdin.writableNeedDrain) {
+      if (!outboundAudioProcess || !outboundAudioProcess.stdin) return;
+      if (outboundAudioProcess.stdin.destroyed || outboundAudioProcess.stdin.writableEnded) return;
+      if (outboundAudioProcess.stdin.writableNeedDrain) return;
+      try {
         outboundAudioProcess.stdin.write(data);
+      } catch (e) {
+        // Pipe already closed — drop the frame silently
       }
-      // If writableNeedDrain is set the pipe is congested — drop this frame.
-      // For real-time audio, silence is always preferable to a growing queue.
     });
 
     socket.on("update-video-settings", (settings: any) => {
