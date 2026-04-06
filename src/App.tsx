@@ -1015,18 +1015,16 @@ export default function App() {
 
       if (byteLength === 0) return;
 
-      // ulaw decode: each byte is one 8kHz sample
       const ulawData = new Uint8Array(bufferData, byteOffset, byteLength);
       const float32Data = new Float32Array(ulawData.length);
       for (let i = 0; i < ulawData.length; i++) {
-        // Standard G.711 u-law expansion
-        const u = ~ulawData[i];
-        const sign = u & 0x80;
-        const exponent = (u >> 4) & 0x07;
-        const mantissa = u & 0x0F;
-        let sample = ((mantissa << 1) + 33) << exponent;
-        sample -= 33;
-        float32Data[i] = (sign ? -sample : sample) / 32768.0;
+        const byte = (~ulawData[i]) & 0xFF;
+        const sign = byte & 0x80;
+        const exp = (byte >> 4) & 0x07;
+        const man = byte & 0x0F;
+        let sample = ((man << 1) + 33) << (exp + 2);
+        sample -= 0x84;
+        float32Data[i] = ((sign !== 0) ? -sample : sample) / 32768.0;
       }
 
       const buffer = ctx.createBuffer(1, float32Data.length, 8000);
@@ -1135,24 +1133,21 @@ export default function App() {
       
       micNode.port.onmessage = (e) => {
         if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;
-        
         const inputData = e.data;
-        if (Math.random() < 0.01) console.log("[AUDIO] Sending outbound chunk, active client:", activeMicClientId, "my id:", socket?.id);
         const ulawData = new Uint8Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
-          // Standard G.711 u-law compression
-          let sample = Math.max(-1, Math.min(1, inputData[i]));
-          const sign = sample < 0 ? 0x80 : 0;
-          if (sign) sample = -sample;
-          sample = Math.min(sample * 32768, 32635);
-          sample += 33;
+          const CLIP = 32635;
+          let sample = Math.round(Math.max(-1, Math.min(1, inputData[i])) * 32767);
+          let sign = (sample >> 8) & 0x80;
+          if (sign !== 0) sample = -sample;
+          if (sample > CLIP) sample = CLIP;
+          sample += 0x84;
           let exponent = 7;
-          for (let exp = 7; exp >= 0; exp--) {
-            if (sample >= (1 << (exp + 4))) { exponent = exp; break; }
-            if (exp === 0) exponent = 0;
+          for (let expMask = 0x4000; exponent > 0; exponent--, expMask >>= 1) {
+            if ((sample & expMask) !== 0) break;
           }
           const mantissa = (sample >> (exponent + 3)) & 0x0F;
-          ulawData[i] = ~(sign | (exponent << 4) | mantissa) & 0xFF;
+          ulawData[i] = (~(sign | (exponent << 4) | mantissa)) & 0xFF;
         }
         socket?.emit("audio-outbound", ulawData.buffer);
       };
