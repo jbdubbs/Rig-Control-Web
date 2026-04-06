@@ -7,7 +7,7 @@ import { spawn, ChildProcess, exec } from "child_process";
 import fs from "fs";
 import { EventEmitter } from "events";
 
-export async function startServer(appPath?: string, userDataPath?: string) {
+export async function startServer(appPath?: string, userDataPath?: string, electronWin?: any) {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
@@ -496,7 +496,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   };
 
   const listAudioDevices = (): Promise<{ inputs: string[], outputs: string[], error?: string }> => {
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
+      if (process.versions.electron && electronWin) {
+        try {
+          const devices = await electronWin.webContents.executeJavaScript(
+            `navigator.mediaDevices.enumerateDevices().then(d => d.map(x => ({kind: x.kind, label: x.label, deviceId: x.deviceId})))`
+          );
+          const inputs = devices.filter((d: any) => d.kind === 'audioinput').map((d: any) => d.label);
+          const outputs = devices.filter((d: any) => d.kind === 'audiooutput').map((d: any) => d.label);
+          return resolve({ inputs, outputs });
+        } catch (e) {
+          console.error("[AUDIO] Failed to enumerate devices via Electron:", e);
+        }
+      }
       const ffmpegPath = getFfmpegPath();
       let cmd = "";
       if (process.platform === "linux") {
@@ -728,8 +740,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           // Workaround for bundled FFmpeg missing ALSA support: use arecord directly
           const arecordArgs = [
             "-D", inputDevice,
-            "-f", "S16_LE",
-            "-r", "16000",
+            "-f", "MU_LAW",
+            "-r", "8000",
             "-c", "1",
             "-t", "raw",
             "--buffer-size=1024"
@@ -776,16 +788,13 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
         const inboundArgs = [
           "-f", inputFormat,
-          "-thread_queue_size", "1024",
-          "-ar", "16000",
-          "-ac", "1",
+          ...(process.platform === "win32" ? ["-audio_buffer_size", "20"] : []),
           "-i", inputDevice,
-          "-fflags", "nobuffer",
-          "-probesize", "32",
-          "-analyzeduration", "0",
-          "-f", "s16le",
+          "-ar", "8000",
           "-ac", "1",
-          "-ar", "16000",
+          "-f", "mulaw",
+          "-fflags", "nobuffer",
+          "-flags", "low_delay",
           "pipe:1"
         ];
 
@@ -867,8 +876,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           // Workaround for bundled FFmpeg missing ALSA support: use aplay directly
           const aplayArgs = [
             "-D", outputDevice,
-            "-f", "S16_LE",
-            "-r", "16000",
+            "-f", "MU_LAW",
+            "-r", "8000",
             "-c", "1",
             "-t", "raw",
             "--buffer-size=1024"
@@ -891,20 +900,17 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       } else {
         let outputFormat = "";
         if (process.platform === "win32") {
-          outputFormat = "dshow";
-          outputDevice = `audio=${audioSettings.outputDevice}`;
+          outputFormat = "waveout";
+          outputDevice = audioSettings.outputDevice;
         } else if (process.platform === "darwin") {
           outputFormat = "avfoundation";
         }
 
         const outboundArgs = [
-          "-f", "s16le",
+          "-f", "mulaw",
           "-ac", "1",
-          "-ar", "16000",
+          "-ar", "8000",
           "-i", "pipe:0",
-          "-fflags", "nobuffer",
-          "-probesize", "32",
-          "-analyzeduration", "0",
           "-f", outputFormat,
           outputDevice
         ];
