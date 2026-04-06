@@ -500,7 +500,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
   };
 
-  const listAudioDevices = (): Promise<{ inputs: string[], outputs: string[], error?: string }> => {
+  const listAudioDevices = (): Promise<{ inputs: { name: string, altName: string }[], outputs: { name: string, altName: string }[], error?: string }> => {
     return new Promise(async (resolve) => {
       const ffmpegPath = getFfmpegPath();
       let cmd = "";
@@ -517,8 +517,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
       exec(cmd, (err, stdout, stderr) => {
         const output = stdout + stderr;
-        const inputs: string[] = [];
-        const outputs: string[] = [];
+        const inputs: { name: string, altName: string }[] = [];
+        const outputs: { name: string, altName: string }[] = [];
         let error: string | undefined;
 
         if (process.platform === "linux") {
@@ -528,47 +528,29 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const isPactl = output.includes("\t") || lines.some(l => /^\d+\s+/.test(l));
           
           if (isPactl) {
-            let parsingSinks = false;
-            lines.forEach(line => {
-              if (line.includes("List of PLAYBACK Hardware Devices")) {
-                // This means we fell back to aplay -l mid-stream or it's mixed
-                return;
-              }
-              const parts = line.split("\t");
-              if (parts.length >= 2) {
-                const name = parts[1];
-                // Sources are usually inputs, Sinks are outputs
-                // pactl list short sources lists sources
-                // pactl list short sinks lists sinks
-                // We need to know which is which. 
-                // Let's re-run them separately if needed, but for now let's try to parse
-                if (name.includes(".monitor")) {
-                  // Usually monitors are not what we want for primary input
-                  // but we'll include them for now
-                }
-                
-                // In our combined command, we'll just try to guess or use a better approach
-              }
-            });
-            
             // Better approach: run them separately to be sure
             exec("pactl list short sources", (errS, stdoutS) => {
               const inLines = stdoutS.split("\n");
               inLines.forEach(l => {
                 const p = l.split("\t");
-                if (p.length >= 2) inputs.push(`${p[1]} [pulse]`);
+                if (p.length >= 2) {
+                  const name = `${p[1]} [pulse]`;
+                  inputs.push({ name, altName: name });
+                }
               });
               
               exec("pactl list short sinks", (errO, stdoutO) => {
                 const outLines = stdoutO.split("\n");
                 outLines.forEach(l => {
                   const p = l.split("\t");
-                  if (p.length >= 2) outputs.push(`${p[1]} [pulse]`);
+                  if (p.length >= 2) {
+                    const name = `${p[1]} [pulse]`;
+                    outputs.push({ name, altName: name });
+                  }
                 });
                 
                 // If we got nothing from pulse, try ALSA
                 if (inputs.length === 0 && outputs.length === 0) {
-                  // Fallback to ALSA parsing (already implemented below, but we'll just re-run it)
                   exec("arecord -l && aplay -l", (errA, stdoutA) => {
                     parseAlsa(stdoutA, inputs, outputs);
                     resolve({ inputs, outputs });
@@ -585,16 +567,23 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         } else if (process.platform === "win32") {
           const lines = output.split("\n");
           let inAudio = false;
+          let lastDeviceName = "";
           lines.forEach(line => {
             const lowerLine = line.toLowerCase();
             if (lowerLine.includes("directshow audio devices")) inAudio = true;
-            if (inAudio && line.includes("\"")) {
-              const match = line.match(/"([^"]+)"/);
-              if (match) {
-                const deviceName = match[1];
-                if (!deviceName.startsWith("@device_pnp_")) {
-                  inputs.push(deviceName);
-                  outputs.push(deviceName); // In dshow, audio devices are often listed once but can be both
+            if (inAudio) {
+              if (line.includes("\"")) {
+                const match = line.match(/"([^"]+)"/);
+                if (match) {
+                  lastDeviceName = match[1];
+                }
+              } else if (line.includes("Alternative name") && lastDeviceName) {
+                const match = line.match(/Alternative name "([^"]+)"/);
+                if (match) {
+                  const altName = match[1];
+                  inputs.push({ name: lastDeviceName, altName });
+                  outputs.push({ name: lastDeviceName, altName });
+                  lastDeviceName = "";
                 }
               }
             }
@@ -608,8 +597,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
               const parts = line.split("]");
               if (parts.length > 1) {
                 const deviceName = parts[1].trim();
-                inputs.push(deviceName);
-                outputs.push(deviceName);
+                inputs.push({ name: deviceName, altName: deviceName });
+                outputs.push({ name: deviceName, altName: deviceName });
               }
             }
           });
@@ -634,7 +623,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     io.emit("audio-status", audioStatus);
   };
 
-  const parseAlsa = (output: string, inputs: string[], outputs: string[]) => {
+  const parseAlsa = (output: string, inputs: any[], outputs: any[]) => {
     const combinedLines = output.split("\n");
     let parsingOutputs = false;
     
@@ -655,9 +644,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const displayName = `${cardName}: ${deviceName} [${hwId}]`;
           
           if (parsingOutputs) {
-            outputs.push(displayName);
+            outputs.push({ name: displayName, altName: displayName });
           } else {
-            inputs.push(displayName);
+            inputs.push({ name: displayName, altName: displayName });
           }
         }
       }
@@ -775,7 +764,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         let inboundArgs: string[] = [];
         if (process.platform === "win32") {
           inputFormat = "dshow";
-          inputDevice = `audio=${audioSettings.inputDevice}`;
+          inputDevice = `audio="${audioSettings.inputDevice}"`;
           inboundArgs = [
             "-f", inputFormat,
             "-audio_buffer_size", "20",
@@ -908,15 +897,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         let outputFormat = "";
         let outboundArgs: string[] = [];
         if (process.platform === "win32") {
-          outputFormat = "mediafoundation";
+          outputFormat = "sdl"; // Using sdl for output as dshow is input-only and wasapi is missing
           outboundArgs = [
             "-f", "mulaw",
             "-ac", "1",
             "-ar", "8000",
             "-i", "pipe:0",
             "-f", outputFormat,
-            "-device_name", audioSettings.outputDevice,
-            ""
+            `audio="${audioSettings.outputDevice}"`
           ];
         } else if (process.platform === "darwin") {
           outputFormat = "avfoundation";

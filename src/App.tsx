@@ -188,7 +188,7 @@ export default function App() {
 
   const [activeMicClientId, setActiveMicClientId] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<"playing" | "stopped">("stopped");
-  const [audioDevices, setAudioDevices] = useState<{ inputs: string[], outputs: string[] }>({ inputs: [], outputs: [] });
+  const [audioDevices, setAudioDevices] = useState<{ inputs: { name: string, altName: string }[], outputs: { name: string, altName: string }[] }>({ inputs: [], outputs: [] });
   const [audioSettings, setAudioSettings] = useState({
     inputDevice: "",
     outputDevice: "",
@@ -416,7 +416,7 @@ export default function App() {
       socket.on("mic-mute-forced", () => {
         setOutboundMuted(true);
       });
-      socket.on("audio-devices-list", (devices: { inputs: string[], outputs: string[] }) => {
+      socket.on("audio-devices-list", (devices: { inputs: { name: string, altName: string }[], outputs: { name: string, altName: string }[] }) => {
         setAudioDevices(devices);
       });
       socket.on("video-error", (msg: string) => {
@@ -3761,7 +3761,7 @@ export default function App() {
                       className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
                     >
                       <option value="">Select Backend Input</option>
-                      {audioDevices.inputs.map(d => <option key={d} value={d}>{d}</option>)}
+                      {audioDevices.inputs.map(d => <option key={d.altName} value={d.altName}>{d.name}</option>)}
                     </select>
                   </div>
 
@@ -3798,7 +3798,7 @@ export default function App() {
                       className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
                     >
                       <option value="">Select Backend Output</option>
-                      {audioDevices.outputs.map(d => <option key={d} value={d}>{d}</option>)}
+                      {audioDevices.outputs.map(d => <option key={d.altName} value={d.altName}>{d.name}</option>)}
                     </select>
                   </div>
 
