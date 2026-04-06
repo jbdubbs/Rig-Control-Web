@@ -566,24 +566,35 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           }
         } else if (process.platform === "win32") {
           const lines = output.split("\n");
-          let inAudio = false;
+          let inAudioInput = false;
+          let inAudioOutput = false;
           let lastDeviceName = "";
           lines.forEach(line => {
             const lowerLine = line.toLowerCase();
-            if (lowerLine.includes("directshow audio devices")) inAudio = true;
-            if (inAudio) {
-              if (line.includes("\"")) {
-                const match = line.match(/"([^"]+)"/);
-                if (match) {
-                  lastDeviceName = match[1];
-                }
-              } else if (line.includes("Alternative name") && lastDeviceName) {
+            if (lowerLine.includes("directshow audio devices")) {
+              inAudioInput = true;
+              inAudioOutput = false;
+            } else if (lowerLine.includes("directshow audio renderers")) {
+              inAudioInput = false;
+              inAudioOutput = true;
+            } else if (lowerLine.includes("directshow video devices")) {
+              inAudioInput = false;
+              inAudioOutput = false;
+            }
+
+            if (inAudioInput || inAudioOutput) {
+              if (line.includes("Alternative name") && lastDeviceName) {
                 const match = line.match(/Alternative name "([^"]+)"/);
                 if (match) {
                   const altName = match[1];
-                  inputs.push({ name: lastDeviceName, altName });
-                  outputs.push({ name: lastDeviceName, altName });
+                  if (inAudioInput) inputs.push({ name: lastDeviceName, altName });
+                  if (inAudioOutput) outputs.push({ name: lastDeviceName, altName });
                   lastDeviceName = "";
+                }
+              } else if (line.includes("\"")) {
+                const match = line.match(/"([^"]+)"/);
+                if (match) {
+                  lastDeviceName = match[1];
                 }
               }
             }
