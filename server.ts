@@ -921,6 +921,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           // On Windows, audio is routed through Electron renderer via IPC
           // instead of a backend subprocess.
           console.log("[AUDIO-OUT] Windows: Outbound audio will be routed via IPC.");
+          return;
         } else if (process.platform === "darwin") {
           outputFormat = "avfoundation";
           outboundArgs = [
