@@ -14,7 +14,10 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - [x] Implement split VFO mode functionality (UI, backend, visual feedback).
 - [x] Optimize multi-window connection stability.
 - [x] Stabilize video streaming session management.
-- [x] Increment app version to 03.31.2026-Alpha1.
+- [x] Increment app version to 04.05.2026-Alpha2.
+- [x] Implement Opus audio decoding for inbound audio (rig -> client).
+- [x] Implement Opus audio encoding for outbound audio (client -> rig).
+- [x] Add server-side FFmpeg-based Opus encoding/decoding.
 - [x] Implement client-side local audio device selection (input/output).
 - [x] Fix "white screen" crash in non-secure browser contexts.
 - [x] Implement "last-interacted-wins" policy for multi-client microphone recording.
@@ -42,6 +45,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 | PulseAudio Integration | Switched Linux backend to use `pactl`/`pacat` when available, providing a robust abstraction over ALSA and fixing "Device busy" errors. | 2026-04-02 |
 | Last-Interacted-Wins | Implemented a policy where only the most recently interacted-with window can record mic audio, preventing multi-client audio collisions. | 2026-04-02 |
 | Audio Latency Opt | Reduced sample rate to 16kHz, switched to AudioWorklet, implemented jitter buffering, and tuned Socket.io/FFmpeg for near real-time performance. | 2026-04-02 |
+| Opus Audio Codec | Implemented Opus encoding/decoding for both inbound and outbound audio using FFmpeg on the server and WebCodecs on the client, significantly reducing bandwidth while maintaining quality. | 2026-04-05 |
 
 ## Known Issues / Tech Debt
 - `rigctld` path is assumed to be in the system PATH.
@@ -71,5 +75,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 > [2026-04-02 19:20 UTC] Added "last-interacted-wins" policy for microphone recording. This prevents multiple windows from sending audio simultaneously, ensuring only the active window's mic is routed to the server.
 
 > [2026-04-02 19:40 UTC] Optimized audio latency across the entire stack. Switched to 16kHz sample rate, implemented `AudioWorklet` for mic capture, added jitter buffering for playback, and disabled Socket.io compression to achieve near real-time performance.
+
+> [2026-04-05 18:10 UTC] Implemented Opus audio codec for bi-directional communication. The server now uses FFmpeg to encode/decode Opus, and the client uses the WebCodecs API for low-latency, high-quality audio at 16kbps. This significantly improves performance on bandwidth-constrained connections.
 
 > **Next Step**: Implement the test-driven development framework and write unit tests for the new modules and components.

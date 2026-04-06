@@ -975,10 +975,10 @@ export default function App() {
     try {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
-          sampleRate: 16000,
+          sampleRate: 8000,
           latencyHint: 'interactive'
         });
-        console.log("[AUDIO] Initialized AudioContext at 16000Hz");
+        console.log("[AUDIO] Initialized AudioContext at 8000Hz");
         
         // Apply local output device if supported
         if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (audioContextRef.current as any).setSinkId === 'function') {
@@ -1015,21 +1015,21 @@ export default function App() {
 
       if (byteLength === 0) return;
 
-      // Ensure byteOffset is a multiple of 2 for Int16Array
-      if (byteOffset % 2 !== 0) {
-        // If not aligned, we need to copy the data to a new aligned buffer
-        const alignedData = new Uint8Array(data);
-        bufferData = alignedData.buffer;
-        byteOffset = alignedData.byteOffset;
+      // ulaw decode: each byte is one 8kHz sample
+      const ulawData = new Uint8Array(bufferData, byteOffset, byteLength);
+      const float32Data = new Float32Array(ulawData.length);
+      for (let i = 0; i < ulawData.length; i++) {
+        // Standard G.711 u-law expansion
+        const u = ~ulawData[i];
+        const sign = u & 0x80;
+        const exponent = (u >> 4) & 0x07;
+        const mantissa = u & 0x0F;
+        let sample = ((mantissa << 1) + 33) << exponent;
+        sample -= 33;
+        float32Data[i] = (sign ? -sample : sample) / 32768.0;
       }
 
-      const int16Data = new Int16Array(bufferData, byteOffset, byteLength / 2);
-      const float32Data = new Float32Array(int16Data.length);
-      for (let i = 0; i < int16Data.length; i++) {
-        float32Data[i] = int16Data[i] / 32768.0;
-      }
-
-      const buffer = ctx.createBuffer(1, float32Data.length, 16000);
+      const buffer = ctx.createBuffer(1, float32Data.length, 8000);
       buffer.getChannelData(0).set(float32Data);
 
       const source = ctx.createBufferSource();
@@ -1045,7 +1045,7 @@ export default function App() {
   const handleStartAudio = async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
-        sampleRate: 16000,
+        sampleRate: 8000,
         latencyHint: 'interactive'
       });
     }
@@ -1087,7 +1087,7 @@ export default function App() {
       }
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
-          sampleRate: 16000,
+          sampleRate: 8000,
           latencyHint: 'interactive'
         });
       }
@@ -1138,11 +1138,23 @@ export default function App() {
         
         const inputData = e.data;
         if (Math.random() < 0.01) console.log("[AUDIO] Sending outbound chunk, active client:", activeMicClientId, "my id:", socket?.id);
-        const int16Data = new Int16Array(inputData.length);
+        const ulawData = new Uint8Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
-          int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
+          // Standard G.711 u-law compression
+          let sample = Math.max(-1, Math.min(1, inputData[i]));
+          const sign = sample < 0 ? 0x80 : 0;
+          if (sign) sample = -sample;
+          sample = Math.min(sample * 32768, 32635);
+          sample += 33;
+          let exponent = 7;
+          for (let exp = 7; exp >= 0; exp--) {
+            if (sample >= (1 << (exp + 4))) { exponent = exp; break; }
+            if (exp === 0) exponent = 0;
+          }
+          const mantissa = (sample >> (exponent + 3)) & 0x0F;
+          ulawData[i] = ~(sign | (exponent << 4) | mantissa) & 0xFF;
         }
-        socket?.emit("audio-outbound", int16Data.buffer);
+        socket?.emit("audio-outbound", ulawData.buffer);
       };
 
       source.connect(micNode);

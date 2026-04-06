@@ -687,8 +687,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const pacatArgs = [
             "--record",
             "--device", pulseDevice,
-            "--format", "s16le",
-            "--rate", "16000",
+            "--format", "ulaw",
+            "--rate", "8000",
             "--channels", "1",
             "--raw",
             "--latency-msec=20",
@@ -842,8 +842,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           const pacatArgs = [
             "--playback",
             "--device", pulseDevice,
-            "--format", "s16le",
-            "--rate", "16000",
+            "--format", "ulaw",
+            "--rate", "8000",
             "--channels", "1",
             "--raw",
             "--latency-msec=100",
