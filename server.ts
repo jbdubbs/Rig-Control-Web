@@ -740,8 +740,8 @@ export async function startServer(appPath?: string, userDataPath?: string, elect
           // Workaround for bundled FFmpeg missing ALSA support: use arecord directly
           const arecordArgs = [
             "-D", inputDevice,
-            "-f", "MU_LAW",
-            "-r", "8000",
+            "-f", "S16_LE",
+            "-r", "16000",
             "-c", "1",
             "-t", "raw",
             "--buffer-size=1024"
@@ -876,8 +876,8 @@ export async function startServer(appPath?: string, userDataPath?: string, elect
           // Workaround for bundled FFmpeg missing ALSA support: use aplay directly
           const aplayArgs = [
             "-D", outputDevice,
-            "-f", "MU_LAW",
-            "-r", "8000",
+            "-f", "S16_LE",
+            "-r", "16000",
             "-c", "1",
             "-t", "raw",
             "--buffer-size=1024"
