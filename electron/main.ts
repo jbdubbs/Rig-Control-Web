@@ -18,7 +18,7 @@ if (!isDev) {
 }
 console.log(`Electron starting. isDev: ${isDev}, NODE_ENV: ${process.env.NODE_ENV}`);
 
-import { startServer } from '../server.ts';
+import { startServer, setElectronWindow } from '../server.ts';
 
 const windowStatePath = path.join(app.getPath('userData'), 'window-state.json');
 
@@ -68,6 +68,9 @@ async function createWindow() {
     title: "RigControl Web",
     autoHideMenuBar: true,
   });
+
+  // Pass the window reference to the server for device enumeration
+  setElectronWindow(win);
 
   ipcMain.on('resize-window', (event, { width, height }) => {
     const win = BrowserWindow.fromWebContents(event.sender);

@@ -7,6 +7,11 @@ import { spawn, ChildProcess, exec } from "child_process";
 import fs from "fs";
 import { EventEmitter } from "events";
 
+let electronWin: any = null;
+export function setElectronWindow(win: any) {
+  electronWin = win;
+}
+
 export async function startServer(appPath?: string, userDataPath?: string) {
   const app = express();
   const httpServer = createServer(app);
@@ -496,7 +501,21 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   };
 
   const listAudioDevices = (): Promise<{ inputs: string[], outputs: string[], error?: string }> => {
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
+      // In Electron mode, use the renderer's enumerateDevices instead of spawning ffmpeg
+      if (process.versions.electron && electronWin) {
+        try {
+          const devices = await electronWin.webContents.executeJavaScript(`
+            navigator.mediaDevices.enumerateDevices().then(d => d.map(x => ({kind: x.kind, label: x.label, deviceId: x.deviceId})))
+          `);
+          const inputs = devices.filter((d: any) => d.kind === 'audioinput').map((d: any) => d.label);
+          const outputs = devices.filter((d: any) => d.kind === 'audiooutput').map((d: any) => d.label);
+          return resolve({ inputs, outputs });
+        } catch (e) {
+          console.error("[AUDIO] Failed to enumerate devices via Electron:", e);
+        }
+      }
+
       const ffmpegPath = getFfmpegPath();
       let cmd = "";
       if (process.platform === "linux") {
@@ -767,27 +786,38 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         }
       } else {
         let inputFormat = "";
+        let inboundArgs: string[] = [];
         if (process.platform === "win32") {
           inputFormat = "dshow";
           inputDevice = `audio=${audioSettings.inputDevice}`;
+          inboundArgs = [
+            "-f", inputFormat,
+            "-audio_buffer_size", "20",
+            "-i", inputDevice,
+            "-ar", "8000",
+            "-ac", "1",
+            "-f", "mulaw",
+            "-fflags", "nobuffer",
+            "-flags", "low_delay",
+            "pipe:1"
+          ];
         } else if (process.platform === "darwin") {
           inputFormat = "avfoundation";
+          inboundArgs = [
+            "-f", inputFormat,
+            "-thread_queue_size", "1024",
+            "-ar", "16000",
+            "-ac", "1",
+            "-i", inputDevice,
+            "-fflags", "nobuffer",
+            "-probesize", "32",
+            "-analyzeduration", "0",
+            "-f", "s16le",
+            "-ac", "1",
+            "-ar", "16000",
+            "pipe:1"
+          ];
         }
-
-        const inboundArgs = [
-          "-f", inputFormat,
-          "-thread_queue_size", "1024",
-          "-ar", "16000",
-          "-ac", "1",
-          "-i", inputDevice,
-          "-fflags", "nobuffer",
-          "-probesize", "32",
-          "-analyzeduration", "0",
-          "-f", "s16le",
-          "-ac", "1",
-          "-ar", "16000",
-          "pipe:1"
-        ];
 
         const ffmpegPath = getFfmpegPath();
         console.log(`[AUDIO-IN] Spawning FFmpeg: ${ffmpegPath} ${inboundArgs.join(" ")}`);
@@ -890,24 +920,34 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         }
       } else {
         let outputFormat = "";
+        let outboundArgs: string[] = [];
         if (process.platform === "win32") {
-          outputFormat = "dshow";
-          outputDevice = `audio=${audioSettings.outputDevice}`;
+          outputFormat = "waveout";
+          // waveout takes the device name directly without audio= prefix
+          outputDevice = audioSettings.outputDevice;
+          outboundArgs = [
+            "-f", "mulaw",
+            "-ac", "1",
+            "-ar", "8000",
+            "-i", "pipe:0",
+            "-fflags", "nobuffer",
+            "-f", outputFormat,
+            outputDevice
+          ];
         } else if (process.platform === "darwin") {
           outputFormat = "avfoundation";
+          outboundArgs = [
+            "-f", "s16le",
+            "-ac", "1",
+            "-ar", "16000",
+            "-i", "pipe:0",
+            "-fflags", "nobuffer",
+            "-probesize", "32",
+            "-analyzeduration", "0",
+            "-f", outputFormat,
+            outputDevice
+          ];
         }
-
-        const outboundArgs = [
-          "-f", "s16le",
-          "-ac", "1",
-          "-ar", "16000",
-          "-i", "pipe:0",
-          "-fflags", "nobuffer",
-          "-probesize", "32",
-          "-analyzeduration", "0",
-          "-f", outputFormat,
-          outputDevice
-        ];
 
         const ffmpegPath = getFfmpegPath();
         console.log(`[AUDIO-OUT] Spawning FFmpeg: ${ffmpegPath} ${outboundArgs.join(" ")}`);
