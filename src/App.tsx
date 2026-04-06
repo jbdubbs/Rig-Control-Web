@@ -959,6 +959,15 @@ export default function App() {
       socket.off("audio-inbound", handler);
     };
   }, [socket]);
+  
+  useEffect(() => {
+    if (!(window as any).electron?.onOutboundAudio) return;
+    (window as any).electron.onOutboundAudio((data: Uint8Array) => {
+      if (audioStatusRef.current !== "playing") return;
+      // Reuse the existing ulaw decode + AudioContext path
+      playInboundAudio(data);
+    });
+  }, []);
 
   useEffect(() => {
     const resumeAudio = () => {

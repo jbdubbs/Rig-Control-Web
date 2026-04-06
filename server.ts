@@ -515,7 +515,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
       if (!cmd) return resolve({ inputs: [], outputs: [] });
 
-      exec(cmd, (err, stdout, stderr) => {
+      exec(cmd, async (err, stdout, stderr) => {
         const output = stdout + stderr;
         const inputs: { name: string, altName: string }[] = [];
         const outputs: { name: string, altName: string }[] = [];
@@ -589,6 +589,26 @@ export async function startServer(appPath?: string, userDataPath?: string) {
               pendingAudioName = "";
             }
           });
+
+          // For outputs, use enumerateDevices() to get Chromium deviceIds for setSinkId
+          if (electronWin && !electronWin.isDestroyed()) {
+            try {
+              const enumDevices = await electronWin.webContents.executeJavaScript(`
+                navigator.mediaDevices.enumerateDevices().then(d =>
+                  d.filter(x => x.kind === 'audiooutput')
+                   .map(x => ({ name: x.label, altName: x.deviceId }))
+                )
+              `);
+              outputs.length = 0;
+              for (const d of enumDevices) {
+                if (d.altName && d.altName !== 'default' && d.altName !== 'communications') {
+                  outputs.push({ name: d.name, altName: d.altName });
+                }
+              }
+            } catch (e) {
+              console.error("[AUDIO] Failed to enumerate output devices via Electron:", e);
+            }
+          }
         } else if (process.platform === "darwin") {
           const lines = output.split("\n");
           let inAudio = false;
@@ -765,7 +785,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         let inboundArgs: string[] = [];
         if (process.platform === "win32") {
           inputFormat = "dshow";
-          inputDevice = `audio="${audioSettings.inputDevice}"`;
+          inputDevice = `audio=${audioSettings.inputDevice}`;
           inboundArgs = [
             "-f", inputFormat,
             "-audio_buffer_size", "20",
@@ -898,15 +918,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         let outputFormat = "";
         let outboundArgs: string[] = [];
         if (process.platform === "win32") {
-          outputFormat = "sdl"; // Using sdl for output as dshow is input-only and wasapi is missing
-          outboundArgs = [
-            "-f", "mulaw",
-            "-ac", "1",
-            "-ar", "8000",
-            "-i", "pipe:0",
-            "-f", outputFormat,
-            `audio="${audioSettings.outputDevice}"`
-          ];
+          // On Windows, audio is routed through Electron renderer via IPC
+          // instead of a backend subprocess.
+          console.log("[AUDIO-OUT] Windows: Outbound audio will be routed via IPC.");
         } else if (process.platform === "darwin") {
           outputFormat = "avfoundation";
           outboundArgs = [
@@ -1818,6 +1832,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("audio-outbound", (data: Buffer) => {
+      if (process.platform === "win32" && electronWin && !electronWin.isDestroyed()) {
+        // On Windows there is no viable ffmpeg audio output format.
+        // Route through the Electron renderer's Web Audio API instead,
+        // using the same ulaw decode path that plays inbound audio.
+        electronWin.webContents.send("outbound-audio-data", data);
+        return;
+      }
+      // Linux/macOS: write to pacat/aplay/ffmpeg subprocess stdin
       if (!outboundAudioProcess || !outboundAudioProcess.stdin) return;
       if (outboundAudioProcess.stdin.destroyed || outboundAudioProcess.stdin.writableEnded) return;
       if (outboundAudioProcess.stdin.writableNeedDrain) return;
