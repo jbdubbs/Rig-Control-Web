@@ -42,6 +42,11 @@ function saveWindowState(state: any) {
 }
 
 async function createWindow() {
+  // Start the backend server with the correct app path for static files
+  const appPath = isDev ? process.cwd() : app.getAppPath();
+  const userDataPath = isDev ? process.cwd() : app.getPath('userData');
+  await startServer(appPath, userDataPath);
+
   const savedState = loadWindowState();
   
   // Smallest compact view window size: 768x600
@@ -63,11 +68,6 @@ async function createWindow() {
     title: "RigControl Web",
     autoHideMenuBar: true,
   });
-
-  // Start the backend server with the correct app path for static files
-  const appPath = isDev ? process.cwd() : app.getAppPath();
-  const userDataPath = isDev ? process.cwd() : app.getPath('userData');
-  await startServer(appPath, userDataPath, win);
 
   ipcMain.on('resize-window', (event, { width, height }) => {
     const win = BrowserWindow.fromWebContents(event.sender);
