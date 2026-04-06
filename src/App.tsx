@@ -203,6 +203,8 @@ export default function App() {
   const [inboundMuted, setInboundMuted] = useState(false);
   const [outboundMuted, setOutboundMuted] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const rigOutContextRef = useRef<AudioContext | null>(null);
+  const rigOutNextStartRef = useRef(0);
   const micStreamRef = useRef<MediaStream | null>(null);
   const micNodeRef = useRef<AudioWorkletNode | null>(null);
   const nextStartTimeRef = useRef(0);
@@ -409,6 +411,11 @@ export default function App() {
       });
       socket.on("audio-status", (status: "playing" | "stopped") => {
         setAudioStatus(status);
+        if (status === "stopped" && rigOutContextRef.current) {
+          rigOutContextRef.current.close().catch(() => {});
+          rigOutContextRef.current = null;
+          rigOutNextStartRef.current = 0;
+        }
       });
       socket.on("mic-active-client", (id: string | null) => {
         setActiveMicClientId(id);
@@ -964,8 +971,48 @@ export default function App() {
     if (!(window as any).electron?.onOutboundAudio) return;
     (window as any).electron.onOutboundAudio((data: Uint8Array) => {
       if (audioStatusRef.current !== "playing") return;
-      // Reuse the existing ulaw decode + AudioContext path
-      playInboundAudio(data);
+      try {
+        // Use a separate AudioContext pointed at the BACKEND output device
+        // (the rig's USB audio), not the client's local speaker.
+        if (!rigOutContextRef.current) {
+          rigOutContextRef.current = new (window.AudioContext ||
+            (window as any).webkitAudioContext)({ sampleRate: 8000, latencyHint: "interactive" });
+          const rigDeviceId = audioSettingsRef.current.outputDevice;
+          if (rigDeviceId && typeof (rigOutContextRef.current as any).setSinkId === "function") {
+            (rigOutContextRef.current as any).setSinkId(rigDeviceId).catch(console.error);
+          }
+          console.log("[AUDIO-OUT-IPC] Rig output AudioContext initialized, device:",
+            audioSettingsRef.current.outputDevice);
+        }
+        const ctx = rigOutContextRef.current;
+        if (ctx.state === "suspended") ctx.resume().catch(() => {});
+
+        const now = ctx.currentTime;
+        if (rigOutNextStartRef.current < now) rigOutNextStartRef.current = now + 0.02;
+        if (rigOutNextStartRef.current > now + 0.04) return; // drop frame
+
+        // Decode ulaw bytes to float32
+        const float32Data = new Float32Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+          const byte = (~data[i]) & 0xFF;
+          const sign = byte & 0x80;
+          const exp = (byte >> 4) & 0x07;
+          const man = byte & 0x0F;
+          let sample = ((man << 1) + 33) << (exp + 2);
+          sample -= 0x84;
+          float32Data[i] = ((sign !== 0) ? -sample : sample) / 32768.0;
+        }
+
+        const buffer = ctx.createBuffer(1, float32Data.length, 8000);
+        buffer.getChannelData(0).set(float32Data);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(rigOutNextStartRef.current);
+        rigOutNextStartRef.current += buffer.duration;
+      } catch (err) {
+        console.error("[AUDIO-OUT-IPC] Playback error:", err);
+      }
     });
   }, []);
 
