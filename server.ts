@@ -915,16 +915,13 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           });
         }
       } else {
-        let outputFormat = "";
-        let outboundArgs: string[] = [];
         if (process.platform === "win32") {
           // On Windows, audio is routed through Electron renderer via IPC
           // instead of a backend subprocess.
           console.log("[AUDIO-OUT] Windows: Outbound audio will be routed via IPC.");
-          return;
         } else if (process.platform === "darwin") {
-          outputFormat = "avfoundation";
-          outboundArgs = [
+          const outputFormat = "avfoundation";
+          const outboundArgs = [
             "-f", "s16le",
             "-ac", "1",
             "-ar", "16000",
@@ -935,23 +932,23 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             "-f", outputFormat,
             outputDevice
           ];
+
+          const ffmpegPath = getFfmpegPath();
+          console.log(`[AUDIO-OUT] Spawning FFmpeg: ${ffmpegPath} ${outboundArgs.join(" ")}`);
+          outboundAudioProcess = spawn(ffmpegPath, outboundArgs);
+
+          outboundAudioProcess.stderr?.on("data", (data) => {
+            console.log(`[AUDIO-OUT-FFMPEG] ${data.toString()}`);
+          });
+
+          outboundAudioProcess.on("error", (err) => {
+            console.error("[AUDIO-OUT] FFmpeg process error:", err);
+          });
+
+          outboundAudioProcess.on("close", (code) => {
+            console.log(`[AUDIO-OUT] FFmpeg process closed with code ${code}`);
+          });
         }
-
-        const ffmpegPath = getFfmpegPath();
-        console.log(`[AUDIO-OUT] Spawning FFmpeg: ${ffmpegPath} ${outboundArgs.join(" ")}`);
-        outboundAudioProcess = spawn(ffmpegPath, outboundArgs);
-
-        outboundAudioProcess.stderr?.on("data", (data) => {
-          console.log(`[AUDIO-OUT-FFMPEG] ${data.toString()}`);
-        });
-
-        outboundAudioProcess.on("error", (err) => {
-          console.error("[AUDIO-OUT] FFmpeg process error:", err);
-        });
-
-        outboundAudioProcess.on("close", (code) => {
-          console.log(`[AUDIO-OUT] FFmpeg process closed with code ${code}`);
-        });
       }
     }
 
