@@ -46,11 +46,13 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 | Last-Interacted-Wins | Implemented a policy where only the most recently interacted-with window can record mic audio, preventing multi-client audio collisions. | 2026-04-02 |
 | Audio Latency Opt | Reduced sample rate to 16kHz, switched to AudioWorklet, implemented jitter buffering, and tuned Socket.io/FFmpeg for near real-time performance. | 2026-04-02 |
 | Opus Audio Codec | Implemented Opus encoding/decoding for both inbound and outbound audio using FFmpeg on the server and WebCodecs on the client, significantly reducing bandwidth while maintaining quality. | 2026-04-05 |
+| Native Audio Subsystem | Replaced FFmpeg/pacat subprocesses with `naudiodon` and `libopus-node` for robust, cross-platform, low-latency audio I/O and encoding directly within the Node.js process. | 2026-04-09 |
 
 ## Known Issues / Tech Debt
 - `rigctld` path is assumed to be in the system PATH.
 - If `rigctld` is already running outside the app on the same port, the spawned process will fail with an error, which we now catch and display in the log view.
 - Split VFO support depends on the specific radio model configured in `rigctld`.
+- `naudiodon` requires native build tools; it is an optional dependency to prevent build failures in restricted environments.
 
 ## Architecture Notes
 - **Modular Backend**: Extracted logic into `RigctldManager`, `VideoStreamManager`, and `SettingsManager` to separate concerns and allow for easier testing.
@@ -63,9 +65,9 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - **Multi-Window Awareness**: The backend now avoids resetting the rig connection if a new client connects to the same host/port, ensuring stability across multiple tabs.
 - **Video Session Management**: Uses a `sessionId` query parameter to enforce a "last-one-wins" policy per window, preventing resource exhaustion from multiple concurrent streams.
 - **Client Audio Routing**: Uses `getUserMedia` with specific `deviceId` for input and `setSinkId` for output, allowing full control over local audio hardware.
-- **Linux Audio Abstraction**: Prioritizes `pacat` (PulseAudio/Pipewire) with `--latency-msec=20` (inbound) and `--latency-msec=100` (outbound) to ensure low-latency, multi-app compatibility, and stable hardware access while absorbing network jitter.
+- **Native Audio Backend**: Uses `naudiodon` for direct access to host audio devices (ALSA/Pulse/CoreAudio/WASAPI) without spawning external processes, improving reliability and latency.
 - **Multi-Client Mic Policy**: Server tracks `activeAudioClientId` based on client interaction events, enforcing a single-source audio stream to the backend.
-- **Low-Latency Audio Pipeline**: Uses 16kHz mono PCM, `AudioWorklet` for capture, and scheduled playback with a 20ms jitter buffer to minimize lag and pops.
+- **Low-Latency Audio Pipeline**: Uses 48kHz mono Opus encoding via `libopus-node` and WebCodecs, with `AudioWorklet` for capture/playback and a PCM ring buffer for precise frame slicing.
 
 ## Breadcrumbs
 > [2026-04-02 13:00 UTC] Refactored the core codebase into modular files and components. This significantly reduces the size of `server.ts` and `App.tsx`, making the project easier to maintain and test.
@@ -77,5 +79,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 > [2026-04-02 19:40 UTC] Optimized audio latency across the entire stack. Switched to 16kHz sample rate, implemented `AudioWorklet` for mic capture, added jitter buffering for playback, and disabled Socket.io compression to achieve near real-time performance.
 
 > [2026-04-05 18:10 UTC] Implemented Opus audio codec for bi-directional communication. The server now uses FFmpeg to encode/decode Opus, and the client uses the WebCodecs API for low-latency, high-quality audio at 16kbps. This significantly improves performance on bandwidth-constrained connections.
+
+> [2026-04-09 15:30 UTC] Completely redesigned the backend audio subsystem. Replaced brittle FFmpeg/pacat subprocesses with native Node.js addons (`naudiodon` and `libopus-node`). This provides a robust, cross-platform, low-latency audio pipeline operating strictly at 48kHz with precise 20ms Opus frame chunking.
 
 > **Next Step**: Implement the test-driven development framework and write unit tests for the new modules and components.

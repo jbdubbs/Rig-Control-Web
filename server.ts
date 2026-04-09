@@ -113,9 +113,44 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     outboundEnabled: false
   };
   let audioStatus: "playing" | "stopped" = "stopped";
-  let inboundAudioProcess: ChildProcess | null = null;
-  let outboundAudioProcess: ChildProcess | null = null;
   let activeMicClientId: string | null = null;
+  let isAudioEngineReady = false;
+  let audioEngineError: string | null = null;
+
+  // Dynamic imports for audio
+  let portAudio: any = null;
+  let libopus: any = null;
+
+  // Audio pipeline state
+  let audioInputProcess: any = null; // naudiodon AudioIO (capture)
+  let audioOutputProcess: any = null; // naudiodon AudioIO (playback)
+  let opusEncoder: any = null; // libopus-node OpusEncoder
+  let opusDecoder: any = null; // libopus-node OpusEncoder (used for decoding)
+
+  const initAudioEngine = async () => {
+    try {
+      console.log("[AUDIO-INIT] Attempting to load libopus-node...");
+      libopus = await import("libopus-node");
+      console.log("[AUDIO-INIT] libopus-node loaded successfully.");
+      
+      console.log("[AUDIO-INIT] Attempting to load naudiodon...");
+      try {
+        // @ts-ignore
+        portAudio = await import("naudiodon");
+        console.log("[AUDIO-INIT] naudiodon loaded successfully.");
+        isAudioEngineReady = true;
+      } catch (naudioErr: any) {
+        console.error("[AUDIO-INIT] Failed to load naudiodon. Audio I/O will be disabled.", naudioErr.message);
+        audioEngineError = "naudiodon missing (build tools required)";
+      }
+    } catch (err: any) {
+      console.error("[AUDIO-INIT] Failed to load audio engine:", err);
+      audioEngineError = err.message;
+    }
+  };
+
+  // Start audio engine initialization
+  initAudioEngine();
 
   let rigctldSettings = {
     rigNumber: "",
@@ -500,462 +535,137 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
   };
 
-  const listAudioDevices = (): Promise<{ inputs: { name: string, altName: string }[], outputs: { name: string, altName: string }[], error?: string }> => {
-    return new Promise(async (resolve) => {
-      const ffmpegPath = getFfmpegPath();
-      let cmd = "";
-      if (process.platform === "linux") {
-        // Try pactl first for PulseAudio/Pipewire, fallback to arecord/aplay
-        cmd = "pactl list short sources && pactl list short sinks || (arecord -l && aplay -l)";
-      } else if (process.platform === "win32") {
-        cmd = `"${ffmpegPath}" -list_devices true -f dshow -i dummy 2>&1`;
-      } else if (process.platform === "darwin") {
-        cmd = `"${ffmpegPath}" -f avfoundation -list_devices true -i "" 2>&1`;
-      }
-
-      if (!cmd) return resolve({ inputs: [], outputs: [] });
-
-      exec(cmd, async (err, stdout, stderr) => {
-        const output = stdout + stderr;
-        const inputs: { name: string, altName: string }[] = [];
-        const outputs: { name: string, altName: string }[] = [];
-        let error: string | undefined;
-
-        if (process.platform === "linux") {
-          const lines = output.split("\n");
-          
-          // Check if we got pactl output (usually starts with numbers or has tab-separated fields)
-          const isPactl = output.includes("\t") || lines.some(l => /^\d+\s+/.test(l));
-          
-          if (isPactl) {
-            // Better approach: run them separately to be sure
-            exec("pactl list short sources", (errS, stdoutS) => {
-              const inLines = stdoutS.split("\n");
-              inLines.forEach(l => {
-                const p = l.split("\t");
-                if (p.length >= 2) {
-                  const name = `${p[1]} [pulse]`;
-                  inputs.push({ name, altName: name });
-                }
-              });
-              
-              exec("pactl list short sinks", (errO, stdoutO) => {
-                const outLines = stdoutO.split("\n");
-                outLines.forEach(l => {
-                  const p = l.split("\t");
-                  if (p.length >= 2) {
-                    const name = `${p[1]} [pulse]`;
-                    outputs.push({ name, altName: name });
-                  }
-                });
-                
-                // If we got nothing from pulse, try ALSA
-                if (inputs.length === 0 && outputs.length === 0) {
-                  exec("arecord -l && aplay -l", (errA, stdoutA) => {
-                    parseAlsa(stdoutA, inputs, outputs);
-                    resolve({ inputs, outputs });
-                  });
-                } else {
-                  resolve({ inputs, outputs });
-                }
-              });
-            });
-            return;
-          } else {
-            parseAlsa(output, inputs, outputs);
-          }
-        } else if (process.platform === "win32") {
-          // Modern ffmpeg (v5+) no longer uses section headers like "DirectShow audio devices".
-          // Each device is now a log line: [in#0 @ addr] "Device Name" (type)
-          // followed by:                   [in#0 @ addr]   Alternative name "@device_cm_..."
-          // We collect devices whose type annotation is (audio) and ignore (video) and (none).
-          const lines = output.split("\n");
-          let pendingAudioName = "";
-          lines.forEach(line => {
-            // Device entry line: ] "Name" (type)
-            const deviceMatch = line.match(/\] "([^"]+)" \((\w+)\)/);
-            if (deviceMatch) {
-              const name = deviceMatch[1];
-              const type = deviceMatch[2];
-              pendingAudioName = type === "audio" ? name : "";
-              return;
-            }
-            // Alternative name line — confirms the device is valid; add it to both lists
-            if (line.includes("Alternative name") && pendingAudioName) {
-              const altMatch = line.match(/Alternative name "([^"]+)"/);
-              const altName = altMatch ? altMatch[1] : pendingAudioName;
-              inputs.push({ name: pendingAudioName, altName });
-              outputs.push({ name: pendingAudioName, altName });
-              pendingAudioName = "";
-            }
-          });
-
-          // For outputs, use enumerateDevices() to get Chromium deviceIds for setSinkId
-          if (electronWin && !electronWin.isDestroyed()) {
-            try {
-              const enumDevices = await electronWin.webContents.executeJavaScript(`
-                navigator.mediaDevices.enumerateDevices().then(d =>
-                  d.filter(x => x.kind === 'audiooutput')
-                   .map(x => ({ name: x.label, altName: x.deviceId }))
-                )
-              `);
-              outputs.length = 0;
-              for (const d of enumDevices) {
-                if (d.altName && d.altName !== 'default' && d.altName !== 'communications') {
-                  outputs.push({ name: d.name, altName: d.altName });
-                }
-              }
-            } catch (e) {
-              console.error("[AUDIO] Failed to enumerate output devices via Electron:", e);
-            }
-          }
-        } else if (process.platform === "darwin") {
-          const lines = output.split("\n");
-          let inAudio = false;
-          lines.forEach(line => {
-            if (line.includes("AVFoundation audio devices")) inAudio = true;
-            if (inAudio && line.match(/\[\d+\]/)) {
-              const parts = line.split("]");
-              if (parts.length > 1) {
-                const deviceName = parts[1].trim();
-                inputs.push({ name: deviceName, altName: deviceName });
-                outputs.push({ name: deviceName, altName: deviceName });
-              }
-            }
-          });
-        }
-
-        resolve({ inputs, outputs, error });
-      });
-    });
+  const listAudioDevices = async (): Promise<{ inputs: { name: string, altName: string }[], outputs: { name: string, altName: string }[], error?: string }> => {
+    if (!portAudio) {
+      return { inputs: [], outputs: [], error: audioEngineError || "Audio engine not ready" };
+    }
+    try {
+      const devices = portAudio.getDevices();
+      const inputs = devices.filter((d: any) => d.maxInputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString() }));
+      const outputs = devices.filter((d: any) => d.maxOutputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString() }));
+      return { inputs, outputs };
+    } catch (err: any) {
+      console.error("[AUDIO] Failed to list devices:", err);
+      return { inputs: [], outputs: [], error: err.message };
+    }
   };
 
   const stopAudio = () => {
     console.log("[AUDIO] Stopping audio streaming...");
-    if (inboundAudioProcess) {
-      inboundAudioProcess.kill('SIGKILL');
-      inboundAudioProcess = null;
+    if (audioInputProcess) {
+      try { audioInputProcess.quit(); } catch (e) {}
+      audioInputProcess = null;
     }
-    if (outboundAudioProcess) {
-      outboundAudioProcess.kill('SIGKILL');
-      outboundAudioProcess = null;
+    if (audioOutputProcess) {
+      try { audioOutputProcess.quit(); } catch (e) {}
+      audioOutputProcess = null;
     }
+    opusEncoder = null;
+    opusDecoder = null;
     audioStatus = "stopped";
     io.emit("audio-status", audioStatus);
-  };
-
-  const parseAlsa = (output: string, inputs: any[], outputs: any[]) => {
-    const combinedLines = output.split("\n");
-    let parsingOutputs = false;
-    
-    combinedLines.forEach(line => {
-      if (line.includes("List of PLAYBACK Hardware Devices")) {
-        parsingOutputs = true;
-        return;
-      }
-      
-      if (line.startsWith("card")) {
-        const match = line.match(/card (\d+): (.*), device (\d+): (.*)/);
-        if (match) {
-          const cardNum = match[1];
-          const cardName = match[2].trim();
-          const deviceNum = match[3];
-          const deviceName = match[4].trim();
-          const hwId = `hw:${cardNum},${deviceNum}`;
-          const displayName = `${cardName}: ${deviceName} [${hwId}]`;
-          
-          if (parsingOutputs) {
-            outputs.push({ name: displayName, altName: displayName });
-          } else {
-            inputs.push({ name: displayName, altName: displayName });
-          }
-        }
-      }
-    });
   };
 
   const startAudio = () => {
     console.log("[AUDIO] Starting audio streaming...");
     stopAudio();
 
+    if (!isAudioEngineReady) {
+      console.warn("[AUDIO] Cannot start audio: Audio engine is not ready.");
+      return;
+    }
+
     if (!audioSettings.inputDevice && !audioSettings.outputDevice) {
       console.warn("[AUDIO] Cannot start audio: No devices selected.");
       return;
     }
 
-    // Inbound: Backend -> Frontend
+    try {
+      opusEncoder = new libopus.OpusEncoder(48000, 1);
+      opusDecoder = new libopus.OpusEncoder(48000, 1);
+      console.log("[AUDIO] Opus encoder/decoder initialized at 48000Hz Mono.");
+    } catch (err) {
+      console.error("[AUDIO] Failed to initialize Opus:", err);
+      return;
+    }
+
+    // Inbound: Backend -> Frontend (Capture from rig, encode, broadcast)
     if (audioSettings.inputDevice) {
-      let inputDevice = audioSettings.inputDevice;
-      // Extract hw:x,x from "Name [hw:x,x]" if present
-      const hwMatch = inputDevice.match(/\[(hw:\d+,\d+)\]/);
-      if (hwMatch) {
-        inputDevice = hwMatch[1];
-        // Use plughw for better compatibility with different sample rates/channels
-        if (process.platform === "linux") {
-          inputDevice = inputDevice.replace("hw:", "plughw:");
-        }
-      }
-
-      if (process.platform === "linux") {
-        if (inputDevice.includes("[pulse]")) {
-          const pulseDevice = inputDevice.split(" [pulse]")[0];
-          const pacatArgs = [
-            "--record",
-            "--device", pulseDevice,
-            "--format", "ulaw",
-            "--rate", "8000",
-            "--channels", "1",
-            "--raw",
-            "--latency-msec=20",
-            "--process-time-msec=10"
-          ];
-          console.log(`[AUDIO-IN] Spawning pacat: pacat ${pacatArgs.join(" ")}`);
-          inboundAudioProcess = spawn("pacat", pacatArgs);
-          
-          inboundAudioProcess.stdout?.on("data", (data) => {
-            // Don't send inbound audio back to the client currently transmitting —
-            // they're talking, not listening, and it creates an acoustic echo loop
-            // on phone/loudspeaker setups.
-            if (activeMicClientId && lastStatus.ptt) {
-              // Send to everyone except the active mic holder
-              for (const [id, s] of io.sockets.sockets) {
-                if (id !== activeMicClientId) {
-                  s.emit("audio-inbound", data);
-                }
-              }
-            } else {
-              io.emit("audio-inbound", data);
-            }
-          });
-
-          inboundAudioProcess.stderr?.on("data", (data) => {
-            console.log(`[AUDIO-IN-PACAT] ${data.toString()}`);
-          });
-
-          inboundAudioProcess.on("error", (err) => {
-            console.error("[AUDIO-IN] pacat process error:", err);
-          });
-
-          inboundAudioProcess.on("close", (code) => {
-            console.log(`[AUDIO-IN] pacat process closed with code ${code}`);
-          });
-        } else {
-          // Workaround for bundled FFmpeg missing ALSA support: use arecord directly
-          const arecordArgs = [
-            "-D", inputDevice,
-            "-f", "S16_LE",
-            "-r", "16000",
-            "-c", "1",
-            "-t", "raw",
-            "--buffer-size=1024"
-          ];
-          console.log(`[AUDIO-IN] Spawning arecord: arecord ${arecordArgs.join(" ")}`);
-          inboundAudioProcess = spawn("arecord", arecordArgs);
-          
-          inboundAudioProcess.stdout?.on("data", (data) => {
-            // Don't send inbound audio back to the client currently transmitting —
-            // they're talking, not listening, and it creates an acoustic echo loop
-            // on phone/loudspeaker setups.
-            if (activeMicClientId && lastStatus.ptt) {
-              // Send to everyone except the active mic holder
-              for (const [id, s] of io.sockets.sockets) {
-                if (id !== activeMicClientId) {
-                  s.emit("audio-inbound", data);
-                }
-              }
-            } else {
-              io.emit("audio-inbound", data);
-            }
-          });
-
-          inboundAudioProcess.stderr?.on("data", (data) => {
-            console.log(`[AUDIO-IN-ARECORD] ${data.toString()}`);
-          });
-
-          inboundAudioProcess.on("error", (err) => {
-            console.error("[AUDIO-IN] arecord process error:", err);
-          });
-
-          inboundAudioProcess.on("close", (code) => {
-            console.log(`[AUDIO-IN] arecord process closed with code ${code}`);
-          });
-        }
-      } else {
-        let inputFormat = "";
-        let inboundArgs: string[] = [];
-        if (process.platform === "win32") {
-          inputFormat = "dshow";
-          inputDevice = `audio=${audioSettings.inputDevice}`;
-          inboundArgs = [
-            "-f", inputFormat,
-            "-audio_buffer_size", "20",
-            "-i", inputDevice,
-            "-ar", "8000",
-            "-ac", "1",
-            "-f", "mulaw",
-            "-fflags", "nobuffer",
-            "-flags", "low_delay",
-            "pipe:1"
-          ];
-        } else if (process.platform === "darwin") {
-          inputFormat = "avfoundation";
-          inboundArgs = [
-            "-f", inputFormat,
-            "-thread_queue_size", "1024",
-            "-ar", "16000",
-            "-ac", "1",
-            "-i", inputDevice,
-            "-fflags", "nobuffer",
-            "-probesize", "32",
-            "-analyzeduration", "0",
-            "-f", "s16le",
-            "-ac", "1",
-            "-ar", "16000",
-            "pipe:1"
-          ];
-        }
-
-        const ffmpegPath = getFfmpegPath();
-        console.log(`[AUDIO-IN] Spawning FFmpeg: ${ffmpegPath} ${inboundArgs.join(" ")}`);
-        inboundAudioProcess = spawn(ffmpegPath, inboundArgs);
-        
-        inboundAudioProcess.stdout?.on("data", (data) => {
-          // Don't send inbound audio back to the client currently transmitting —
-          // they're talking, not listening, and it creates an acoustic echo loop
-          // on phone/loudspeaker setups.
-          if (activeMicClientId && lastStatus.ptt) {
-            // Send to everyone except the active mic holder
-            for (const [id, s] of io.sockets.sockets) {
-              if (id !== activeMicClientId) {
-                s.emit("audio-inbound", data);
-              }
-            }
-          } else {
-            io.emit("audio-inbound", data);
+      try {
+        const deviceId = parseInt(audioSettings.inputDevice, 10);
+        audioInputProcess = new portAudio.AudioIO({
+          inOptions: {
+            channelCount: 1,
+            sampleFormat: portAudio.SampleFormat16Bit,
+            sampleRate: 48000,
+            deviceId: isNaN(deviceId) ? -1 : deviceId, // -1 is default
+            closeOnError: true
           }
         });
 
-        inboundAudioProcess.stderr?.on("data", (data) => {
-          console.log(`[AUDIO-IN-FFMPEG] ${data.toString()}`);
+        // PCM Ring Buffer for chunking 960 samples (1920 bytes for 16-bit mono)
+        const FRAME_SIZE_BYTES = 960 * 2; 
+        let pcmBuffer = Buffer.alloc(0);
+
+        audioInputProcess.on('data', (data: Buffer) => {
+          // Don't broadcast rig audio if someone is transmitting (PTT engaged)
+          if (activeMicClientId && lastStatus.ptt) return;
+
+          pcmBuffer = Buffer.concat([pcmBuffer, data]);
+
+          while (pcmBuffer.length >= FRAME_SIZE_BYTES) {
+            const frame = pcmBuffer.subarray(0, FRAME_SIZE_BYTES);
+            pcmBuffer = pcmBuffer.subarray(FRAME_SIZE_BYTES);
+
+            try {
+              const encodedPacket = opusEncoder.encode(frame);
+              // Broadcast to all clients
+              io.emit("audio-inbound", encodedPacket);
+            } catch (err) {
+              console.error("[AUDIO] Opus encode error:", err);
+            }
+          }
         });
 
-        inboundAudioProcess.on("error", (err) => {
-          console.error("[AUDIO-IN] FFmpeg process error:", err);
+        audioInputProcess.on('error', (err: any) => {
+          console.error("[AUDIO-IN] naudiodon error:", err);
         });
 
-        inboundAudioProcess.on("close", (code) => {
-          console.log(`[AUDIO-IN] FFmpeg process closed with code ${code}`);
-        });
+        audioInputProcess.start();
+        console.log(`[AUDIO-IN] Started capture from device ${audioSettings.inputDevice}`);
+      } catch (err) {
+        console.error("[AUDIO-IN] Failed to start capture:", err);
       }
     }
 
-    // Outbound: Frontend -> Backend
+    // Outbound: Frontend -> Backend (Receive from client, decode, play to rig)
     if (audioSettings.outputDevice) {
-      let outputDevice = audioSettings.outputDevice;
-      // Extract hw:x,x from "Name [hw:x,x]" if present
-      const hwMatch = outputDevice.match(/\[(hw:\d+,\d+)\]/);
-      if (hwMatch) {
-        outputDevice = hwMatch[1];
-        // Use plughw for better compatibility with different sample rates/channels
-        if (process.platform === "linux") {
-          outputDevice = outputDevice.replace("hw:", "plughw:");
-        }
-      }
+      try {
+        const deviceId = parseInt(audioSettings.outputDevice, 10);
+        audioOutputProcess = new portAudio.AudioIO({
+          outOptions: {
+            channelCount: 1,
+            sampleFormat: portAudio.SampleFormat16Bit,
+            sampleRate: 48000,
+            deviceId: isNaN(deviceId) ? -1 : deviceId,
+            closeOnError: true
+          }
+        });
 
-      if (process.platform === "linux") {
-        if (outputDevice.includes("[pulse]")) {
-          const pulseDevice = outputDevice.split(" [pulse]")[0];
-          const pacatArgs = [
-            "--playback",
-            "--device", pulseDevice,
-            "--format", "ulaw",
-            "--rate", "8000",
-            "--channels", "1",
-            "--raw",
-            "--latency-msec=100",
-            "--process-time-msec=50"
-          ];
-          console.log(`[AUDIO-OUT] Spawning pacat: pacat ${pacatArgs.join(" ")}`);
-          outboundAudioProcess = spawn("pacat", pacatArgs);
-          
-          outboundAudioProcess.stderr?.on("data", (data) => {
-            console.log(`[AUDIO-OUT-PACAT] ${data.toString()}`);
-          });
+        audioOutputProcess.on('error', (err: any) => {
+          console.error("[AUDIO-OUT] naudiodon error:", err);
+        });
 
-          outboundAudioProcess.on("error", (err) => {
-            console.error("[AUDIO-OUT] pacat process error:", err);
-          });
-
-          outboundAudioProcess.on("close", (code) => {
-            console.log(`[AUDIO-OUT] pacat process closed with code ${code}`);
-          });
-        } else {
-          // Workaround for bundled FFmpeg missing ALSA support: use aplay directly
-          const aplayArgs = [
-            "-D", outputDevice,
-            "-f", "S16_LE",
-            "-r", "16000",
-            "-c", "1",
-            "-t", "raw",
-            "--buffer-size=1024"
-          ];
-          console.log(`[AUDIO-OUT] Spawning aplay: aplay ${aplayArgs.join(" ")}`);
-          outboundAudioProcess = spawn("aplay", aplayArgs);
-          
-          outboundAudioProcess.stderr?.on("data", (data) => {
-            console.log(`[AUDIO-OUT-APLAY] ${data.toString()}`);
-          });
-
-          outboundAudioProcess.on("error", (err) => {
-            console.error("[AUDIO-OUT] aplay process error:", err);
-          });
-
-          outboundAudioProcess.on("close", (code) => {
-            console.log(`[AUDIO-OUT] aplay process closed with code ${code}`);
-          });
-        }
-      } else {
-        if (process.platform === "win32") {
-          // On Windows, audio is routed through Electron renderer via IPC
-          // instead of a backend subprocess.
-          console.log("[AUDIO-OUT] Windows: Outbound audio will be routed via IPC.");
-        } else if (process.platform === "darwin") {
-          const outputFormat = "avfoundation";
-          const outboundArgs = [
-            "-f", "s16le",
-            "-ac", "1",
-            "-ar", "16000",
-            "-i", "pipe:0",
-            "-fflags", "nobuffer",
-            "-probesize", "32",
-            "-analyzeduration", "0",
-            "-f", outputFormat,
-            outputDevice
-          ];
-
-          const ffmpegPath = getFfmpegPath();
-          console.log(`[AUDIO-OUT] Spawning FFmpeg: ${ffmpegPath} ${outboundArgs.join(" ")}`);
-          outboundAudioProcess = spawn(ffmpegPath, outboundArgs);
-
-          outboundAudioProcess.stderr?.on("data", (data) => {
-            console.log(`[AUDIO-OUT-FFMPEG] ${data.toString()}`);
-          });
-
-          outboundAudioProcess.on("error", (err) => {
-            console.error("[AUDIO-OUT] FFmpeg process error:", err);
-          });
-
-          outboundAudioProcess.on("close", (code) => {
-            console.log(`[AUDIO-OUT] FFmpeg process closed with code ${code}`);
-          });
-        }
+        audioOutputProcess.start();
+        console.log(`[AUDIO-OUT] Started playback to device ${audioSettings.outputDevice}`);
+      } catch (err) {
+        console.error("[AUDIO-OUT] Failed to start playback:", err);
       }
     }
 
     audioStatus = "playing";
     io.emit("audio-status", audioStatus);
   };
-
   const stopVideo = () => {
     console.log("[VIDEO] Stopping video feed...");
     videoEmitter.emit("stop-clients"); // Force close all active MJPEG connections
@@ -1583,6 +1293,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   io.on("connection", (socket) => {
     console.log("Client connected");
+    
+    socket.emit("audio-engine-state", {
+      isReady: isAudioEngineReady,
+      error: audioEngineError
+    });
 
     socket.on("connect-rig", ({ host, port }) => {
       resetRigState();
@@ -1830,21 +1545,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("audio-outbound", (data: Buffer) => {
-      if (process.platform === "win32" && electronWin && !electronWin.isDestroyed()) {
-        // On Windows there is no viable ffmpeg audio output format.
-        // Route through the Electron renderer's Web Audio API instead,
-        // using the same ulaw decode path that plays inbound audio.
-        electronWin.webContents.send("outbound-audio-data", data);
-        return;
-      }
-      // Linux/macOS: write to pacat/aplay/ffmpeg subprocess stdin
-      if (!outboundAudioProcess || !outboundAudioProcess.stdin) return;
-      if (outboundAudioProcess.stdin.destroyed || outboundAudioProcess.stdin.writableEnded) return;
-      if (outboundAudioProcess.stdin.writableNeedDrain) return;
+      if (activeMicClientId !== socket.id) return; // Only accept audio from the active mic
+      if (!audioOutputProcess || !opusDecoder) return;
+
       try {
-        outboundAudioProcess.stdin.write(data);
-      } catch (e) {
-        // Pipe already closed — drop the frame silently
+        const pcmData = opusDecoder.decode(data);
+        audioOutputProcess.write(pcmData);
+      } catch (err) {
+        console.error("[AUDIO-OUT] Opus decode or write error:", err);
       }
     });
 

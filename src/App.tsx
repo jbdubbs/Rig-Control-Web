@@ -188,6 +188,7 @@ export default function App() {
 
   const [activeMicClientId, setActiveMicClientId] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<"playing" | "stopped">("stopped");
+  const [audioEngineState, setAudioEngineState] = useState<{ isReady: boolean, error: string | null }>({ isReady: false, error: null });
   const [audioDevices, setAudioDevices] = useState<{ inputs: { name: string, altName: string }[], outputs: { name: string, altName: string }[] }>({ inputs: [], outputs: [] });
   const [audioSettings, setAudioSettings] = useState({
     inputDevice: "",
@@ -203,11 +204,11 @@ export default function App() {
   const [inboundMuted, setInboundMuted] = useState(false);
   const [outboundMuted, setOutboundMuted] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const rigOutContextRef = useRef<AudioContext | null>(null);
-  const rigOutNextStartRef = useRef(0);
+  const playbackNodeRef = useRef<AudioWorkletNode | null>(null);
+  const captureNodeRef = useRef<AudioWorkletNode | null>(null);
+  const opusDecoderRef = useRef<any>(null); // AudioDecoder
+  const opusEncoderRef = useRef<any>(null); // AudioEncoder
   const micStreamRef = useRef<MediaStream | null>(null);
-  const micNodeRef = useRef<AudioWorkletNode | null>(null);
-  const nextStartTimeRef = useRef(0);
 
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [preampLevels, setPreampLevels] = useState<string[]>([]);
@@ -411,11 +412,13 @@ export default function App() {
       });
       socket.on("audio-status", (status: "playing" | "stopped") => {
         setAudioStatus(status);
-        if (status === "stopped" && rigOutContextRef.current) {
-          rigOutContextRef.current.close().catch(() => {});
-          rigOutContextRef.current = null;
-          rigOutNextStartRef.current = 0;
+        if (status === "stopped" && audioContextRef.current) {
+          // We don't close the context, just suspend it to save resources
+          audioContextRef.current.suspend().catch(() => {});
         }
+      });
+      socket.on("audio-engine-state", (state: { isReady: boolean, error: string | null }) => {
+        setAudioEngineState(state);
       });
       socket.on("mic-active-client", (id: string | null) => {
         setActiveMicClientId(id);
@@ -968,55 +971,6 @@ export default function App() {
   }, [socket]);
   
   useEffect(() => {
-    if (!(window as any).electron?.onOutboundAudio) return;
-    (window as any).electron.onOutboundAudio((data: Uint8Array) => {
-      if (audioStatusRef.current !== "playing") return;
-      try {
-        // Use a separate AudioContext pointed at the BACKEND output device
-        // (the rig's USB audio), not the client's local speaker.
-        if (!rigOutContextRef.current) {
-          rigOutContextRef.current = new (window.AudioContext ||
-            (window as any).webkitAudioContext)({ sampleRate: 8000, latencyHint: "interactive" });
-          const rigDeviceId = audioSettingsRef.current.outputDevice;
-          if (rigDeviceId && typeof (rigOutContextRef.current as any).setSinkId === "function") {
-            (rigOutContextRef.current as any).setSinkId(rigDeviceId).catch(console.error);
-          }
-          console.log("[AUDIO-OUT-IPC] Rig output AudioContext initialized, device:",
-            audioSettingsRef.current.outputDevice);
-        }
-        const ctx = rigOutContextRef.current;
-        if (ctx.state === "suspended") ctx.resume().catch(() => {});
-
-        const now = ctx.currentTime;
-        if (rigOutNextStartRef.current < now) rigOutNextStartRef.current = now + 0.02;
-        if (rigOutNextStartRef.current > now + 0.04) return; // drop frame
-
-        // Decode ulaw bytes to float32
-        const float32Data = new Float32Array(data.length);
-        for (let i = 0; i < data.length; i++) {
-          const byte = (~data[i]) & 0xFF;
-          const sign = byte & 0x80;
-          const exp = (byte >> 4) & 0x07;
-          const man = byte & 0x0F;
-          let sample = ((man << 1) + 33) << (exp + 2);
-          sample -= 0x84;
-          float32Data[i] = ((sign !== 0) ? -sample : sample) / 32768.0;
-        }
-
-        const buffer = ctx.createBuffer(1, float32Data.length, 8000);
-        buffer.getChannelData(0).set(float32Data);
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(ctx.destination);
-        source.start(rigOutNextStartRef.current);
-        rigOutNextStartRef.current += buffer.duration;
-      } catch (err) {
-        console.error("[AUDIO-OUT-IPC] Playback error:", err);
-      }
-    });
-  }, []);
-
-  useEffect(() => {
     const resumeAudio = () => {
       if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
         audioContextRef.current.resume();
@@ -1028,78 +982,23 @@ export default function App() {
 
   // Audio Playback Logic
   const playInboundAudio = (data: ArrayBuffer | Uint8Array) => {
+    if (!opusDecoderRef.current || opusDecoderRef.current.state !== 'configured') return;
     try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
-          sampleRate: 8000,
-          latencyHint: 'interactive'
-        });
-        console.log("[AUDIO] Initialized AudioContext at 8000Hz");
-        
-        // Apply local output device if supported
-        if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (audioContextRef.current as any).setSinkId === 'function') {
-          (audioContextRef.current as any).setSinkId(localAudioSettings.outputDevice).catch(console.error);
-        }
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(err => console.error("Failed to resume AudioContext:", err));
-      }
-
-      const now = ctx.currentTime;
-      // If we're too far behind, catch up
-      if (nextStartTimeRef.current < now) {
-        nextStartTimeRef.current = now + 0.02; // 20ms buffer
-      }
-      // If we're too far ahead, drop the frame to prevent latency creep (hard cap at 40ms)
-      if (nextStartTimeRef.current > now + 0.04) {
-        return; // drop frame, not clamp
-      }
-
-      let bufferData: ArrayBuffer;
-      let byteOffset = 0;
-      let byteLength = 0;
-
-      if (data instanceof Uint8Array) {
-        bufferData = data.buffer;
-        byteOffset = data.byteOffset;
-        byteLength = data.byteLength;
-      } else {
-        bufferData = data;
-        byteLength = data.byteLength;
-      }
-
-      if (byteLength === 0) return;
-
-      const ulawData = new Uint8Array(bufferData, byteOffset, byteLength);
-      const float32Data = new Float32Array(ulawData.length);
-      for (let i = 0; i < ulawData.length; i++) {
-        const byte = (~ulawData[i]) & 0xFF;
-        const sign = byte & 0x80;
-        const exp = (byte >> 4) & 0x07;
-        const man = byte & 0x0F;
-        let sample = ((man << 1) + 33) << (exp + 2);
-        sample -= 0x84;
-        float32Data[i] = ((sign !== 0) ? -sample : sample) / 32768.0;
-      }
-
-      const buffer = ctx.createBuffer(1, float32Data.length, 8000);
-      buffer.getChannelData(0).set(float32Data);
-
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(nextStartTimeRef.current);
-      nextStartTimeRef.current += buffer.duration;
-    } catch (err) {
-      console.error("[AUDIO] Playback error:", err);
+      const chunk = new (window as any).EncodedAudioChunk({
+        type: 'key',
+        timestamp: performance.now() * 1000,
+        data: data
+      });
+      opusDecoderRef.current.decode(chunk);
+    } catch (e) {
+      console.error("[AUDIO] Failed to decode Opus chunk:", e);
     }
   };
 
   const handleStartAudio = async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
-        sampleRate: 8000,
+        sampleRate: 48000,
         latencyHint: 'interactive'
       });
     }
@@ -1115,7 +1014,48 @@ export default function App() {
     }
 
     if (ctx.state === 'suspended') {
-      ctx.resume();
+      await ctx.resume();
+    }
+
+    try {
+      await ctx.audioWorklet.addModule('/audio-processor.js');
+      
+      if (!playbackNodeRef.current) {
+        playbackNodeRef.current = new AudioWorkletNode(ctx, 'playback-processor');
+        playbackNodeRef.current.connect(ctx.destination);
+      }
+
+      if (!opusDecoderRef.current && typeof (window as any).AudioDecoder !== 'undefined') {
+        const decoder = new (window as any).AudioDecoder({
+          output: (audioData: any) => {
+            if (inboundMutedRef.current || audioStatusRef.current !== "playing") {
+              audioData.close();
+              return;
+            }
+            // Convert AudioData to Float32Array and send to worklet
+            const options = { planeIndex: 0 };
+            const size = audioData.allocationSize(options);
+            const buffer = new ArrayBuffer(size);
+            audioData.copyTo(buffer, options);
+            const float32Data = new Float32Array(buffer);
+            
+            if (playbackNodeRef.current) {
+              playbackNodeRef.current.port.postMessage({ type: 'pcm', pcm: float32Data });
+            }
+            audioData.close();
+          },
+          error: (e: any) => console.error("[AUDIO] Decoder error:", e)
+        });
+
+        decoder.configure({
+          codec: 'opus',
+          sampleRate: 48000,
+          numberOfChannels: 1
+        });
+        opusDecoderRef.current = decoder;
+      }
+    } catch (e) {
+      console.error("[AUDIO] Failed to setup audio playback:", e);
     }
     
     // Auto-enable streams if devices are selected
@@ -1141,7 +1081,7 @@ export default function App() {
       }
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
-          sampleRate: 8000,
+          sampleRate: 48000,
           latencyHint: 'interactive'
         });
       }
@@ -1158,60 +1098,66 @@ export default function App() {
       micStreamRef.current = stream;
       const source = ctx.createMediaStreamSource(stream);
 
-      // AudioWorklet for lower latency
-      const micWorkletCode = `
-        class MicProcessor extends AudioWorkletProcessor {
-          constructor() {
-            super();
-            this._buf = [];
-          }
-          process(inputs, outputs, parameters) {
-            const ch = inputs[0]?.[0];
-            if (ch) {
-              for (let i = 0; i < ch.length; i++) {
-                this._buf.push(ch[i]);
-              }
-              while (this._buf.length >= 320) {
-                this.port.postMessage(new Float32Array(this._buf.splice(0, 320)));
-              }
-            }
-            return true;
-          }
-        }
-        registerProcessor('mic-processor', MicProcessor);
-      `;
-      const blob = new Blob([micWorkletCode], { type: 'application/javascript' });
-      const url = URL.createObjectURL(blob);
-      await ctx.audioWorklet.addModule(url);
+      await ctx.audioWorklet.addModule('/audio-processor.js');
       
-      const micNode = new AudioWorkletNode(ctx, 'mic-processor');
-      micNodeRef.current = micNode;
+      if (!opusEncoderRef.current && typeof (window as any).AudioEncoder !== 'undefined') {
+        const encoder = new (window as any).AudioEncoder({
+          output: (chunk: any, metadata: any) => {
+            if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;
+            const buffer = new ArrayBuffer(chunk.byteLength);
+            chunk.copyTo(buffer);
+            socket?.emit("audio-outbound", buffer);
+          },
+          error: (e: any) => console.error("[AUDIO] Encoder error:", e)
+        });
+
+        encoder.configure({
+          codec: 'opus',
+          sampleRate: 48000,
+          numberOfChannels: 1,
+          bitrate: 64000
+        });
+        opusEncoderRef.current = encoder;
+      }
+
+      const captureNode = new AudioWorkletNode(ctx, 'capture-processor');
+      captureNodeRef.current = captureNode;
       
-      micNode.port.onmessage = (e) => {
+      let pcmBuffer = new Float32Array(0);
+      const FRAME_SIZE = 960; // 20ms at 48kHz
+
+      captureNode.port.onmessage = (e) => {
         if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;
-        const inputData = e.data;
-        const ulawData = new Uint8Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const CLIP = 32635;
-          let sample = Math.round(Math.max(-1, Math.min(1, inputData[i])) * 32767);
-          let sign = (sample >> 8) & 0x80;
-          if (sign !== 0) sample = -sample;
-          if (sample > CLIP) sample = CLIP;
-          sample += 0x84;
-          let exponent = 7;
-          for (let expMask = 0x4000; exponent > 0; exponent--, expMask >>= 1) {
-            if ((sample & expMask) !== 0) break;
-          }
-          const mantissa = (sample >> (exponent + 3)) & 0x0F;
-          ulawData[i] = (~(sign | (exponent << 4) | mantissa)) & 0xFF;
+        if (!opusEncoderRef.current || opusEncoderRef.current.state !== 'configured') return;
+
+        const inputData = e.data.pcm;
+        const newBuffer = new Float32Array(pcmBuffer.length + inputData.length);
+        newBuffer.set(pcmBuffer, 0);
+        newBuffer.set(inputData, pcmBuffer.length);
+        pcmBuffer = newBuffer;
+
+        while (pcmBuffer.length >= FRAME_SIZE) {
+          const frame = pcmBuffer.subarray(0, FRAME_SIZE);
+          pcmBuffer = pcmBuffer.subarray(FRAME_SIZE);
+
+          const audioData = new (window as any).AudioData({
+            format: 'f32-planar',
+            sampleRate: 48000,
+            numberOfFrames: FRAME_SIZE,
+            numberOfChannels: 1,
+            timestamp: performance.now() * 1000,
+            data: frame
+          });
+
+          opusEncoderRef.current.encode(audioData);
+          audioData.close();
         }
-        socket?.emit("audio-outbound", ulawData.buffer);
       };
 
-      source.connect(micNode);
+      source.connect(captureNode);
       const silentGain = ctx.createGain();
       silentGain.gain.value = 0;
-      micNode.connect(silentGain);
+      captureNode.connect(silentGain);
       silentGain.connect(ctx.destination); // Required for processing to happen in some browsers
     } catch (err) {
       console.error("Error starting mic capture:", err);
@@ -1223,9 +1169,9 @@ export default function App() {
       micStreamRef.current.getTracks().forEach(track => track.stop());
       micStreamRef.current = null;
     }
-    if (micNodeRef.current) {
-      micNodeRef.current.disconnect();
-      micNodeRef.current = null;
+    if (captureNodeRef.current) {
+      captureNodeRef.current.disconnect();
+      captureNodeRef.current = null;
     }
   };
 
@@ -1700,10 +1646,23 @@ export default function App() {
                 {!isPhoneQuickControlsCollapsed && (
                   <div className="p-3 grid grid-cols-2 gap-3 h-full content-start">
                     <button 
-                      onClick={() => handleSetPTT(!status.ptt)}
+                      onPointerDown={(e) => {
+                        if (!connected) return;
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        handleSetPTT(true);
+                      }}
+                      onPointerUp={(e) => {
+                        if (!connected) return;
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                        handleSetPTT(false);
+                      }}
+                      onPointerCancel={(e) => {
+                        if (!connected) return;
+                        handleSetPTT(false);
+                      }}
                       disabled={!connected}
                       className={cn(
-                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1 touch-none select-none",
                         !connected && "opacity-50 cursor-not-allowed",
                         status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
@@ -3781,9 +3740,29 @@ export default function App() {
 
               {/* Audio Settings Section */}
               <div className="space-y-4 pt-4 border-t border-[#2a2b2e]">
-                <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold border-b border-blue-500/20 pb-1">Audio Settings (Bi-Directional)</h3>
+                <div className="flex items-center justify-between border-b border-blue-500/20 pb-1">
+                  <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold">Audio Settings (Bi-Directional)</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[0.5rem] uppercase text-[#8e9299] font-bold">Audio Status:</span>
+                    <span className={cn(
+                      "text-[0.5rem] uppercase font-bold px-1.5 py-0.5 rounded",
+                      audioEngineState.isReady ? "bg-emerald-500/20 text-emerald-500" : "bg-red-500/20 text-red-500"
+                    )}>
+                      {audioEngineState.isReady ? "READY" : "FAILED"}
+                    </span>
+                  </div>
+                </div>
                 
-                <div className="space-y-4">
+                {audioEngineState.error && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 flex items-center gap-3">
+                    <AlertTriangle className="text-red-500 shrink-0" size={16} />
+                    <p className="text-[0.625rem] text-red-500/80 font-medium leading-tight">
+                      Audio Engine Error: {audioEngineState.error}
+                    </p>
+                  </div>
+                )}
+
+                <div className={cn("space-y-4", !audioEngineState.isReady && "opacity-50 pointer-events-none")}>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Backend Input (Mic/Line)</label>

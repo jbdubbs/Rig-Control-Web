@@ -59,6 +59,7 @@
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "libopus-node": "^0.0.4",
     "lucide-react": "^0.546.0",
     "lyra-codec": "^1.1.1",
     "motion": "^12.23.24",
@@ -68,6 +69,9 @@
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.5.0"
+  },
+  "optionalDependencies": {
+    "naudiodon": "^2.34.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
