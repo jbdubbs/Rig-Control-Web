@@ -16,7 +16,8 @@
     "test": "vitest run",
     "electron:dev": "ELECTRON_RUN=true electron -r tsx electron/main.ts",
     "electron:build": "npm run build && npm run build:electron && electron-builder",
-    "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.cjs --external:electron --external:vite && esbuild electron/preload.ts --bundle --platform=node --outfile=dist-electron/preload.cjs --external:electron"
+    "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.cjs --external:electron --external:vite && esbuild electron/preload.ts --bundle --platform=node --outfile=dist-electron/preload.cjs --external:electron",
+    "postinstall": "electron-builder install-app-deps"
   },
   "build": {
     "appId": "com.rigcontrol.web",
@@ -70,10 +71,8 @@
     "recharts": "^3.8.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
-    "tailwind-merge": "^3.5.0"
-  },
-  "optionalDependencies": {
-    "naudiodon": "^2.34.0"
+    "tailwind-merge": "^3.5.0",
+    "naudiodon": "^2.3.6"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
