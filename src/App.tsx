@@ -1098,11 +1098,20 @@ export default function App() {
       micStreamRef.current = stream;
       const source = ctx.createMediaStreamSource(stream);
 
-      await ctx.audioWorklet.addModule('/audio-processor.js');
+      try {
+        await ctx.audioWorklet.addModule('/audio-processor.js');
+      } catch (e) {
+        console.warn("audio-processor.js might already be loaded:", e);
+      }
       
       if (!opusEncoderRef.current && typeof (window as any).AudioEncoder !== 'undefined') {
+        let encodeCount = 0;
         const encoder = new (window as any).AudioEncoder({
           output: (chunk: any, metadata: any) => {
+            encodeCount++;
+            if (encodeCount % 50 === 0) {
+              console.log(`[AUDIO-ENCODE] Encoded 50 packets. Emitting to socket...`);
+            }
             if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;
             const buffer = new ArrayBuffer(chunk.byteLength);
             chunk.copyTo(buffer);
@@ -1126,7 +1135,13 @@ export default function App() {
       let pcmBuffer = new Float32Array(0);
       const FRAME_SIZE = 960; // 20ms at 48kHz
 
+      let captureFrameCount = 0;
       captureNode.port.onmessage = (e) => {
+        captureFrameCount++;
+        if (captureFrameCount % 50 === 0) {
+          console.log(`[AUDIO-CAPTURE] Captured 50 frames. outboundMuted: ${outboundMutedRef.current}, audioStatus: ${audioStatusRef.current}, encoderState: ${opusEncoderRef.current?.state}`);
+        }
+
         if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;
         if (!opusEncoderRef.current || opusEncoderRef.current.state !== 'configured') return;
 
