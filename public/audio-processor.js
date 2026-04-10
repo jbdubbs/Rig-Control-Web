@@ -10,7 +10,7 @@ class PlaybackProcessor extends AudioWorkletProcessor {
     // Jitter Buffer Settings (at 48kHz)
     // 1 frame = 20ms = 960 samples
     this.MIN_BUFFER_SAMPLES = 960 * 3; // 60ms (Start playing when we have 3 frames)
-    this.MAX_BUFFER_SAMPLES = 960 * 8; // 160ms (Drop audio if we exceed 8 frames to prevent latency buildup)
+    this.MAX_BUFFER_SAMPLES = 960 * 12; // 240ms (Drop audio if we exceed 12 frames to prevent latency buildup)
 
     this.port.onmessage = (e) => {
       if (e.data.type === 'pcm') {
