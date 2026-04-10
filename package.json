@@ -31,7 +31,9 @@
       "radios.json"
     ],
     "asarUnpack": [
-      "bin/**/*"
+      "bin/**/*",
+      "**/*.node",
+      "**/node_modules/libopus-node/**/*.wasm"
     ],
     "win": {
       "target": "nsis",

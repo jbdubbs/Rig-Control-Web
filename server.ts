@@ -129,14 +129,18 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   const initAudioEngine = async () => {
     try {
+      // Use a Function constructor to hide the dynamic import from the bundler (esbuild/vite).
+      // This prevents the bundler from packing libopus-node (which breaks its WASM paths)
+      // and prevents it from transpiling the import into a require() (which breaks pure ESM).
+      const dynamicImport = new Function('modulePath', 'return import(modulePath)');
+
       console.log("[AUDIO-INIT] Attempting to load libopus-node...");
-      libopus = await import("libopus-node");
+      libopus = await dynamicImport("libopus-node");
       console.log("[AUDIO-INIT] libopus-node loaded successfully.");
       
       console.log("[AUDIO-INIT] Attempting to load naudiodon...");
       try {
-        // @ts-ignore
-        portAudio = await import("naudiodon");
+        portAudio = await dynamicImport("naudiodon");
         console.log("[AUDIO-INIT] naudiodon loaded successfully.");
         isAudioEngineReady = true;
       } catch (naudioErr: any) {
