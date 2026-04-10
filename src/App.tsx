@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
 import { 
   Activity, 
@@ -589,8 +589,20 @@ export default function App() {
     return Math.min(nrCapabilities.range.max, calculated);
   };
 
+  const clientId = useMemo(() => {
+    let id = localStorage.getItem("client-id");
+    if (!id) {
+      id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem("client-id", id);
+    }
+    return id;
+  }, []);
+
   useEffect(() => {
-    const newSocket = io(backendUrl, { transports: ['websocket'] });
+    const newSocket = io(backendUrl, { 
+      transports: ['websocket'],
+      auth: { clientId }
+    });
     setSocket(newSocket);
 
     newSocket.on("rig-connected", () => {

@@ -1305,7 +1305,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   };
 
   io.on("connection", (socket) => {
-    console.log("Client connected");
+    const clientId = socket.handshake.auth.clientId || socket.id;
+    console.log(`Client connected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
     
     socket.emit("audio-engine-state", {
       isReady: isAudioEngineReady,
@@ -1539,8 +1540,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("mic-unmute-request", () => {
-      activeMicClientId = socket.id;
-      console.log(`[AUDIO] Mic claimed by client: ${socket.id}`);
+      activeMicClientId = clientId;
+      console.log(`[AUDIO] Mic claimed by client: ${clientId}`);
       
       // Tell all OTHER clients to mute themselves
       socket.broadcast.emit("mic-mute-forced");
@@ -1551,7 +1552,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("mic-mute-notify", () => {
       // Client is voluntarily muting — release the mic if they held it
-      if (activeMicClientId === socket.id) {
+      if (activeMicClientId === clientId) {
         activeMicClientId = null;
         io.emit("mic-active-client", null);
       }
@@ -1559,12 +1560,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     let outboundPacketCount = 0;
     socket.on("audio-outbound", (data: Buffer) => {
-      if (activeMicClientId !== socket.id) return; // Only accept audio from the active mic
+      if (activeMicClientId !== clientId) return; // Only accept audio from the active mic
       if (!audioOutputProcess || !opusDecoder) return;
 
       try {
         const pcmData = opusDecoder.decode(data);
         
+        // PTT Gating (Issue 1): If PTT is off, drop the audio and write pure silence
+        // This ensures PortAudio's buffer doesn't queue up old audio while PTT is off.
+        if (!lastStatus.ptt) {
+          audioOutputProcess.write(Buffer.alloc(pcmData.length));
+          return;
+        }
+
         // Debug: Check if the audio is completely silent
         outboundPacketCount++;
         if (outboundPacketCount % 50 === 0) { // Log every 1 second (50 packets * 20ms)
@@ -1758,11 +1766,23 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("disconnect", () => {
-      console.log("Client disconnected");
-      if (activeMicClientId === socket.id) {
-        activeMicClientId = null;
-        // Notify others that the active client is gone
-        io.emit("mic-active-client", null);
+      console.log(`Client disconnected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
+      if (activeMicClientId === clientId) {
+        // Give the client 5 seconds to reconnect before releasing the mic
+        setTimeout(() => {
+          let hasActiveSocket = false;
+          io.sockets.sockets.forEach(s => {
+            if ((s.handshake.auth.clientId || s.id) === clientId) {
+              hasActiveSocket = true;
+            }
+          });
+          
+          if (!hasActiveSocket && activeMicClientId === clientId) {
+            console.log(`[AUDIO] Releasing mic for disconnected client: ${clientId}`);
+            activeMicClientId = null;
+            io.emit("mic-active-client", null);
+          }
+        }, 5000);
       }
     });
   });
