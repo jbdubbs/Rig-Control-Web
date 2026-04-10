@@ -72,7 +72,7 @@
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.5.0",
-    "naudiodon": "^2.3.6"
+    "naudiodon": "github:jbdubbs/naudiodon-gcc15"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
