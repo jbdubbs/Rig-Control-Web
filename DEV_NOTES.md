@@ -47,12 +47,12 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 | Audio Latency Opt | Reduced sample rate to 16kHz, switched to AudioWorklet, implemented jitter buffering, and tuned Socket.io/FFmpeg for near real-time performance. | 2026-04-02 |
 | Opus Audio Codec | Implemented Opus encoding/decoding for both inbound and outbound audio using FFmpeg on the server and WebCodecs on the client, significantly reducing bandwidth while maintaining quality. | 2026-04-05 |
 | Native Audio Subsystem | Replaced FFmpeg/pacat subprocesses with `naudiodon` and `libopus-node` for robust, cross-platform, low-latency audio I/O and encoding directly within the Node.js process. | 2026-04-09 |
+| Audio Build Pipeline | Implemented bundler bypass for native modules, configured ASAR unpacking, and forked `naudiodon` to fix GCC 15 compatibility and remove outdated dependencies. | 2026-04-10 |
 
 ## Known Issues / Tech Debt
 - `rigctld` path is assumed to be in the system PATH.
 - If `rigctld` is already running outside the app on the same port, the spawned process will fail with an error, which we now catch and display in the log view.
 - Split VFO support depends on the specific radio model configured in `rigctld`.
-- `naudiodon` requires native build tools; it is an optional dependency to prevent build failures in restricted environments.
 
 ## Architecture Notes
 - **Modular Backend**: Extracted logic into `RigctldManager`, `VideoStreamManager`, and `SettingsManager` to separate concerns and allow for easier testing.
@@ -81,5 +81,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 > [2026-04-05 18:10 UTC] Implemented Opus audio codec for bi-directional communication. The server now uses FFmpeg to encode/decode Opus, and the client uses the WebCodecs API for low-latency, high-quality audio at 16kbps. This significantly improves performance on bandwidth-constrained connections.
 
 > [2026-04-09 15:30 UTC] Completely redesigned the backend audio subsystem. Replaced brittle FFmpeg/pacat subprocesses with native Node.js addons (`naudiodon` and `libopus-node`). This provides a robust, cross-platform, low-latency audio pipeline operating strictly at 48kHz with precise 20ms Opus frame chunking.
+
+> [2026-04-10 09:45 UTC] Finalized the audio subsystem build pipeline. Implemented a dynamic import bypass to prevent bundler interference with native modules, configured Electron's `asarUnpack` for `.node` and `.wasm` files, and forked `naudiodon` to resolve GCC 15 compilation errors and remove legacy dependencies. `naudiodon` is now a strict dependency.
 
 > **Next Step**: Implement the test-driven development framework and write unit tests for the new modules and components.

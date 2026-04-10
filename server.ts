@@ -150,6 +150,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     } catch (err: any) {
       console.error("[AUDIO-INIT] Failed to load audio engine:", err);
       audioEngineError = err.message;
+    } finally {
+      // Fix Issue 4: Broadcast the final state to any clients that connected while we were loading
+      if (io) {
+        io.emit("audio-engine-state", { isReady: isAudioEngineReady, error: audioEngineError });
+      }
     }
   };
 
@@ -603,7 +608,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             sampleFormat: portAudio.SampleFormat16Bit,
             sampleRate: 48000,
             deviceId: isNaN(deviceId) ? -1 : deviceId, // -1 is default
-            closeOnError: true
+            closeOnError: true,
+            framesPerBuffer: 960, // 20ms at 48kHz
+            maxQueue: 2 // Keep queue small to prevent latency buildup
           }
         });
 
@@ -652,7 +659,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             sampleFormat: portAudio.SampleFormat16Bit,
             sampleRate: 48000,
             deviceId: isNaN(deviceId) ? -1 : deviceId,
-            closeOnError: true
+            closeOnError: true,
+            framesPerBuffer: 960, // 20ms at 48kHz
+            maxQueue: 2 // Keep queue small to prevent latency buildup
           }
         });
 
