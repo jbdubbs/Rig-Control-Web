@@ -1557,12 +1557,27 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
     });
 
+    let outboundPacketCount = 0;
     socket.on("audio-outbound", (data: Buffer) => {
       if (activeMicClientId !== socket.id) return; // Only accept audio from the active mic
       if (!audioOutputProcess || !opusDecoder) return;
 
       try {
         const pcmData = opusDecoder.decode(data);
+        
+        // Debug: Check if the audio is completely silent
+        outboundPacketCount++;
+        if (outboundPacketCount % 50 === 0) { // Log every 1 second (50 packets * 20ms)
+          let isSilent = true;
+          for (let i = 0; i < pcmData.length; i++) {
+            if (pcmData[i] !== 0) {
+              isSilent = false;
+              break;
+            }
+          }
+          console.log(`[AUDIO-OUT] Received 50 packets. Last packet size: ${pcmData.length} bytes. Is completely silent: ${isSilent}`);
+        }
+
         audioOutputProcess.write(pcmData);
       } catch (err) {
         console.error("[AUDIO-OUT] Opus decode or write error:", err);
