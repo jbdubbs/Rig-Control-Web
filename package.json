@@ -66,13 +66,13 @@
     "lucide-react": "^0.546.0",
     "lyra-codec": "^1.1.1",
     "motion": "^12.23.24",
+    "naudiodon": "github:jbdubbs/naudiodon-gcc15",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^3.8.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
-    "tailwind-merge": "^3.5.0",
-    "naudiodon": "github:jbdubbs/naudiodon-gcc15"
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
