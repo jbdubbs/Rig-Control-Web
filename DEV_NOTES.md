@@ -22,6 +22,10 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - [x] Fix "white screen" crash in non-secure browser contexts.
 - [x] Implement "last-interacted-wins" policy for multi-client microphone recording.
 - [x] Optimize audio latency (16kHz, AudioWorklet, jitter buffering, Socket.io tuning).
+- [x] Fix stale `clientId` mic tracking and `getUserMedia` device fallback for remote browsers.
+- [x] Phone UI: collapsible VFO box with inline tuning arrows, step chips, and consistent left/right arrow language.
+- [x] Phone UI: consolidate Quick Controls, RF Power, and More Controls into single collapsed box; PTT standalone.
+- [x] Fix white browser background on all views via global CSS body color.
 - [ ] Verify `rigctld` binary availability in the production environment.
 
 ## Decisions Log
@@ -48,6 +52,12 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 | Opus Audio Codec | Implemented Opus encoding/decoding for both inbound and outbound audio using FFmpeg on the server and WebCodecs on the client, significantly reducing bandwidth while maintaining quality. | 2026-04-05 |
 | Native Audio Subsystem | Replaced FFmpeg/pacat subprocesses with `naudiodon` and `libopus-node` for robust, cross-platform, low-latency audio I/O and encoding directly within the Node.js process. | 2026-04-09 |
 | Audio Build Pipeline | Implemented bundler bypass for native modules, configured ASAR unpacking, and forked `naudiodon` to fix GCC 15 compatibility and remove outdated dependencies. | 2026-04-10 |
+
+| Persistent `clientId` for Audio | Used a `localStorage` UUID passed via `socket.handshake.auth` instead of the transient `socket.id` to track the active mic client, surviving reconnects without losing mic ownership. | 2026-04-11 |
+| `getUserMedia` Device Fallback | Added try/catch around `getUserMedia` with `{ exact: deviceId }` to fall back to the default device when a stored device ID is stale or unavailable, preventing silent capture failure. | 2026-04-11 |
+| Phone UI — VFO Box Redesign | Replaced the phone VFO controls with a collapsible box: collapsed state shows frequency/mode summary with `[◁ step]` / `[step ▷]` inline tuning buttons and a vertical chevron for expand/collapse, eliminating ambiguity between the two controls. Expanded state uses step chips and left/right arrows for consistency. | 2026-04-11 |
+| Phone UI — Controls Consolidation | Moved PTT to a standalone always-visible button above a single collapsed-by-default Quick Controls box containing Tune/Att/Preamp, NB/AGC/DNR/ANF toggles, and all RF/level sliders. Removed the separate RF Power box and the MORE CONTROLS progressive disclosure toggle. | 2026-04-11 |
+| Global Background Color | Set `html, body { background-color: #0a0a0a }` in `index.css` so the browser chrome behind all views (phone, compact, desktop) matches the app background instead of defaulting to white. | 2026-04-11 |
 
 ## Known Issues / Tech Debt
 - `rigctld` path is assumed to be in the system PATH.
@@ -83,5 +93,9 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 > [2026-04-09 15:30 UTC] Completely redesigned the backend audio subsystem. Replaced brittle FFmpeg/pacat subprocesses with native Node.js addons (`naudiodon` and `libopus-node`). This provides a robust, cross-platform, low-latency audio pipeline operating strictly at 48kHz with precise 20ms Opus frame chunking.
 
 > [2026-04-10 09:45 UTC] Finalized the audio subsystem build pipeline. Implemented a dynamic import bypass to prevent bundler interference with native modules, configured Electron's `asarUnpack` for `.node` and `.wasm` files, and forked `naudiodon` to resolve GCC 15 compilation errors and remove legacy dependencies. `naudiodon` is now a strict dependency.
+
+> [2026-04-11 00:00 UTC] Fixed remote browser audio: resolved stale `activeMicClientId` server state by switching from transient `socket.id` to a persistent `clientId` (localStorage UUID via `socket.handshake.auth`). Added `getUserMedia` try/catch fallback to default device when a stored `deviceId` is unavailable, preventing silent capture failure after device changes.
+
+> [2026-04-11 00:00 UTC] Phone UI iteration: redesigned VFO box with collapsible header showing frequency/mode summary and inline `[◁ step]` / `[step ▷]` tuning buttons. Expanded view uses left/right arrows (matching collapsed) and horizontal step chips. Slimmed the phone header to show "RIGCONTROL WEB" with a status dot. Consolidated Quick Controls, RF Power, and More Controls into a single collapsed-by-default box. PTT moved outside as an always-visible standalone button. Fixed white browser background globally via `html, body { background-color: #0a0a0a }` in `index.css`.
 
 > **Next Step**: Implement the test-driven development framework and write unit tests for the new modules and components.

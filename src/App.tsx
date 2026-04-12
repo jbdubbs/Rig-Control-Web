@@ -20,6 +20,8 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Maximize2,
   Minimize2,
   Pencil,
@@ -218,11 +220,11 @@ export default function App() {
   const [rigctldVersionInfo, setRigctldVersionInfo] = useState<{ version: string | null, isSupported: boolean }>({ version: null, isSupported: true });
   const logEndRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
-  const [isVideoCollapsed, setIsVideoCollapsed] = useState(false);
+  const [isVideoCollapsed, setIsVideoCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [pendingVfoOp, setPendingVfoOp] = useState<string | null>(null);
-  const [isPhoneMeterCollapsed, setIsPhoneMeterCollapsed] = useState(false);
-  const [isPhoneQuickControlsCollapsed, setIsPhoneQuickControlsCollapsed] = useState(false);
-  const [isPhoneRFPowerCollapsed, setIsPhoneRFPowerCollapsed] = useState(false);
+  const [isPhoneVFOCollapsed, setIsPhoneVFOCollapsed] = useState(false);
+  const [isPhoneMeterCollapsed, setIsPhoneMeterCollapsed] = useState(true);
+  const [isPhoneQuickControlsCollapsed, setIsPhoneQuickControlsCollapsed] = useState(true);
   const [isCompactSMeterCollapsed, setIsCompactSMeterCollapsed] = useState(() => localStorage.getItem("is-compact-smeter-collapsed") === "true");
   const [isCompactOtherMeterCollapsed, setIsCompactOtherMeterCollapsed] = useState(() => localStorage.getItem("is-compact-other-meter-collapsed") === "true");
   const [isCompactControlsCollapsed, setIsCompactControlsCollapsed] = useState(() => localStorage.getItem("is-compact-controls-collapsed") === "true");
@@ -1015,7 +1017,8 @@ export default function App() {
       });
     }
     const ctx = audioContextRef.current;
-    
+    console.log(`[AUDIO-DIAG] AudioContext actual sampleRate=${ctx.sampleRate} (requested 48000)`);
+
     // Handle output device if supported
     if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (ctx as any).setSinkId === 'function') {
       try {
@@ -1098,15 +1101,32 @@ export default function App() {
         });
       }
       const ctx = audioContextRef.current;
-      
+      console.log(`[AUDIO-DIAG] Capture AudioContext actual sampleRate=${ctx.sampleRate} (requested 48000)`);
+
       const isPhoneDefault = !localAudioSettings.inputDevice || localAudioSettings.inputDevice === 'default';
-      const constraints = {
-        audio: isPhoneDefault
-          ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-          : { deviceId: { exact: localAudioSettings.inputDevice },
-              echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      const specificConstraints = {
+        audio: { deviceId: { exact: localAudioSettings.inputDevice },
+                 echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const defaultConstraints = {
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      };
+
+      let stream: MediaStream;
+      if (isPhoneDefault) {
+        stream = await navigator.mediaDevices.getUserMedia(defaultConstraints);
+      } else {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(specificConstraints);
+        } catch (deviceErr: any) {
+          // Stored device ID is stale (unplugged, permission-rotated, etc.) — clear it and
+          // fall back to the default device so the user doesn't need to clear their cache.
+          console.warn(`[AUDIO] Stored input device "${localAudioSettings.inputDevice}" unavailable (${deviceErr.name}), falling back to default.`);
+          localStorage.removeItem("local-audio-input");
+          setLocalAudioSettings(prev => ({ ...prev, inputDevice: "default" }));
+          stream = await navigator.mediaDevices.getUserMedia(defaultConstraints);
+        }
+      }
       micStreamRef.current = stream;
       const source = ctx.createMediaStreamSource(stream);
 
@@ -1127,6 +1147,9 @@ export default function App() {
             if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;
             const buffer = new ArrayBuffer(chunk.byteLength);
             chunk.copyTo(buffer);
+            if (encodeCount <= 5 || encodeCount % 50 === 0) {
+              console.log(`[AUDIO-EMIT] Emitting audio-outbound packet #${encodeCount}, bytes=${buffer.byteLength}, socket connected=${socket?.connected}`);
+            }
             socket?.emit("audio-outbound", buffer);
           },
           error: (e: any) => console.error("[AUDIO] Encoder error:", e)
@@ -1243,17 +1266,23 @@ export default function App() {
         )}
       >
         {/* Header / Connection */}
-        <header className="bg-[#151619] rounded-xl border border-[#2a2b2e] shadow-2xl p-3 sm:p-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <header className="bg-[#151619] rounded-xl border border-[#2a2b2e] shadow-2xl py-1.5 px-3 sm:p-4 flex items-center justify-between gap-2">
+          {/* Phone: slim connection indicator */}
+          <div className="flex sm:hidden items-center gap-2">
+            <div className={cn("w-2 h-2 rounded-full flex-shrink-0", connected ? "bg-emerald-500" : "bg-red-500/70")} />
+            <span className="text-sm font-bold tracking-tight uppercase italic">RigControl Web</span>
+          </div>
+          {/* Desktop: full branding */}
+          <div className="hidden sm:flex items-center gap-3 min-w-0">
             <Signal size={24} className="text-emerald-500 flex-shrink-0" />
-            <h1 className="text-lg sm:text-xl font-bold tracking-tighter uppercase italic truncate">RigControl Web</h1>
+            <h1 className="text-xl font-bold tracking-tighter uppercase italic truncate">RigControl Web</h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-            <button 
+            <button
               onClick={handleConnect}
               className={cn(
-                "px-3 sm:px-6 py-2 rounded-lg font-bold uppercase text-sm transition-all flex items-center gap-2",
-                connected 
+                "p-1.5 sm:px-6 sm:py-2 rounded-lg font-bold uppercase text-sm transition-all flex items-center gap-2",
+                connected
                   ? "bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500 hover:text-white"
                   : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white"
               )}
@@ -1261,15 +1290,15 @@ export default function App() {
               <Power size={16} className="flex-shrink-0" />
               <span className="hidden sm:inline">{connected ? "Disconnect" : "Connect"}</span>
             </button>
-            <button 
+            <button
               onClick={() => setIsSettingsOpen(true)}
               className={cn(
-                "p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg transition-all flex-shrink-0",
+                "p-1.5 sm:p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg transition-all flex-shrink-0",
                 rigctldProcessStatus === "running" ? "text-emerald-500 border-emerald-500/50" : "text-red-500 border-red-500/50"
               )}
               title="Rigctld Settings"
             >
-              <Settings size={20} />
+              <Settings size={18} />
             </button>
           </div>
         </header>
@@ -1308,152 +1337,218 @@ export default function App() {
 
         {/* Main Interface */}
         {isPhone ? (
-          <div className="space-y-3 animate-in fade-in duration-300">
+          <div className="space-y-2 animate-in fade-in duration-300">
             {/* Unified VFO & Mode/BW Box */}
             <div className={cn(
-              "bg-[#151619] p-4 rounded-xl border shadow-lg space-y-4",
-              status.vfo === "VFOA" ? "border-emerald-500/30" : "border-blue-500/30"
+              "bg-[#151619] rounded-xl border shadow-lg overflow-hidden",
+              status.isSplit ? "border-amber-500/30" : status.vfo === "VFOA" ? "border-emerald-500/30" : "border-blue-500/30"
             )}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => handleSetVFO("VFOA")}
-                    disabled={!connected}
-                    className={cn(
-                      "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
-                      !connected && "opacity-50 cursor-not-allowed",
-                      status.isSplit
-                        ? (status.txVFO === "VFOA" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
-                        : (status.vfo === "VFOA" 
-                          ? "bg-emerald-500 text-white border border-emerald-500" 
-                          : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20")
-                    )}
-                  >
-                    VFO A
-                  </button>
-                  <button 
-                    onClick={() => handleSetVFO("VFOB")}
-                    disabled={!connected}
-                    className={cn(
-                      "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
-                      !connected && "opacity-50 cursor-not-allowed",
-                      status.isSplit
-                        ? (status.txVFO === "VFOB" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
-                        : (status.vfo === "VFOB" 
-                          ? "bg-blue-500 text-white border border-blue-500" 
-                          : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20")
-                    )}
-                  >
-                    VFO B
-                  </button>
-                  <button 
-                    onClick={handleToggleSplit}
-                    disabled={!connected}
-                    className={cn(
-                      "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
-                      !connected && "opacity-50 cursor-not-allowed",
-                      status.isSplit 
-                        ? "bg-red-500 text-white border border-red-500" 
-                        : "bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20"
-                    )}
-                  >
-                    SPLIT
-                  </button>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', 1)}
-                      disabled={!connected}
-                      className="p-1.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
-                      title="Frequency Up"
-                    >
-                      <ChevronUp size={16} />
-                    </button>
+              {/* Header — always visible */}
+              <div className={cn(
+                "flex items-center justify-between px-3 py-2 bg-[#1a1b1e]",
+                !isPhoneVFOCollapsed && "border-b border-[#2a2b2e]"
+              )}>
+                {isPhoneVFOCollapsed ? (
+                  /* Collapsed: [◁ step]  ● VFO  freq  —  mode  [step ▷]  [⌄] */
+                  <>
+                    {/* Left: step-down arrow */}
                     <button
                       onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', -1)}
                       disabled={!connected}
-                      className="p-1.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                      className="flex items-center gap-1 px-2 py-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50 flex-shrink-0"
                       title="Frequency Down"
+                    >
+                      <ChevronLeft size={14} />
+                      <span className="text-[0.625rem] font-bold">
+                        {vfoStep >= 1 ? `${vfoStep}M` : vfoStep >= 0.001 ? `${Math.round(vfoStep * 1000)}k` : `${Math.round(vfoStep * 1000000)}Hz`}
+                      </span>
+                    </button>
+
+                    {/* Center: VFO summary */}
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1 justify-center">
+                      <div className={cn("w-2 h-2 rounded-full flex-shrink-0",
+                        status.isSplit ? "bg-amber-500" : status.vfo === "VFOA" ? "bg-emerald-500" : "bg-blue-500"
+                      )} />
+                      <span className={cn("text-xs font-bold uppercase flex-shrink-0",
+                        status.isSplit ? "text-amber-500" : status.vfo === "VFOA" ? "text-emerald-500" : "text-blue-500"
+                      )}>
+                        {status.isSplit ? "SPLIT" : status.vfo === "VFOA" ? "A" : "B"}
+                      </span>
+                      <span className={cn("text-sm font-mono font-bold truncate",
+                        status.ptt ? "text-red-500" : status.isSplit ? "text-amber-500" : status.vfo === "VFOA" ? "text-emerald-500" : "text-blue-500"
+                      )}>
+                        {parseFloat(status.vfo === "VFOA" ? inputVfoA : inputVfoB).toFixed(3)} MHz
+                      </span>
+                      <span className="text-[#4a4b4e] flex-shrink-0">—</span>
+                      <span className="text-xs font-bold text-[#8e9299] flex-shrink-0">{localMode}</span>
+                    </div>
+
+                    {/* Right: step-up arrow */}
+                    <button
+                      onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', 1)}
+                      disabled={!connected}
+                      className="flex items-center gap-1 px-2 py-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50 flex-shrink-0"
+                      title="Frequency Up"
+                    >
+                      <span className="text-[0.625rem] font-bold">
+                        {vfoStep >= 1 ? `${vfoStep}M` : vfoStep >= 0.001 ? `${Math.round(vfoStep * 1000)}k` : `${Math.round(vfoStep * 1000000)}Hz`}
+                      </span>
+                      <ChevronRight size={14} />
+                    </button>
+
+                    {/* Expand chevron */}
+                    <button
+                      onClick={() => setIsPhoneVFOCollapsed(false)}
+                      className="p-1 hover:bg-white/5 rounded text-[#8e9299] flex-shrink-0 ml-1"
+                      title="Expand VFO"
                     >
                       <ChevronDown size={16} />
                     </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 text-[#8e9299]">
+                      <Radio size={12} />
+                      <span className="text-[0.5625rem] uppercase tracking-widest font-bold">VFO</span>
+                    </div>
+                    <button
+                      onClick={() => setIsPhoneVFOCollapsed(true)}
+                      className="p-1 hover:bg-white/5 rounded text-[#8e9299] flex-shrink-0"
+                      title="Collapse VFO"
+                    >
+                      <ChevronUp size={16} />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Expanded content */}
+              {!isPhoneVFOCollapsed && (
+                <div className="p-3 space-y-2">
+                  {/* Row 1: VFO A/B/SPLIT + Up/Down arrows — single non-wrapping line */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleSetVFO("VFOA")}
+                        disabled={!connected}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all",
+                          !connected && "opacity-50 cursor-not-allowed",
+                          status.isSplit
+                            ? (status.txVFO === "VFOA" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
+                            : (status.vfo === "VFOA" ? "bg-emerald-500 text-white border border-emerald-500" : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20")
+                        )}
+                      >A</button>
+                      <button
+                        onClick={() => handleSetVFO("VFOB")}
+                        disabled={!connected}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all",
+                          !connected && "opacity-50 cursor-not-allowed",
+                          status.isSplit
+                            ? (status.txVFO === "VFOB" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
+                            : (status.vfo === "VFOB" ? "bg-blue-500 text-white border border-blue-500" : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20")
+                        )}
+                      >B</button>
+                      <button
+                        onClick={handleToggleSplit}
+                        disabled={!connected}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all",
+                          !connected && "opacity-50 cursor-not-allowed",
+                          status.isSplit ? "bg-red-500 text-white border border-red-500" : "bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20"
+                        )}
+                      >SPLIT</button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', -1)}
+                        disabled={!connected}
+                        className="p-1.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                        title="Frequency Down"
+                      ><ChevronLeft size={16} /></button>
+                      <button
+                        onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', 1)}
+                        disabled={!connected}
+                        className="p-1.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                        title="Frequency Up"
+                      ><ChevronRight size={16} /></button>
+                    </div>
                   </div>
-                  <select 
-                    value={vfoStep}
-                    onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                    disabled={!connected}
-                    className={cn(
-                      "bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-xs px-3 py-2 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
-                      !connected && "opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
-                  </select>
+
+                  {/* Row 2: Frequency input */}
+                  <div className="flex items-baseline justify-center gap-2">
+                    <input
+                      type="number"
+                      step={vfoStep}
+                      value={status.vfo === "VFOA" ? inputVfoA : inputVfoB}
+                      onChange={(e) => status.vfo === "VFOA" ? setInputVfoA(e.target.value) : setInputVfoB(e.target.value)}
+                      disabled={!connected}
+                      onBlur={() => {
+                        const val = parseFloat(status.vfo === "VFOA" ? inputVfoA : inputVfoB);
+                        if (!isNaN(val)) handleSetFreq(Math.round(val * 1000000).toString());
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                      className={cn(
+                        "w-full bg-white/5 text-3xl font-bold tracking-tighter font-mono text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none rounded-xl transition-all cursor-text py-1.5 px-3 border",
+                        !connected && "opacity-50 cursor-not-allowed",
+                        status.isSplit
+                          ? (status.vfo === status.txVFO ? "text-red-500 hover:bg-red-500/10 focus:bg-red-500/10 border-red-500/30 focus:border-red-500/50" : "text-amber-500 hover:bg-amber-500/10 focus:bg-amber-500/10 border-amber-500/30 focus:border-amber-500/50")
+                          : (status.vfo === "VFOA" ? "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50" : "text-blue-500 hover:bg-blue-500/10 focus:bg-blue-500/10 border-[#2a2b2e] focus:border-blue-500/50")
+                      )}
+                    />
+                    <span className={cn("text-sm font-bold flex-shrink-0", status.vfo === "VFOA" ? "text-emerald-500/50" : "text-blue-500/50")}>MHz</span>
+                  </div>
+
+                  {/* Row 3: Step chips — one-tap step selection replacing the dropdown */}
+                  <div className="flex gap-1 overflow-x-auto pb-0.5">
+                    {VFO_STEPS.map(s => (
+                      <button
+                        key={s}
+                        onClick={() => setVfoStep(s)}
+                        disabled={!connected}
+                        className={cn(
+                          "flex-shrink-0 px-2 py-1 rounded-lg text-xs font-bold transition-all",
+                          vfoStep === s
+                            ? "bg-emerald-500 text-white"
+                            : "bg-[#0a0a0a] border border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500/50 disabled:opacity-50"
+                        )}
+                      >
+                        {s >= 1
+                          ? `${s}M`
+                          : s >= 0.001
+                            ? `${Math.round(s * 1000)}k`
+                            : `${Math.round(s * 1000000)}Hz`}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Row 4: Mode + Bandwidth */}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={localMode}
+                      onChange={(e) => handleSetMode(e.target.value)}
+                      disabled={!connected}
+                      className={cn("flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:border-emerald-500", !connected && "opacity-50 cursor-not-allowed")}
+                    >
+                      {availableModes.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <select
+                      value={status?.bandwidth || "2400"}
+                      onChange={(e) => handleSetBw(parseInt(e.target.value))}
+                      disabled={!connected}
+                      className={cn("flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:border-emerald-500", !connected && "opacity-50 cursor-not-allowed")}
+                    >
+                      {BANDWIDTHS.map(bw => <option key={bw} value={bw}>{bw}Hz</option>)}
+                    </select>
+                  </div>
                 </div>
-              </div>
-
-              <div className="relative group flex items-baseline justify-center gap-2 py-2">
-                <input
-                  type="number"
-                  step={vfoStep}
-                  value={status.vfo === "VFOA" ? inputVfoA : inputVfoB}
-                  onChange={(e) => status.vfo === "VFOA" ? setInputVfoA(e.target.value) : setInputVfoB(e.target.value)}
-                  disabled={!connected}
-                  onBlur={() => {
-                    const val = parseFloat(status.vfo === "VFOA" ? inputVfoA : inputVfoB);
-                    if (!isNaN(val)) {
-                      handleSetFreq(Math.round(val * 1000000).toString());
-                    }
-                  }}
-                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                  className={cn(
-                    "w-full bg-white/5 text-5xl font-bold tracking-tighter font-mono text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none rounded-xl transition-all cursor-text py-3 px-4 border",
-                    !connected && "opacity-50 cursor-not-allowed",
-                    status.isSplit
-                      ? (status.vfo === status.txVFO 
-                          ? "text-red-500 hover:bg-red-500/10 focus:bg-red-500/10 border-red-500/30 focus:border-red-500/50" 
-                          : "text-amber-500 hover:bg-amber-500/10 focus:bg-amber-500/10 border-amber-500/30 focus:border-amber-500/50")
-                      : (status.vfo === "VFOA" 
-                          ? "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50" 
-                          : "text-blue-500 hover:bg-blue-500/10 focus:bg-blue-500/10 border-[#2a2b2e] focus:border-blue-500/50")
-                  )}
-                />
-                <span className={cn(
-                  "text-lg font-bold",
-                  status.vfo === "VFOA" ? "text-emerald-500/50" : "text-blue-500/50"
-                )}>MHz</span>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <select 
-                  value={localMode}
-                  onChange={(e) => handleSetMode(e.target.value)}
-                  disabled={!connected}
-                  className={cn(
-                    "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm font-bold focus:outline-none focus:border-emerald-500",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                >
-                  {availableModes.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-                <select 
-                  value={status?.bandwidth || "2400"}
-                  onChange={(e) => handleSetBw(parseInt(e.target.value))}
-                  disabled={!connected}
-                  className={cn(
-                    "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm font-bold focus:outline-none focus:border-emerald-500",
-                    !connected && "opacity-50 cursor-not-allowed"
-                  )}
-                >
-                  {BANDWIDTHS.map(bw => <option key={bw} value={bw}>{bw}Hz</option>)}
-                </select>
-              </div>
+              )}
             </div>
 
             {/* Video Feed Section */}
             <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col shadow-lg">
-              <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+              <div className="p-2 px-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
                 <div className="flex items-center gap-2 text-[#8e9299]">
                   <Monitor size={12} />
                   <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Video & Audio</span>
@@ -1551,51 +1646,65 @@ export default function App() {
                 </div>
               )}
             </div>
-            <div className="bg-[#151619] p-4 rounded-xl border border-[#2a2b2e] space-y-4">
-              <div className="flex items-center justify-between border-b border-[#2a2b2e] pb-3">
-                <div className="flex gap-2">
-                  {(['signal', 'swr', 'alc'] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setPhoneMeterTab(m)}
-                      className={cn(
-                        "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
-                        phoneMeterTab === m 
-                          ? (m === 'swr' && (status.swr ?? 1) > 3 ? "bg-red-500 text-white" : "bg-emerald-500 text-white")
-                          : (m === 'swr' && (status.swr ?? 1) > 3 ? "text-red-500 bg-red-500/10" : "text-[#8e9299] hover:bg-white/5")
-                      )}
-                    >
-                      {m === 'signal' ? (status.ptt ? 'POWER' : 'SIGNAL') : m}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex flex-col items-end">
-                    {phoneMeterTab === 'signal' && (
-                      <span className={cn(
-                        "text-lg font-mono font-bold",
-                        status.ptt ? "text-red-500" : "text-emerald-500"
-                      )}>
-                        {status.ptt 
-                          ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
-                          : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
-                      </span>
-                    )}
-                    {phoneMeterTab === 'swr' && (
-                      <span className={cn(
-                        "text-lg font-mono font-bold",
-                        (status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500"
-                      )}>
-                        {(status.swr ?? 1).toFixed(2)}
-                      </span>
-                    )}
-                    {phoneMeterTab === 'alc' && (
-                      <span className="text-lg font-mono font-bold text-blue-500">
-                        {(status.alc ?? 0).toFixed(5)}
-                      </span>
-                    )}
+            <div className="bg-[#151619] p-3 rounded-xl border border-[#2a2b2e] space-y-3">
+              <div className={cn("flex items-center justify-between", !isPhoneMeterCollapsed && "border-b border-[#2a2b2e] pb-3")}>
+                {isPhoneMeterCollapsed ? (
+                  <div className="flex items-center gap-2">
+                    <span className={cn("text-sm font-mono font-bold", status.ptt ? "text-red-500" : "text-emerald-500")}>
+                      {status.ptt
+                        ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
+                        : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
+                    </span>
+                    <span className="text-[#3a3b3e]">·</span>
+                    <span className={cn("text-sm font-mono font-bold", (status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500")}>
+                      {(status.swr ?? 1).toFixed(2)}
+                    </span>
+                    <span className="text-[#3a3b3e]">·</span>
+                    <span className="text-sm font-mono font-bold text-blue-400">
+                      {(status.alc ?? 0).toFixed(2)}
+                    </span>
                   </div>
-                  <button 
+                ) : (
+                  <div className="flex gap-2">
+                    {(['signal', 'swr', 'alc'] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setPhoneMeterTab(m)}
+                        className={cn(
+                          "px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all",
+                          phoneMeterTab === m
+                            ? (m === 'swr' && (status.swr ?? 1) > 3 ? "bg-red-500 text-white" : "bg-emerald-500 text-white")
+                            : (m === 'swr' && (status.swr ?? 1) > 3 ? "text-red-500 bg-red-500/10" : "text-[#8e9299] hover:bg-white/5")
+                        )}
+                      >
+                        {m === 'signal' ? (status.ptt ? 'POWER' : 'SIGNAL') : m}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  {!isPhoneMeterCollapsed && (
+                    <div className="flex flex-col items-end">
+                      {phoneMeterTab === 'signal' && (
+                        <span className={cn("text-lg font-mono font-bold", status.ptt ? "text-red-500" : "text-emerald-500")}>
+                          {status.ptt
+                            ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
+                            : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
+                        </span>
+                      )}
+                      {phoneMeterTab === 'swr' && (
+                        <span className={cn("text-lg font-mono font-bold", (status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500")}>
+                          {(status.swr ?? 1).toFixed(2)}
+                        </span>
+                      )}
+                      {phoneMeterTab === 'alc' && (
+                        <span className="text-lg font-mono font-bold text-blue-500">
+                          {(status.alc ?? 0).toFixed(5)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <button
                     onClick={() => setIsPhoneMeterCollapsed(!isPhoneMeterCollapsed)}
                     className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
                     title={isPhoneMeterCollapsed ? "Expand Meters" : "Collapse Meters"}
@@ -1654,50 +1763,54 @@ export default function App() {
               )}
             </div>
 
-            {/* Controls Grid for Phone */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
-                <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
-                  <div className="flex items-center gap-2 text-[#8e9299]">
-                    <Zap size={12} />
-                    <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Quick Controls</span>
-                  </div>
-                  <button 
-                    onClick={() => setIsPhoneQuickControlsCollapsed(!isPhoneQuickControlsCollapsed)}
-                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
-                    title={isPhoneQuickControlsCollapsed ? "Expand Quick Controls" : "Collapse Quick Controls"}
-                  >
-                    {isPhoneQuickControlsCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-                  </button>
+            {/* PTT — standalone, always visible, no surrounding box */}
+            <button
+              onPointerDown={(e) => {
+                if (!connected) return;
+                e.currentTarget.setPointerCapture(e.pointerId);
+                handleSetPTT(true);
+              }}
+              onPointerUp={(e) => {
+                if (!connected) return;
+                e.currentTarget.releasePointerCapture(e.pointerId);
+                handleSetPTT(false);
+              }}
+              onPointerCancel={(e) => {
+                if (!connected) return;
+                handleSetPTT(false);
+              }}
+              disabled={!connected}
+              className={cn(
+                "flex flex-col items-center justify-center w-full h-16 rounded-xl border transition-all gap-1 touch-none select-none",
+                !connected && "opacity-50 cursor-not-allowed",
+                status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+              )}
+            >
+              <Mic size={24} />
+              <span className="text-xs uppercase font-bold leading-none">PTT</span>
+            </button>
+
+            {/* Consolidated Quick Controls box */}
+            <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
+              <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
+                <div className="flex items-center gap-2 text-[#8e9299]">
+                  <Zap size={12} />
+                  <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Quick Controls</span>
                 </div>
-                {!isPhoneQuickControlsCollapsed && (
-                  <div className="p-3 grid grid-cols-2 gap-3 h-full content-start">
-                    <button 
-                      onPointerDown={(e) => {
-                        if (!connected) return;
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                        handleSetPTT(true);
-                      }}
-                      onPointerUp={(e) => {
-                        if (!connected) return;
-                        e.currentTarget.releasePointerCapture(e.pointerId);
-                        handleSetPTT(false);
-                      }}
-                      onPointerCancel={(e) => {
-                        if (!connected) return;
-                        handleSetPTT(false);
-                      }}
-                      disabled={!connected}
-                      className={cn(
-                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1 touch-none select-none",
-                        !connected && "opacity-50 cursor-not-allowed",
-                        status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-                      )}
-                    >
-                      <Mic size={24} />
-                      <span className="text-xs uppercase font-bold leading-none">PTT</span>
-                    </button>
-                    <button 
+                <button
+                  onClick={() => setIsPhoneQuickControlsCollapsed(!isPhoneQuickControlsCollapsed)}
+                  className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                  title={isPhoneQuickControlsCollapsed ? "Expand Quick Controls" : "Collapse Quick Controls"}
+                >
+                  {isPhoneQuickControlsCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                </button>
+              </div>
+              {!isPhoneQuickControlsCollapsed && (
+                <div className="p-3 flex flex-col gap-4">
+
+                  {/* Tune / Att / Preamp */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
                       onClick={() => {
                         if (status.tuner) {
                           handleSetFunc("TUNER", false);
@@ -1707,227 +1820,194 @@ export default function App() {
                       }}
                       disabled={!connected || pendingVfoOp === "TUNE"}
                       className={cn(
-                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                        "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
                         (!connected || pendingVfoOp === "TUNE") && "opacity-50 cursor-not-allowed",
                         status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
-                      <RefreshCw size={24} className={cn((status.tuner || pendingVfoOp === "TUNE") && "animate-spin")} />
+                      <RefreshCw size={18} className={cn((status.tuner || pendingVfoOp === "TUNE") && "animate-spin")} />
                       <span className="text-xs uppercase font-bold leading-none">Tune</span>
                     </button>
-                    <button 
+                    <button
                       onClick={cycleAttenuator}
                       disabled={!connected || attenuatorLevels.length === 0}
                       className={cn(
-                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                        "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
                         (!connected || attenuatorLevels.length === 0) && "opacity-50 cursor-not-allowed",
                         status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
-                      <Signal size={24} />
-                      <span className="text-xs uppercase font-bold leading-none">
-                        {getAttenuatorLabel()}
-                      </span>
+                      <Signal size={18} />
+                      <span className="text-xs uppercase font-bold leading-none">{getAttenuatorLabel()}</span>
                     </button>
-                    <button 
+                    <button
                       onClick={cyclePreamp}
                       disabled={!connected || preampLevels.length === 0}
                       className={cn(
-                        "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
+                        "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
                         (!connected || preampLevels.length === 0) && "opacity-50 cursor-not-allowed",
                         status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
-                      <Zap size={24} />
-                      <span className="text-xs uppercase font-bold leading-none">
-                        {getPreampLabel()}
-                      </span>
+                      <Zap size={18} />
+                      <span className="text-xs uppercase font-bold leading-none">{getPreampLabel()}</span>
                     </button>
-                    <button 
-                      onClick={() => setShowAdvanced(!showAdvanced)}
+                  </div>
+
+                  {/* NB / AGC / DNR / ANF toggle buttons */}
+                  <div className="grid grid-cols-4 gap-2">
+                    <button
+                      onClick={() => handleSetFunc("NB", !status.nb)}
+                      disabled={!connected || !nbCapabilities.supported}
                       className={cn(
-                        "col-span-2 flex items-center justify-center h-12 rounded-xl border border-[#2a2b2e] bg-[#0a0a0a] text-[#8e9299] hover:text-white transition-all gap-2",
-                        showAdvanced && "bg-white/5 border-white/20 text-white"
+                        "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
+                        (!connected || !nbCapabilities.supported) && "opacity-50 cursor-not-allowed",
+                        status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Waves size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">NB</span>
+                    </button>
+                    <button
+                      onClick={cycleAgc}
+                      disabled={!connected || agcLevels.length === 0}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
+                        (!connected || agcLevels.length === 0) && "opacity-50 cursor-not-allowed",
+                        status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
                       )}
                     >
                       <Settings size={16} />
-                      <span className="text-xs uppercase font-bold">{showAdvanced ? "LESS CONTROLS" : "MORE CONTROLS"}</span>
+                      <div className="flex flex-col items-center leading-none gap-0.5">
+                        <span className="text-xs uppercase font-bold">AGC</span>
+                        <span className="text-[0.5625rem] font-bold opacity-80">{getAgcLabel()}</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleSetFunc("NR", !status.nr)}
+                      disabled={!connected || !nrCapabilities.supported}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
+                        (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed",
+                        status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Activity size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">DNR</span>
+                    </button>
+                    <button
+                      onClick={() => handleSetFunc("ANF", !status.anf)}
+                      disabled={!connected || !anfCapabilities.supported}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
+                        (!connected || !anfCapabilities.supported) && "opacity-50 cursor-not-allowed",
+                        status.anf ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                      )}
+                    >
+                      <Activity size={16} />
+                      <span className="text-xs uppercase font-bold leading-none">ANF</span>
                     </button>
                   </div>
-                )}
-              </div>
 
-              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
-                <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
-                  <div className="flex items-center gap-2 text-[#8e9299]">
-                    <Gauge size={12} />
-                    <span className="text-[0.5625rem] uppercase tracking-widest font-bold">RF Power</span>
-                  </div>
-                  <button 
-                    onClick={() => setIsPhoneRFPowerCollapsed(!isPhoneRFPowerCollapsed)}
-                    className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
-                    title={isPhoneRFPowerCollapsed ? "Expand RF Power" : "Collapse RF Power"}
-                  >
-                    {isPhoneRFPowerCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-                  </button>
-                </div>
-                {!isPhoneRFPowerCollapsed && (
-                  <div className="p-4 flex flex-col justify-center gap-4">
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
-                          <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
-                        </div>
-                        <input 
-                          type="range" 
-                          min={rfPowerCapabilities.range.min * 100} 
-                          max={rfPowerCapabilities.range.max * 100} 
-                          step={rfPowerCapabilities.range.step * 100}
-                          value={localRFPower * 100}
-                          disabled={!connected}
-                          onChange={(e) => {
-                            isDraggingRF.current = true;
-                            setLocalRFPower(parseFloat(e.target.value) / 100);
-                          }}
-                          className={cn(
-                            "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                            !connected && "opacity-50 cursor-not-allowed"
-                          )}
-                        />
+                  {/* RF Power / Level / DNR Level / NB Level sliders */}
+                  <div className="flex flex-col gap-3">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
+                        <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
                       </div>
-                    
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs uppercase text-[#8e9299]">RF Level</span>
-                          <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
-                        </div>
-                        <input 
-                          type="range" 
-                          min="0" 
-                          max="1" 
-                          step="0.1"
-                          value={localRFLevel}
-                          disabled={!connected}
-                          onChange={(e) => {
-                            isDraggingRFLevel.current = true;
-                            setLocalRFLevel(parseFloat(e.target.value));
-                          }}
-                          className={cn(
-                            "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                            !connected && "opacity-50 cursor-not-allowed"
-                          )}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
-                          <span className="text-sm text-emerald-500 font-bold">Lvl {Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}</span>
-                        </div>
-                        <input 
-                          type="range" 
-                          min="1" 
-                          max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)} 
-                          step="1"
-                          value={Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}
-                          disabled={!connected || !nrCapabilities.supported}
-                          onChange={(e) => {
-                            isDraggingNR.current = true;
-                            const stepIdx = parseInt(e.target.value);
-                            const calculated = nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step);
-                            setLocalNRLevel(Math.min(nrCapabilities.range.max, calculated));
-                          }}
-                          className={cn(
-                            "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                            (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed"
-                          )}
-                        />
-                      </div>
-                      {nbCapabilities.supported && showAdvanced && (
-                        <div className="space-y-2 animate-in slide-in-from-top-1 duration-300">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
-                            <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round(localNBLevel)}</span>
-                          </div>
-                          <input 
-                            type="range" 
-                            min={nbCapabilities.range.min}
-                            max={nbCapabilities.range.max}
-                            step={nbCapabilities.range.step}
-                            value={localNBLevel}
-                            disabled={!connected}
-                            onChange={(e) => {
-                              isDraggingNB.current = true;
-                              setLocalNBLevel(parseFloat(e.target.value));
-                            }}
-                            className={cn(
-                              "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                              !connected && "opacity-50 cursor-not-allowed"
-                            )}
-                          />
-                        </div>
-                      )}
+                      <input
+                        type="range"
+                        min={rfPowerCapabilities.range.min * 100}
+                        max={rfPowerCapabilities.range.max * 100}
+                        step={rfPowerCapabilities.range.step * 100}
+                        value={localRFPower * 100}
+                        disabled={!connected}
+                        onChange={(e) => {
+                          isDraggingRF.current = true;
+                          setLocalRFPower(parseFloat(e.target.value) / 100);
+                        }}
+                        className={cn(
+                          "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
                     </div>
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs uppercase text-[#8e9299]">RF Level</span>
+                        <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={localRFLevel}
+                        disabled={!connected}
+                        onChange={(e) => {
+                          isDraggingRFLevel.current = true;
+                          setLocalRFLevel(parseFloat(e.target.value));
+                        }}
+                        className={cn(
+                          "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
+                        <span className="text-sm text-emerald-500 font-bold">Lvl {Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)}
+                        step="1"
+                        value={Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}
+                        disabled={!connected || !nrCapabilities.supported}
+                        onChange={(e) => {
+                          isDraggingNR.current = true;
+                          const stepIdx = parseInt(e.target.value);
+                          const calculated = nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step);
+                          setLocalNRLevel(Math.min(nrCapabilities.range.max, calculated));
+                        }}
+                        className={cn(
+                          "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                          (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                    </div>
+                    {nbCapabilities.supported && (
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
+                          <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round(localNBLevel)}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={nbCapabilities.range.min}
+                          max={nbCapabilities.range.max}
+                          step={nbCapabilities.range.step}
+                          value={localNBLevel}
+                          disabled={!connected}
+                          onChange={(e) => {
+                            isDraggingNB.current = true;
+                            setLocalNBLevel(parseFloat(e.target.value));
+                          }}
+                          className={cn(
+                            "w-full accent-emerald-500 h-2 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                            !connected && "opacity-50 cursor-not-allowed"
+                          )}
+                        />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
 
-            {showAdvanced && !isPhoneQuickControlsCollapsed && (
-              <div className="grid grid-cols-3 gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                <button 
-                  onClick={() => handleSetFunc("NB", !status.nb)}
-                  disabled={!connected || !nbCapabilities.supported}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    (!connected || !nbCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                    status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
-                  )}
-                >
-                  <Waves size={20} />
-                  <span className="text-xs uppercase font-bold leading-none">NB</span>
-                </button>
-                <button 
-                  onClick={cycleAgc}
-                  disabled={!connected || agcLevels.length === 0}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    (!connected || agcLevels.length === 0) && "opacity-50 cursor-not-allowed",
-                    status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
-                  )}
-                >
-                  <Settings size={20} />
-                  <div className="flex flex-col items-center leading-none">
-                    <span className="text-xs uppercase font-bold">AGC</span>
-                    <span className="text-[0.625rem] font-bold opacity-80">{getAgcLabel()}</span>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => handleSetFunc("NR", !status.nr)}
-                  disabled={!connected || !nrCapabilities.supported}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                    status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
-                  )}
-                >
-                  <Activity size={20} />
-                  <span className="text-xs uppercase font-bold leading-none">DNR</span>
-                </button>
-                <button 
-                  onClick={() => handleSetFunc("ANF", !status.anf)}
-                  disabled={!connected || !anfCapabilities.supported}
-                  className={cn(
-                    "flex flex-col items-center justify-center h-16 rounded-xl border transition-all gap-1",
-                    (!connected || !anfCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                    status.anf ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#151619] border-[#2a2b2e]"
-                  )}
-                >
-                  <Activity size={20} />
-                  <span className="text-xs uppercase font-bold leading-none">ANF</span>
-                </button>
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
         ) : isCompact ? (
           <div className="space-y-2 animate-in fade-in duration-300">
@@ -3868,7 +3948,7 @@ export default function App() {
                   <div className="space-y-4 pt-4 border-t border-[#2a2b2e]/50">
                     <h4 className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Local Client Audio (Your System)</h4>
                     
-                    {activeMicClientId && socket?.id !== activeMicClientId && (
+                    {activeMicClientId && clientId !== activeMicClientId && (
                       <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 flex items-center gap-3">
                         <AlertTriangle className="text-amber-500 shrink-0" size={16} />
                         <p className="text-[0.625rem] text-amber-500/80 font-medium leading-tight">

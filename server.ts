@@ -127,6 +127,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let opusEncoder: any = null; // libopus-node OpusEncoder
   let opusDecoder: any = null; // libopus-node OpusEncoder (used for decoding)
 
+  // Outbound audio state
+  const OUTBOUND_SILENCE = Buffer.alloc(960 * 2); // one silence frame (Int16 mono)
+  const OUTBOUND_PRE_FILL = 3;  // silence frames written at startup to cover first timer tick gap
+  let outboundTimer: ReturnType<typeof setInterval> | null = null;
+
   const initAudioEngine = async () => {
     try {
       // Use a Function constructor to hide the dynamic import from the bundler (esbuild/vite).
@@ -561,6 +566,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   const stopAudio = () => {
     console.log("[AUDIO] Stopping audio streaming...");
+    if (outboundTimer) { clearInterval(outboundTimer); outboundTimer = null; }
     if (audioInputProcess) {
       try { audioInputProcess.quit(); } catch (e) {}
       audioInputProcess = null;
@@ -659,9 +665,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             sampleFormat: portAudio.SampleFormat16Bit,
             sampleRate: 48000,
             deviceId: isNaN(deviceId) ? -1 : deviceId,
-            closeOnError: true,
+            closeOnError: false, // Do not close on underflow — underflow is expected before first write
             framesPerBuffer: 960, // 20ms at 48kHz
-            maxQueue: 2 // Keep queue small to prevent latency buildup
+            maxQueue: 20 // large queue absorbs bursty socket arrivals; real audio written directly
           }
         });
 
@@ -670,6 +676,20 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         });
 
         audioOutputProcess.start();
+
+        // Pre-fill: give PortAudio silence to consume before the first timer tick fires.
+        for (let i = 0; i < OUTBOUND_PRE_FILL; i++) {
+          audioOutputProcess.write(OUTBOUND_SILENCE);
+        }
+
+        // Silence-maintenance timer: keeps the PortAudio stream alive when PTT is off.
+        // Real audio is written directly from the audio-outbound socket handler, bypassing
+        // this timer entirely — avoiding setInterval timing imprecision on the audio path.
+        outboundTimer = setInterval(() => {
+          if (!audioOutputProcess || lastStatus.ptt) return;
+          audioOutputProcess.write(OUTBOUND_SILENCE);
+        }, 20);
+
         console.log(`[AUDIO-OUT] Started playback to device ${audioSettings.outputDevice}`);
       } catch (err) {
         console.error("[AUDIO-OUT] Failed to start playback:", err);
@@ -1558,35 +1578,24 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
     });
 
-    let outboundPacketCount = 0;
+    let outboundDiagCount = 0;
+    let outboundRecvCount = 0;
     socket.on("audio-outbound", (data: Buffer) => {
+      outboundRecvCount++;
+      if (outboundRecvCount <= 5 || outboundRecvCount % 50 === 0) {
+        console.log(`[AUDIO-DIAG] audio-outbound received #${outboundRecvCount} from clientId=${clientId}, bytes=${data.length}, activeMic=${activeMicClientId}, ptt=${lastStatus.ptt}`);
+      }
       if (activeMicClientId !== clientId) return; // Only accept audio from the active mic
       if (!audioOutputProcess || !opusDecoder) return;
+      if (!lastStatus.ptt) return; // Drop when PTT is off; silence timer keeps stream alive
 
       try {
         const pcmData = opusDecoder.decode(data);
-        
-        // PTT Gating (Issue 1): If PTT is off, drop the audio and write pure silence
-        // This ensures PortAudio's buffer doesn't queue up old audio while PTT is off.
-        if (!lastStatus.ptt) {
-          audioOutputProcess.write(Buffer.alloc(pcmData.length));
-          return;
+        if (outboundDiagCount < 5) {
+          console.log(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
+          outboundDiagCount++;
         }
-
-        // Debug: Check if the audio is completely silent
-        outboundPacketCount++;
-        if (outboundPacketCount % 50 === 0) { // Log every 1 second (50 packets * 20ms)
-          let isSilent = true;
-          for (let i = 0; i < pcmData.length; i++) {
-            if (pcmData[i] !== 0) {
-              isSilent = false;
-              break;
-            }
-          }
-          console.log(`[AUDIO-OUT] Received 50 packets. Last packet size: ${pcmData.length} bytes. Is completely silent: ${isSilent}`);
-        }
-
-        audioOutputProcess.write(pcmData);
+        audioOutputProcess.write(pcmData); // write directly — no timer intermediary
       } catch (err) {
         console.error("[AUDIO-OUT] Opus decode or write error:", err);
       }

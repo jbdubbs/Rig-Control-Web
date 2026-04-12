@@ -1284,8 +1284,8 @@ var require_node = __commonJS({
           }
           break;
         case "FILE":
-          var fs2 = require("fs");
-          stream2 = new fs2.SyncWriteStream(fd2, { autoClose: false });
+          var fs3 = require("fs");
+          stream2 = new fs3.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -1336,7 +1336,7 @@ var require_src = __commonJS({
 var require_destroy = __commonJS({
   "node_modules/destroy/index.js"(exports2, module2) {
     "use strict";
-    var EventEmitter = require("events").EventEmitter;
+    var EventEmitter2 = require("events").EventEmitter;
     var ReadStream = require("fs").ReadStream;
     var Stream = require("stream");
     var Zlib = require("zlib");
@@ -1398,7 +1398,7 @@ var require_destroy = __commonJS({
       return stream instanceof Stream && typeof stream.destroy === "function";
     }
     function isEventEmitter(val) {
-      return val instanceof EventEmitter;
+      return val instanceof EventEmitter2;
     }
     function isFsReadStream(stream) {
       return stream instanceof ReadStream;
@@ -14072,11 +14072,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path2) {
-      if (!path2 || typeof path2 !== "string") {
+    function lookup(path3) {
+      if (!path3 || typeof path3 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path2).toLowerCase().substr(1);
+      var extension2 = extname("x." + path3).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -17631,8 +17631,8 @@ var require_node2 = __commonJS({
           }
           break;
         case "FILE":
-          var fs2 = require("fs");
-          stream2 = new fs2.SyncWriteStream(fd2, { autoClose: false });
+          var fs3 = require("fs");
+          stream2 = new fs3.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -18350,8 +18350,8 @@ var require_node3 = __commonJS({
           }
           break;
         case "FILE":
-          var fs2 = require("fs");
-          stream2 = new fs2.SyncWriteStream(fd2, { autoClose: false });
+          var fs3 = require("fs");
+          stream2 = new fs3.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -18439,7 +18439,7 @@ var require_path_to_regexp = __commonJS({
   "node_modules/path-to-regexp/index.js"(exports2, module2) {
     module2.exports = pathToRegexp;
     var MATCHING_GROUP_REGEXP = /\\.|\((?:\?<(.*?)>)?(?!\?)/g;
-    function pathToRegexp(path2, keys, options) {
+    function pathToRegexp(path3, keys, options) {
       options = options || {};
       keys = keys || [];
       var strict = options.strict;
@@ -18453,8 +18453,8 @@ var require_path_to_regexp = __commonJS({
       var pos = 0;
       var backtrack = "";
       var m;
-      if (path2 instanceof RegExp) {
-        while (m = MATCHING_GROUP_REGEXP.exec(path2.source)) {
+      if (path3 instanceof RegExp) {
+        while (m = MATCHING_GROUP_REGEXP.exec(path3.source)) {
           if (m[0][0] === "\\") continue;
           keys.push({
             name: m[1] || name++,
@@ -18462,18 +18462,18 @@ var require_path_to_regexp = __commonJS({
             offset: m.index
           });
         }
-        return path2;
+        return path3;
       }
-      if (Array.isArray(path2)) {
-        path2 = path2.map(function(value) {
+      if (Array.isArray(path3)) {
+        path3 = path3.map(function(value) {
           return pathToRegexp(value, keys, options).source;
         });
-        return new RegExp(path2.join("|"), flags);
+        return new RegExp(path3.join("|"), flags);
       }
-      if (typeof path2 !== "string") {
+      if (typeof path3 !== "string") {
         throw new TypeError("path must be a string, array of strings, or regular expression");
       }
-      path2 = path2.replace(
+      path3 = path3.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
         function(match, slash, format, key, capture, star, optional, offset) {
           if (match[0] === "\\") {
@@ -18490,7 +18490,7 @@ var require_path_to_regexp = __commonJS({
           if (slash || format) {
             backtrack = "";
           } else {
-            backtrack += path2.slice(pos, offset);
+            backtrack += path3.slice(pos, offset);
           }
           pos = offset + match.length;
           if (match === "*") {
@@ -18518,7 +18518,7 @@ var require_path_to_regexp = __commonJS({
           return result;
         }
       );
-      while (m = MATCHING_GROUP_REGEXP.exec(path2)) {
+      while (m = MATCHING_GROUP_REGEXP.exec(path3)) {
         if (m[0][0] === "\\") continue;
         if (keysOffset + i === keys.length || keys[keysOffset + i].offset > m.index) {
           keys.splice(keysOffset + i, 0, {
@@ -18530,13 +18530,13 @@ var require_path_to_regexp = __commonJS({
         }
         i++;
       }
-      path2 += strict ? "" : path2[path2.length - 1] === "/" ? "?" : "/?";
+      path3 += strict ? "" : path3[path3.length - 1] === "/" ? "?" : "/?";
       if (end) {
-        path2 += "$";
-      } else if (path2[path2.length - 1] !== "/") {
-        path2 += lookahead ? "(?=/|$)" : "(?:/|$)";
+        path3 += "$";
+      } else if (path3[path3.length - 1] !== "/") {
+        path3 += lookahead ? "(?=/|$)" : "(?:/|$)";
       }
-      return new RegExp("^" + path2, flags);
+      return new RegExp("^" + path3, flags);
     }
   }
 });
@@ -18549,19 +18549,19 @@ var require_layer = __commonJS({
     var debug = require_src3()("express:router:layer");
     var hasOwnProperty = Object.prototype.hasOwnProperty;
     module2.exports = Layer;
-    function Layer(path2, options, fn) {
+    function Layer(path3, options, fn) {
       if (!(this instanceof Layer)) {
-        return new Layer(path2, options, fn);
+        return new Layer(path3, options, fn);
       }
-      debug("new %o", path2);
+      debug("new %o", path3);
       var opts = options || {};
       this.handle = fn;
       this.name = fn.name || "<anonymous>";
       this.params = void 0;
       this.path = void 0;
-      this.regexp = pathRegexp(path2, this.keys = [], opts);
-      this.regexp.fast_star = path2 === "*";
-      this.regexp.fast_slash = path2 === "/" && opts.end === false;
+      this.regexp = pathRegexp(path3, this.keys = [], opts);
+      this.regexp.fast_star = path3 === "*";
+      this.regexp.fast_slash = path3 === "/" && opts.end === false;
     }
     Layer.prototype.handle_error = function handle_error(error, req, res, next) {
       var fn = this.handle;
@@ -18585,20 +18585,20 @@ var require_layer = __commonJS({
         next(err);
       }
     };
-    Layer.prototype.match = function match(path2) {
+    Layer.prototype.match = function match(path3) {
       var match2;
-      if (path2 != null) {
+      if (path3 != null) {
         if (this.regexp.fast_slash) {
           this.params = {};
           this.path = "";
           return true;
         }
         if (this.regexp.fast_star) {
-          this.params = { "0": decode_param(path2) };
-          this.path = path2;
+          this.params = { "0": decode_param(path3) };
+          this.path = path3;
           return true;
         }
-        match2 = this.regexp.exec(path2);
+        match2 = this.regexp.exec(path3);
       }
       if (!match2) {
         this.params = void 0;
@@ -18691,10 +18691,10 @@ var require_route = __commonJS({
     var slice = Array.prototype.slice;
     var toString = Object.prototype.toString;
     module2.exports = Route;
-    function Route(path2) {
-      this.path = path2;
+    function Route(path3) {
+      this.path = path3;
       this.stack = [];
-      debug("new %o", path2);
+      debug("new %o", path3);
       this.methods = {};
     }
     Route.prototype._handles_method = function _handles_method(method) {
@@ -18906,8 +18906,8 @@ var require_router = __commonJS({
         if (++sync > 100) {
           return setImmediate(next, err);
         }
-        var path2 = getPathname(req);
-        if (path2 == null) {
+        var path3 = getPathname(req);
+        if (path3 == null) {
           return done(layerError);
         }
         var layer;
@@ -18915,7 +18915,7 @@ var require_router = __commonJS({
         var route;
         while (match !== true && idx < stack.length) {
           layer = stack[idx++];
-          match = matchLayer(layer, path2);
+          match = matchLayer(layer, path3);
           route = layer.route;
           if (typeof match !== "boolean") {
             layerError = layerError || match;
@@ -18953,18 +18953,18 @@ var require_router = __commonJS({
           } else if (route) {
             layer.handle_request(req, res, next);
           } else {
-            trim_prefix(layer, layerError, layerPath, path2);
+            trim_prefix(layer, layerError, layerPath, path3);
           }
           sync = 0;
         });
       }
-      function trim_prefix(layer, layerError, layerPath, path2) {
+      function trim_prefix(layer, layerError, layerPath, path3) {
         if (layerPath.length !== 0) {
-          if (layerPath !== path2.slice(0, layerPath.length)) {
+          if (layerPath !== path3.slice(0, layerPath.length)) {
             next(layerError);
             return;
           }
-          var c = path2[layerPath.length];
+          var c = path3[layerPath.length];
           if (c && c !== "/" && c !== ".") return next(layerError);
           debug("trim prefix (%s) from url %s", layerPath, req.url);
           removed = layerPath;
@@ -19042,7 +19042,7 @@ var require_router = __commonJS({
     };
     proto.use = function use(fn) {
       var offset = 0;
-      var path2 = "/";
+      var path3 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -19050,7 +19050,7 @@ var require_router = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path2 = fn;
+          path3 = fn;
         }
       }
       var callbacks = flatten(slice.call(arguments, offset));
@@ -19062,8 +19062,8 @@ var require_router = __commonJS({
         if (typeof fn !== "function") {
           throw new TypeError("Router.use() requires a middleware function but got a " + gettype(fn));
         }
-        debug("use %o %s", path2, fn.name || "<anonymous>");
-        var layer = new Layer(path2, {
+        debug("use %o %s", path3, fn.name || "<anonymous>");
+        var layer = new Layer(path3, {
           sensitive: this.caseSensitive,
           strict: false,
           end: false
@@ -19073,9 +19073,9 @@ var require_router = __commonJS({
       }
       return this;
     };
-    proto.route = function route(path2) {
-      var route2 = new Route(path2);
-      var layer = new Layer(path2, {
+    proto.route = function route(path3) {
+      var route2 = new Route(path3);
+      var layer = new Layer(path3, {
         sensitive: this.caseSensitive,
         strict: this.strict,
         end: true
@@ -19085,8 +19085,8 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      proto[method] = function(path2) {
-        var route = this.route(path2);
+      proto[method] = function(path3) {
+        var route = this.route(path3);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
@@ -19122,9 +19122,9 @@ var require_router = __commonJS({
       }
       return toString.call(obj).replace(objectRegExp, "$1");
     }
-    function matchLayer(layer, path2) {
+    function matchLayer(layer, path3) {
       try {
-        return layer.match(path2);
+        return layer.match(path3);
       } catch (err) {
         return err;
       }
@@ -19242,13 +19242,13 @@ var require_view = __commonJS({
   "node_modules/express/lib/view.js"(exports2, module2) {
     "use strict";
     var debug = require_src3()("express:view");
-    var path2 = require("path");
-    var fs2 = require("fs");
-    var dirname = path2.dirname;
-    var basename = path2.basename;
-    var extname = path2.extname;
-    var join = path2.join;
-    var resolve = path2.resolve;
+    var path3 = require("path");
+    var fs3 = require("fs");
+    var dirname = path3.dirname;
+    var basename = path3.basename;
+    var extname = path3.extname;
+    var join = path3.join;
+    var resolve = path3.resolve;
     module2.exports = View;
     function View(name, options) {
       var opts = options || {};
@@ -19277,17 +19277,17 @@ var require_view = __commonJS({
       this.path = this.lookup(fileName);
     }
     View.prototype.lookup = function lookup(name) {
-      var path3;
+      var path4;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name);
-      for (var i = 0; i < roots.length && !path3; i++) {
+      for (var i = 0; i < roots.length && !path4; i++) {
         var root = roots[i];
         var loc = resolve(root, name);
         var dir = dirname(loc);
         var file = basename(loc);
-        path3 = this.resolve(dir, file);
+        path4 = this.resolve(dir, file);
       }
-      return path3;
+      return path4;
     };
     View.prototype.render = function render(options, callback) {
       debug('render "%s"', this.path);
@@ -19295,21 +19295,21 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve2(dir, file) {
       var ext = this.ext;
-      var path3 = join(dir, file);
-      var stat = tryStat(path3);
+      var path4 = join(dir, file);
+      var stat = tryStat(path4);
       if (stat && stat.isFile()) {
-        return path3;
+        return path4;
       }
-      path3 = join(dir, basename(file, ext), "index" + ext);
-      stat = tryStat(path3);
+      path4 = join(dir, basename(file, ext), "index" + ext);
+      stat = tryStat(path4);
       if (stat && stat.isFile()) {
-        return path3;
+        return path4;
       }
     };
-    function tryStat(path3) {
-      debug('stat "%s"', path3);
+    function tryStat(path4) {
+      debug('stat "%s"', path4);
       try {
-        return fs2.statSync(path3);
+        return fs3.statSync(path4);
       } catch (e) {
         return void 0;
       }
@@ -19914,8 +19914,8 @@ var require_node4 = __commonJS({
           }
           break;
         case "FILE":
-          var fs2 = require("fs");
-          stream2 = new fs2.SyncWriteStream(fd2, { autoClose: false });
+          var fs3 = require("fs");
+          stream2 = new fs3.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -20087,8 +20087,8 @@ var require_types = __commonJS({
 // node_modules/mime/mime.js
 var require_mime = __commonJS({
   "node_modules/mime/mime.js"(exports2, module2) {
-    var path2 = require("path");
-    var fs2 = require("fs");
+    var path3 = require("path");
+    var fs3 = require("fs");
     function Mime() {
       this.types = /* @__PURE__ */ Object.create(null);
       this.extensions = /* @__PURE__ */ Object.create(null);
@@ -20109,7 +20109,7 @@ var require_mime = __commonJS({
     };
     Mime.prototype.load = function(file) {
       this._loading = file;
-      var map = {}, content = fs2.readFileSync(file, "ascii"), lines = content.split(/[\r\n]+/);
+      var map = {}, content = fs3.readFileSync(file, "ascii"), lines = content.split(/[\r\n]+/);
       lines.forEach(function(line) {
         var fields = line.replace(/\s*#.*|^\s*|\s*$/g, "").split(/\s+/);
         map[fields.shift()] = fields;
@@ -20117,8 +20117,8 @@ var require_mime = __commonJS({
       this.define(map);
       this._loading = null;
     };
-    Mime.prototype.lookup = function(path3, fallback) {
-      var ext = path3.replace(/^.*[\.\/\\]/, "").toLowerCase();
+    Mime.prototype.lookup = function(path4, fallback) {
+      var ext = path4.replace(/^.*[\.\/\\]/, "").toLowerCase();
       return this.types[ext] || fallback || this.default_type;
     };
     Mime.prototype.extension = function(mimeType) {
@@ -20347,33 +20347,33 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs2 = require("fs");
+    var fs3 = require("fs");
     var mime = require_mime();
     var ms = require_ms5();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path2 = require("path");
+    var path3 = require("path");
     var statuses = require_statuses();
     var Stream = require("stream");
     var util = require("util");
-    var extname = path2.extname;
-    var join = path2.join;
-    var normalize = path2.normalize;
-    var resolve = path2.resolve;
-    var sep = path2.sep;
+    var extname = path3.extname;
+    var join = path3.join;
+    var normalize = path3.normalize;
+    var resolve = path3.resolve;
+    var sep = path3.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
     var MAX_MAXAGE = 60 * 60 * 24 * 365 * 1e3;
     var UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
     module2.exports = send;
     module2.exports.mime = mime;
-    function send(req, path3, options) {
-      return new SendStream(req, path3, options);
+    function send(req, path4, options) {
+      return new SendStream(req, path4, options);
     }
-    function SendStream(req, path3, options) {
+    function SendStream(req, path4, options) {
       Stream.call(this);
       var opts = options || {};
       this.options = opts;
-      this.path = path3;
+      this.path = path4;
       this.req = req;
       this._acceptRanges = opts.acceptRanges !== void 0 ? Boolean(opts.acceptRanges) : true;
       this._cacheControl = opts.cacheControl !== void 0 ? Boolean(opts.cacheControl) : true;
@@ -20419,8 +20419,8 @@ var require_send = __commonJS({
       this._index = index2;
       return this;
     }, "send.index: pass index as option");
-    SendStream.prototype.root = function root(path3) {
-      this._root = resolve(String(path3));
+    SendStream.prototype.root = function root(path4) {
+      this._root = resolve(String(path4));
       debug("root %s", this._root);
       return this;
     };
@@ -20533,10 +20533,10 @@ var require_send = __commonJS({
       var lastModified = this.res.getHeader("Last-Modified");
       return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
     };
-    SendStream.prototype.redirect = function redirect(path3) {
+    SendStream.prototype.redirect = function redirect(path4) {
       var res = this.res;
       if (hasListeners(this, "directory")) {
-        this.emit("directory", res, path3);
+        this.emit("directory", res, path4);
         return;
       }
       if (this.hasTrailingSlash()) {
@@ -20556,42 +20556,42 @@ var require_send = __commonJS({
     SendStream.prototype.pipe = function pipe(res) {
       var root = this._root;
       this.res = res;
-      var path3 = decode(this.path);
-      if (path3 === -1) {
+      var path4 = decode(this.path);
+      if (path4 === -1) {
         this.error(400);
         return res;
       }
-      if (~path3.indexOf("\0")) {
+      if (~path4.indexOf("\0")) {
         this.error(400);
         return res;
       }
       var parts;
       if (root !== null) {
-        if (path3) {
-          path3 = normalize("." + sep + path3);
+        if (path4) {
+          path4 = normalize("." + sep + path4);
         }
-        if (UP_PATH_REGEXP.test(path3)) {
-          debug('malicious path "%s"', path3);
+        if (UP_PATH_REGEXP.test(path4)) {
+          debug('malicious path "%s"', path4);
           this.error(403);
           return res;
         }
-        parts = path3.split(sep);
-        path3 = normalize(join(root, path3));
+        parts = path4.split(sep);
+        path4 = normalize(join(root, path4));
       } else {
-        if (UP_PATH_REGEXP.test(path3)) {
-          debug('malicious path "%s"', path3);
+        if (UP_PATH_REGEXP.test(path4)) {
+          debug('malicious path "%s"', path4);
           this.error(403);
           return res;
         }
-        parts = normalize(path3).split(sep);
-        path3 = resolve(path3);
+        parts = normalize(path4).split(sep);
+        path4 = resolve(path4);
       }
       if (containsDotFile(parts)) {
         var access = this._dotfiles;
         if (access === void 0) {
           access = parts[parts.length - 1][0] === "." ? this._hidden ? "allow" : "ignore" : "allow";
         }
-        debug('%s dotfile "%s"', access, path3);
+        debug('%s dotfile "%s"', access, path4);
         switch (access) {
           case "allow":
             break;
@@ -20605,13 +20605,13 @@ var require_send = __commonJS({
         }
       }
       if (this._index.length && this.hasTrailingSlash()) {
-        this.sendIndex(path3);
+        this.sendIndex(path4);
         return res;
       }
-      this.sendFile(path3);
+      this.sendFile(path4);
       return res;
     };
-    SendStream.prototype.send = function send2(path3, stat) {
+    SendStream.prototype.send = function send2(path4, stat) {
       var len = stat.size;
       var options = this.options;
       var opts = {};
@@ -20623,9 +20623,9 @@ var require_send = __commonJS({
         this.headersAlreadySent();
         return;
       }
-      debug('pipe "%s"', path3);
-      this.setHeader(path3, stat);
-      this.type(path3);
+      debug('pipe "%s"', path4);
+      this.setHeader(path4, stat);
+      this.type(path4);
       if (this.isConditionalGET()) {
         if (this.isPreconditionFailure()) {
           this.error(412);
@@ -20674,28 +20674,28 @@ var require_send = __commonJS({
         res.end();
         return;
       }
-      this.stream(path3, opts);
+      this.stream(path4, opts);
     };
-    SendStream.prototype.sendFile = function sendFile(path3) {
+    SendStream.prototype.sendFile = function sendFile(path4) {
       var i = 0;
       var self = this;
-      debug('stat "%s"', path3);
-      fs2.stat(path3, function onstat(err, stat) {
-        if (err && err.code === "ENOENT" && !extname(path3) && path3[path3.length - 1] !== sep) {
+      debug('stat "%s"', path4);
+      fs3.stat(path4, function onstat(err, stat) {
+        if (err && err.code === "ENOENT" && !extname(path4) && path4[path4.length - 1] !== sep) {
           return next(err);
         }
         if (err) return self.onStatError(err);
-        if (stat.isDirectory()) return self.redirect(path3);
-        self.emit("file", path3, stat);
-        self.send(path3, stat);
+        if (stat.isDirectory()) return self.redirect(path4);
+        self.emit("file", path4, stat);
+        self.send(path4, stat);
       });
       function next(err) {
         if (self._extensions.length <= i) {
           return err ? self.onStatError(err) : self.error(404);
         }
-        var p = path3 + "." + self._extensions[i++];
+        var p = path4 + "." + self._extensions[i++];
         debug('stat "%s"', p);
-        fs2.stat(p, function(err2, stat) {
+        fs3.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -20703,7 +20703,7 @@ var require_send = __commonJS({
         });
       }
     };
-    SendStream.prototype.sendIndex = function sendIndex(path3) {
+    SendStream.prototype.sendIndex = function sendIndex(path4) {
       var i = -1;
       var self = this;
       function next(err) {
@@ -20711,9 +20711,9 @@ var require_send = __commonJS({
           if (err) return self.onStatError(err);
           return self.error(404);
         }
-        var p = join(path3, self._index[i]);
+        var p = join(path4, self._index[i]);
         debug('stat "%s"', p);
-        fs2.stat(p, function(err2, stat) {
+        fs3.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -20722,10 +20722,10 @@ var require_send = __commonJS({
       }
       next();
     };
-    SendStream.prototype.stream = function stream(path3, options) {
+    SendStream.prototype.stream = function stream(path4, options) {
       var self = this;
       var res = this.res;
-      var stream2 = fs2.createReadStream(path3, options);
+      var stream2 = fs3.createReadStream(path4, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -20740,10 +20740,10 @@ var require_send = __commonJS({
         self.emit("end");
       });
     };
-    SendStream.prototype.type = function type(path3) {
+    SendStream.prototype.type = function type(path4) {
       var res = this.res;
       if (res.getHeader("Content-Type")) return;
-      var type2 = mime.lookup(path3);
+      var type2 = mime.lookup(path4);
       if (!type2) {
         debug("no content-type");
         return;
@@ -20752,9 +20752,9 @@ var require_send = __commonJS({
       debug("content-type %s", type2);
       res.setHeader("Content-Type", type2 + (charset ? "; charset=" + charset : ""));
     };
-    SendStream.prototype.setHeader = function setHeader(path3, stat) {
+    SendStream.prototype.setHeader = function setHeader(path4, stat) {
       var res = this.res;
-      this.emit("headers", res, path3, stat);
+      this.emit("headers", res, path4, stat);
       if (this._acceptRanges && !res.getHeader("Accept-Ranges")) {
         debug("accept ranges");
         res.setHeader("Accept-Ranges", "bytes");
@@ -20813,9 +20813,9 @@ var require_send = __commonJS({
       }
       return err instanceof Error ? createError(status, err, { expose: false }) : createError(status, err);
     }
-    function decode(path3) {
+    function decode(path4) {
       try {
-        return decodeURIComponent(path3);
+        return decodeURIComponent(path4);
       } catch (err) {
         return -1;
       }
@@ -21724,10 +21724,10 @@ var require_utils2 = __commonJS({
     var querystring = require("querystring");
     exports2.etag = createETagGenerator({ weak: false });
     exports2.wetag = createETagGenerator({ weak: true });
-    exports2.isAbsolute = function(path2) {
-      if ("/" === path2[0]) return true;
-      if (":" === path2[1] && ("\\" === path2[2] || "/" === path2[2])) return true;
-      if ("\\\\" === path2.substring(0, 2)) return true;
+    exports2.isAbsolute = function(path3) {
+      if ("/" === path3[0]) return true;
+      if (":" === path3[1] && ("\\" === path3[2] || "/" === path3[2])) return true;
+      if ("\\\\" === path3.substring(0, 2)) return true;
     };
     exports2.flatten = deprecate.function(
       flatten,
@@ -21938,7 +21938,7 @@ var require_application = __commonJS({
     };
     app2.use = function use(fn) {
       var offset = 0;
-      var path2 = "/";
+      var path3 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -21946,7 +21946,7 @@ var require_application = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path2 = fn;
+          path3 = fn;
         }
       }
       var fns = flatten(slice.call(arguments, offset));
@@ -21957,12 +21957,12 @@ var require_application = __commonJS({
       var router = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router.use(path2, fn2);
+          return router.use(path3, fn2);
         }
-        debug(".use app under %s", path2);
-        fn2.mountpath = path2;
+        debug(".use app under %s", path3);
+        fn2.mountpath = path3;
         fn2.parent = this;
-        router.use(path2, function mounted_app(req, res, next) {
+        router.use(path3, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -21974,9 +21974,9 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app2.route = function route(path2) {
+    app2.route = function route(path3) {
       this.lazyrouter();
-      return this._router.route(path2);
+      return this._router.route(path3);
     };
     app2.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
@@ -22027,7 +22027,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app2.path = function path2() {
+    app2.path = function path3() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
     app2.enabled = function enabled(setting) {
@@ -22043,19 +22043,19 @@ var require_application = __commonJS({
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app2[method] = function(path2) {
+      app2[method] = function(path3) {
         if (method === "get" && arguments.length === 1) {
-          return this.set(path2);
+          return this.set(path3);
         }
         this.lazyrouter();
-        var route = this._router.route(path2);
+        var route = this._router.route(path3);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
     });
-    app2.all = function all(path2) {
+    app2.all = function all(path3) {
       this.lazyrouter();
-      var route = this._router.route(path2);
+      var route = this._router.route(path3);
       var args = slice.call(arguments, 1);
       for (var i = 0; i < methods.length; i++) {
         route[methods[i]].apply(route, args);
@@ -22814,7 +22814,7 @@ var require_request = __commonJS({
       var subdomains2 = !isIP(hostname) ? hostname.split(".").reverse() : [hostname];
       return subdomains2.slice(offset);
     });
-    defineGetter(req, "path", function path2() {
+    defineGetter(req, "path", function path3() {
       return parse(this).pathname;
     });
     defineGetter(req, "hostname", function hostname() {
@@ -23136,7 +23136,7 @@ var require_response = __commonJS({
     var http = require("http");
     var isAbsolute = require_utils2().isAbsolute;
     var onFinished = require_on_finished();
-    var path2 = require("path");
+    var path3 = require("path");
     var statuses = require_statuses();
     var merge = require_utils_merge();
     var sign = require_cookie_signature().sign;
@@ -23145,9 +23145,9 @@ var require_response = __commonJS({
     var setCharset = require_utils2().setCharset;
     var cookie = require_cookie();
     var send = require_send();
-    var extname = path2.extname;
+    var extname = path3.extname;
     var mime = send.mime;
-    var resolve = path2.resolve;
+    var resolve = path3.resolve;
     var vary = require_vary();
     var res = Object.create(http.ServerResponse.prototype);
     module2.exports = res;
@@ -23324,26 +23324,26 @@ var require_response = __commonJS({
       this.type("txt");
       return this.send(body);
     };
-    res.sendFile = function sendFile(path3, options, callback) {
+    res.sendFile = function sendFile(path4, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
       var opts = options || {};
-      if (!path3) {
+      if (!path4) {
         throw new TypeError("path argument is required to res.sendFile");
       }
-      if (typeof path3 !== "string") {
+      if (typeof path4 !== "string") {
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      if (!opts.root && !isAbsolute(path3)) {
+      if (!opts.root && !isAbsolute(path4)) {
         throw new TypeError("path must be absolute or specify root to res.sendFile");
       }
-      var pathname = encodeURI(path3);
+      var pathname = encodeURI(path4);
       var file = send(req, pathname, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
@@ -23353,7 +23353,7 @@ var require_response = __commonJS({
         }
       });
     };
-    res.sendfile = function(path3, options, callback) {
+    res.sendfile = function(path4, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
@@ -23363,7 +23363,7 @@ var require_response = __commonJS({
         done = options;
         opts = {};
       }
-      var file = send(req, path3, opts);
+      var file = send(req, path4, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
         if (err && err.code === "EISDIR") return next();
@@ -23376,7 +23376,7 @@ var require_response = __commonJS({
       res.sendfile,
       "res.sendfile: Use res.sendFile instead"
     );
-    res.download = function download(path3, filename, options, callback) {
+    res.download = function download(path4, filename, options, callback) {
       var done = callback;
       var name = filename;
       var opts = options || null;
@@ -23393,7 +23393,7 @@ var require_response = __commonJS({
         opts = filename;
       }
       var headers = {
-        "Content-Disposition": contentDisposition(name || path3)
+        "Content-Disposition": contentDisposition(name || path4)
       };
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
@@ -23406,7 +23406,7 @@ var require_response = __commonJS({
       }
       opts = Object.create(opts);
       opts.headers = headers;
-      var fullPath = !opts.root ? resolve(path3) : path3;
+      var fullPath = !opts.root ? resolve(path4) : path4;
       return this.sendFile(fullPath, opts, done);
     };
     res.contentType = res.type = function contentType(type) {
@@ -23707,11 +23707,11 @@ var require_serve_static = __commonJS({
         }
         var forwardError = !fallthrough;
         var originalUrl = parseUrl.original(req);
-        var path2 = parseUrl(req).pathname;
-        if (path2 === "/" && originalUrl.pathname.substr(-1) !== "/") {
-          path2 = "";
+        var path3 = parseUrl(req).pathname;
+        if (path3 === "/" && originalUrl.pathname.substr(-1) !== "/") {
+          path3 = "";
         }
-        var stream = send(req, path2, opts);
+        var stream = send(req, path3, opts);
         stream.on("directory", onDirectory);
         if (setHeaders) {
           stream.on("headers", setHeaders);
@@ -23775,7 +23775,7 @@ var require_express = __commonJS({
   "node_modules/express/lib/express.js"(exports2, module2) {
     "use strict";
     var bodyParser = require_body_parser();
-    var EventEmitter = require("events").EventEmitter;
+    var EventEmitter2 = require("events").EventEmitter;
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
@@ -23787,7 +23787,7 @@ var require_express = __commonJS({
       var app2 = function(req2, res2, next) {
         app2.handle(req2, res2, next);
       };
-      mixin(app2, EventEmitter.prototype, false);
+      mixin(app2, EventEmitter2.prototype, false);
       mixin(app2, proto, false);
       app2.request = Object.create(req, {
         app: { configurable: true, enumerable: true, writable: true, value: app2 }
@@ -28589,7 +28589,7 @@ var require_extension = __commonJS({
 var require_websocket2 = __commonJS({
   "node_modules/engine.io/node_modules/ws/lib/websocket.js"(exports2, module2) {
     "use strict";
-    var EventEmitter = require("events");
+    var EventEmitter2 = require("events");
     var https = require("https");
     var http = require("http");
     var net2 = require("net");
@@ -28621,7 +28621,7 @@ var require_websocket2 = __commonJS({
     var protocolVersions = [8, 13];
     var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
     var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
-    var WebSocket = class _WebSocket extends EventEmitter {
+    var WebSocket = class _WebSocket extends EventEmitter2 {
       /**
        * Create a new `WebSocket`.
        *
@@ -29615,7 +29615,7 @@ var require_subprotocol = __commonJS({
 var require_websocket_server = __commonJS({
   "node_modules/engine.io/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
     "use strict";
-    var EventEmitter = require("events");
+    var EventEmitter2 = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
     var { createHash } = require("crypto");
@@ -29628,7 +29628,7 @@ var require_websocket_server = __commonJS({
     var RUNNING = 0;
     var CLOSING = 1;
     var CLOSED = 2;
-    var WebSocketServer = class extends EventEmitter {
+    var WebSocketServer = class extends EventEmitter2 {
       /**
        * Create a `WebSocketServer` instance.
        *
@@ -30370,11 +30370,11 @@ var require_server = __commonJS({
        * @protected
        */
       _computePath(options) {
-        let path2 = (options.path || "/engine.io").replace(/\/$/, "");
+        let path3 = (options.path || "/engine.io").replace(/\/$/, "");
         if (options.addTrailingSlash !== false) {
-          path2 += "/";
+          path3 += "/";
         }
-        return path2;
+        return path3;
       }
       /**
        * Returns a list of available transports for upgrade given a certain transport.
@@ -30873,10 +30873,10 @@ var require_server = __commonJS({
        * @param {Object} options
        */
       attach(server, options = {}) {
-        const path2 = this._computePath(options);
+        const path3 = this._computePath(options);
         const destroyUpgradeTimeout = options.destroyUpgradeTimeout || 1e3;
         function check(req) {
-          return path2 === req.url.slice(0, path2.length);
+          return path3 === req.url.slice(0, path3.length);
         }
         const listeners = server.listeners("request").slice(0);
         server.removeAllListeners("request");
@@ -30884,7 +30884,7 @@ var require_server = __commonJS({
         server.on("listening", this.init.bind(this));
         server.on("request", (req, res) => {
           if (check(req)) {
-            debug('intercepting request for path "%s"', path2);
+            debug('intercepting request for path "%s"', path3);
             this.handleRequest(req, res);
           } else {
             let i = 0;
@@ -31723,8 +31723,8 @@ var require_userver = __commonJS({
        * @param options
        */
       attach(app2, options = {}) {
-        const path2 = this._computePath(options);
-        app2.any(path2, this.handleRequest.bind(this)).ws(path2, {
+        const path3 = this._computePath(options);
+        app2.any(path3, this.handleRequest.bind(this)).ws(path3, {
           compression: options.compression,
           idleTimeout: options.idleTimeout,
           maxBackpressure: options.maxBackpressure,
@@ -36935,7 +36935,7 @@ var require_extension2 = __commonJS({
 var require_websocket4 = __commonJS({
   "node_modules/socket.io-adapter/node_modules/ws/lib/websocket.js"(exports2, module2) {
     "use strict";
-    var EventEmitter = require("events");
+    var EventEmitter2 = require("events");
     var https = require("https");
     var http = require("http");
     var net2 = require("net");
@@ -36967,7 +36967,7 @@ var require_websocket4 = __commonJS({
     var protocolVersions = [8, 13];
     var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
     var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
-    var WebSocket = class _WebSocket extends EventEmitter {
+    var WebSocket = class _WebSocket extends EventEmitter2 {
       /**
        * Create a new `WebSocket`.
        *
@@ -37961,7 +37961,7 @@ var require_subprotocol2 = __commonJS({
 var require_websocket_server2 = __commonJS({
   "node_modules/socket.io-adapter/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
     "use strict";
-    var EventEmitter = require("events");
+    var EventEmitter2 = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
     var { createHash } = require("crypto");
@@ -37974,7 +37974,7 @@ var require_websocket_server2 = __commonJS({
     var RUNNING = 0;
     var CLOSING = 1;
     var CLOSED = 2;
-    var WebSocketServer = class extends EventEmitter {
+    var WebSocketServer = class extends EventEmitter2 {
       /**
        * Create a `WebSocketServer` instance.
        *
@@ -39765,7 +39765,7 @@ var require_dist2 = __commonJS({
     var zlib_1 = require("zlib");
     var accepts = require_accepts();
     var stream_1 = require("stream");
-    var path2 = require("path");
+    var path3 = require("path");
     var engine_io_1 = require_engine_io();
     var client_1 = require_client();
     var events_1 = require("events");
@@ -39960,7 +39960,7 @@ var require_dist2 = __commonJS({
             res.writeHeader("cache-control", "public, max-age=0");
             res.writeHeader("content-type", "application/" + (isMap ? "json" : "javascript") + "; charset=utf-8");
             res.writeHeader("etag", expectedEtag);
-            const filepath = path2.join(__dirname, "../client-dist/", filename);
+            const filepath = path3.join(__dirname, "../client-dist/", filename);
             (0, uws_1.serveFile)(res, filepath);
           });
         }
@@ -40042,7 +40042,7 @@ var require_dist2 = __commonJS({
        * @private
        */
       static sendFile(filename, req, res) {
-        const readStream = (0, fs_1.createReadStream)(path2.join(__dirname, "../client-dist/", filename));
+        const readStream = (0, fs_1.createReadStream)(path3.join(__dirname, "../client-dist/", filename));
         const encoding = accepts(req).encodings(["br", "gzip", "deflate"]);
         const onError = (err) => {
           if (err) {
@@ -40478,6 +40478,8 @@ var require_dist2 = __commonJS({
 
 // electron/main.ts
 var import_electron2 = require("electron");
+var import_path2 = __toESM(require("path"), 1);
+var import_fs2 = __toESM(require("fs"), 1);
 
 // node_modules/electron-is-dev/index.js
 var import_electron = __toESM(require("electron"), 1);
@@ -40503,41 +40505,332 @@ var import_net = __toESM(require("net"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_child_process = require("child_process");
 var import_fs = __toESM(require("fs"), 1);
-async function startServer() {
+var import_events = require("events");
+var electronWin = null;
+function setElectronWindow(win) {
+  electronWin = win;
+}
+async function startServer(appPath, userDataPath) {
   const app2 = (0, import_express.default)();
   const httpServer = (0, import_http.createServer)(app2);
-  const io2 = new Server(httpServer);
+  const io2 = new Server(httpServer, {
+    perMessageDeflate: false
+  });
   const PORT = 3e3;
-  const SETTINGS_FILE = import_path.default.join(process.cwd(), "settings.json");
-  const RADIOS_FILE = import_path.default.join(process.cwd(), "radios.json");
+  const baseDir = appPath || process.cwd();
+  const dataDir = userDataPath || (process.env.NODE_ENV === "production" ? "/tmp" : process.cwd());
+  const SETTINGS_FILE = import_path.default.join(dataDir, "settings.json");
+  const RADIOS_FILE = import_path.default.join(baseDir, "radios.json");
+  console.log(`Server initializing. Base directory (assets): ${baseDir}`);
+  console.log(`Data directory (settings): ${dataDir}`);
+  console.log(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
   let rigctldProcess = null;
   let rigctldStatus = "stopped";
+  let rigctldVersion = null;
+  let isRigctldVersionSupported = true;
   let rigctldLogs = [];
   let autoStartEnabled = false;
+  let videoAutoStart = false;
+  let pollRate = 2e3;
+  let autoconnectEligible = false;
+  let clientHost = "127.0.0.1";
+  let clientPort = 4532;
+  const getRigctldPath = () => {
+    let platformDir = "";
+    if (process.platform === "win32") platformDir = "windows";
+    else if (process.platform === "linux") platformDir = "linux";
+    else if (process.platform === "darwin") platformDir = "mac";
+    const binaryName = process.platform === "win32" ? "rigctld.exe" : "rigctld";
+    let binBase = baseDir;
+    if (baseDir.endsWith(".asar")) {
+      binBase = baseDir.replace(".asar", ".asar.unpacked");
+    }
+    const localPath = platformDir ? import_path.default.join(binBase, "bin", platformDir, binaryName) : "";
+    if (localPath && import_fs.default.existsSync(localPath)) {
+      console.log(`[HAMLIB] Using bundled rigctld at: ${localPath}`);
+      return localPath;
+    }
+    console.log(`[HAMLIB] Bundled rigctld not found at ${localPath || "unsupported platform"}, falling back to system PATH`);
+    return "rigctld";
+  };
+  const getFfmpegPath = () => {
+    let platformDir = "";
+    if (process.platform === "win32") platformDir = "windows";
+    else if (process.platform === "linux") platformDir = "linux";
+    else if (process.platform === "darwin") platformDir = "mac";
+    const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+    let binBase = baseDir;
+    if (baseDir.endsWith(".asar")) {
+      binBase = baseDir.replace(".asar", ".asar.unpacked");
+    }
+    const localPath = platformDir ? import_path.default.join(binBase, "bin", platformDir, binaryName) : "";
+    if (localPath && import_fs.default.existsSync(localPath)) {
+      console.log(`[VIDEO] Using bundled ffmpeg at: ${localPath}`);
+      return localPath;
+    }
+    console.log(`[VIDEO] Bundled ffmpeg not found at ${localPath || "unsupported platform"}, falling back to system PATH`);
+    return "ffmpeg";
+  };
+  let videoProcess = null;
+  const videoEmitter = new import_events.EventEmitter();
+  videoEmitter.setMaxListeners(0);
+  let videoSettings = {
+    device: "",
+    resolution: "",
+    framerate: ""
+  };
+  let videoStatus = "stopped";
+  let videoConnections = 0;
+  let audioSettings = {
+    inputDevice: "",
+    outputDevice: "",
+    inboundEnabled: false,
+    outboundEnabled: false
+  };
+  let audioStatus = "stopped";
+  let activeMicClientId = null;
+  let isAudioEngineReady = false;
+  let audioEngineError = null;
+  let portAudio = null;
+  let libopus = null;
+  let audioInputProcess = null;
+  let audioOutputProcess = null;
+  let opusEncoder = null;
+  let opusDecoder = null;
+  const OUTBOUND_SILENCE = Buffer.alloc(960 * 2);
+  const OUTBOUND_PRE_FILL = 3;
+  let outboundTimer = null;
+  const initAudioEngine = async () => {
+    try {
+      const dynamicImport = new Function("modulePath", "return import(modulePath)");
+      console.log("[AUDIO-INIT] Attempting to load libopus-node...");
+      libopus = await dynamicImport("libopus-node");
+      console.log("[AUDIO-INIT] libopus-node loaded successfully.");
+      console.log("[AUDIO-INIT] Attempting to load naudiodon...");
+      try {
+        portAudio = await dynamicImport("naudiodon");
+        console.log("[AUDIO-INIT] naudiodon loaded successfully.");
+        isAudioEngineReady = true;
+      } catch (naudioErr) {
+        console.error("[AUDIO-INIT] Failed to load naudiodon. Audio I/O will be disabled.", naudioErr.message);
+        audioEngineError = "naudiodon missing (build tools required)";
+      }
+    } catch (err) {
+      console.error("[AUDIO-INIT] Failed to load audio engine:", err);
+      audioEngineError = err.message;
+    } finally {
+      if (io2) {
+        io2.emit("audio-engine-state", { isReady: isAudioEngineReady, error: audioEngineError });
+      }
+    }
+  };
+  initAudioEngine();
   let rigctldSettings = {
     rigNumber: "",
     serialPort: "",
     portNumber: "4532",
     ipAddress: "127.0.0.1",
-    serialPortSpeed: "38400"
+    serialPortSpeed: "38400",
+    preampCapabilities: [],
+    attenuatorCapabilities: [],
+    agcCapabilities: [],
+    nbSupported: false,
+    nbLevelRange: { min: 0, max: 1, step: 0.1 },
+    nrSupported: false,
+    nrLevelRange: { min: 0, max: 1, step: 0.1 },
+    rfPowerRange: { min: 0, max: 1, step: 0.01 },
+    anfSupported: false
   };
   if (import_fs.default.existsSync(SETTINGS_FILE)) {
     try {
       const data = JSON.parse(import_fs.default.readFileSync(SETTINGS_FILE, "utf-8"));
       rigctldSettings = { ...rigctldSettings, ...data.settings };
       autoStartEnabled = data.autoStart || false;
+      videoAutoStart = data.videoAutoStart || false;
+      pollRate = Number(data.pollRate) || 2e3;
+      autoconnectEligible = data.autoconnectEligible || false;
+      clientHost = data.clientHost || "127.0.0.1";
+      clientPort = Number(data.clientPort) || 4532;
+      if (data.videoSettings) {
+        videoSettings = { ...videoSettings, ...data.videoSettings };
+      }
+      if (data.audioSettings) {
+        audioSettings = { ...audioSettings, ...data.audioSettings };
+      }
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
   }
   const saveSettings = () => {
-    import_fs.default.writeFileSync(SETTINGS_FILE, JSON.stringify({
-      settings: rigctldSettings,
-      autoStart: autoStartEnabled
-    }, null, 2));
+    console.log(`[SETTINGS] Saving settings to ${SETTINGS_FILE}...`);
+    try {
+      import_fs.default.writeFileSync(SETTINGS_FILE, JSON.stringify({
+        settings: rigctldSettings,
+        autoStart: autoStartEnabled,
+        videoAutoStart,
+        videoSettings,
+        audioSettings,
+        pollRate: Number(pollRate),
+        autoconnectEligible,
+        clientHost,
+        clientPort: Number(clientPort)
+      }, null, 2));
+    } catch (e) {
+      console.error("[SETTINGS] Failed to save settings:", e);
+    }
+  };
+  const getRigctldVersion = () => {
+    return new Promise((resolve) => {
+      const proc = (0, import_child_process.spawn)(getRigctldPath(), ["-V"]);
+      let output = "";
+      proc.stdout?.on("data", (d) => output += d.toString());
+      proc.stderr?.on("data", (d) => output += d.toString());
+      proc.on("close", () => {
+        const match = output.match(/hamlib\s+([\d.]+)/i);
+        resolve(match ? match[1] : null);
+      });
+      proc.on("error", () => resolve(null));
+    });
+  };
+  const checkVersionSupported = (version) => {
+    if (!version) return true;
+    const parts = version.split(".").map(Number);
+    const min = [4, 7, 0];
+    for (let i = 0; i < Math.max(parts.length, min.length); i++) {
+      const v = parts[i] || 0;
+      const m = min[i] || 0;
+      if (v > m) return true;
+      if (v < m) return false;
+    }
+    return true;
   };
   const emitRigctldStatus = () => {
-    io2.emit("rigctld-status", rigctldStatus);
+    io2.emit("rigctld-status", {
+      status: rigctldStatus,
+      logs: rigctldLogs,
+      version: rigctldVersion,
+      isVersionSupported: isRigctldVersionSupported
+    });
+  };
+  getRigctldVersion().then((v) => {
+    rigctldVersion = v;
+    isRigctldVersionSupported = checkVersionSupported(v);
+    console.log(`[HAMLIB] Detected rigctld version: ${v || "unknown"}`);
+    emitRigctldStatus();
+  });
+  const fetchRadioCapabilities = async (rigNumber) => {
+    if (!rigNumber || rigNumber === "" || rigNumber === "1") {
+      rigctldSettings.preampCapabilities = [];
+      rigctldSettings.attenuatorCapabilities = [];
+      rigctldSettings.agcCapabilities = [];
+      saveSettings();
+      io2.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
+      io2.emit("attenuator-capabilities", rigctldSettings.attenuatorCapabilities);
+      io2.emit("agc-capabilities", rigctldSettings.agcCapabilities);
+      io2.emit("anf-capabilities", rigctldSettings.anfSupported);
+      return;
+    }
+    const rigctldPath = getRigctldPath();
+    console.log(`[HAMLIB] Fetching radio capabilities for rig ${rigNumber}...`);
+    (0, import_child_process.exec)(`"${rigctldPath}" -m ${rigNumber} -u`, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[HAMLIB] Error getting radio capabilities: ${error.message}`);
+        rigctldSettings.preampCapabilities = [];
+        rigctldSettings.attenuatorCapabilities = [];
+        rigctldSettings.agcCapabilities = [];
+        rigctldSettings.nbSupported = false;
+        rigctldSettings.nrSupported = false;
+        rigctldSettings.anfSupported = false;
+      } else {
+        const lines = stdout.split("\n");
+        const preampLine = lines.find((line) => line.trim().startsWith("Preamp:"));
+        if (preampLine) {
+          const levels = preampLine.replace("Preamp:", "").trim().split(/\s+/).filter(Boolean);
+          rigctldSettings.preampCapabilities = levels;
+          console.log(`[HAMLIB] Found preamp capabilities for rig ${rigNumber}: ${rigctldSettings.preampCapabilities.join(", ")}`);
+        } else {
+          rigctldSettings.preampCapabilities = [];
+          console.log(`[HAMLIB] No preamp capabilities found for rig ${rigNumber}`);
+        }
+        const attenuatorLine = lines.find((line) => line.trim().startsWith("Attenuator:"));
+        if (attenuatorLine) {
+          const levels = attenuatorLine.replace("Attenuator:", "").trim().split(/\s+/).filter(Boolean);
+          rigctldSettings.attenuatorCapabilities = levels;
+          console.log(`[HAMLIB] Found attenuator capabilities for rig ${rigNumber}: ${rigctldSettings.attenuatorCapabilities.join(", ")}`);
+        } else {
+          rigctldSettings.attenuatorCapabilities = [];
+          console.log(`[HAMLIB] No attenuator capabilities found for rig ${rigNumber}`);
+        }
+        const agcLine = lines.find((line) => line.trim().startsWith("AGC levels:"));
+        if (agcLine) {
+          const levels = agcLine.replace("AGC levels:", "").trim().split(/\s+/).filter(Boolean);
+          rigctldSettings.agcCapabilities = levels;
+          console.log(`[HAMLIB] Found AGC capabilities for rig ${rigNumber}: ${rigctldSettings.agcCapabilities.join(", ")}`);
+        } else {
+          rigctldSettings.agcCapabilities = [];
+          console.log(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
+        }
+        const setFunctionsLine = lines.find((line) => line.trim().startsWith("Set functions:"));
+        if (setFunctionsLine) {
+          const functions = setFunctionsLine.replace("Set functions:", "").trim().split(/\s+/);
+          rigctldSettings.nbSupported = functions.includes("NB");
+          rigctldSettings.nrSupported = functions.includes("NR");
+          rigctldSettings.anfSupported = functions.includes("ANF");
+          console.log(`[HAMLIB] NB supported for rig ${rigNumber}: ${rigctldSettings.nbSupported}`);
+          console.log(`[HAMLIB] NR supported for rig ${rigNumber}: ${rigctldSettings.nrSupported}`);
+          console.log(`[HAMLIB] ANF supported for rig ${rigNumber}: ${rigctldSettings.anfSupported}`);
+        } else {
+          rigctldSettings.nbSupported = false;
+          rigctldSettings.nrSupported = false;
+          rigctldSettings.anfSupported = false;
+          console.log(`[HAMLIB] NB/NR/ANF not supported for rig ${rigNumber}`);
+        }
+        const getLevelLine = lines.find((line) => line.trim().startsWith("Get level:"));
+        if (getLevelLine) {
+          const nbMatch = getLevelLine.match(/NB\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+          if (nbMatch) {
+            rigctldSettings.nbLevelRange = {
+              min: parseFloat(nbMatch[1]),
+              max: parseFloat(nbMatch[2]),
+              step: parseFloat(nbMatch[3])
+            };
+            console.log(`[HAMLIB] NB level range for rig ${rigNumber}: min=${rigctldSettings.nbLevelRange.min}, max=${rigctldSettings.nbLevelRange.max}, step=${rigctldSettings.nbLevelRange.step}`);
+          } else {
+            rigctldSettings.nbLevelRange = { min: 0, max: 1, step: 0.1 };
+          }
+          const nrMatch = getLevelLine.match(/NR\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+          if (nrMatch) {
+            rigctldSettings.nrLevelRange = {
+              min: parseFloat(nrMatch[1]),
+              max: parseFloat(nrMatch[2]),
+              step: parseFloat(nrMatch[3])
+            };
+            console.log(`[HAMLIB] NR level range for rig ${rigNumber}: min=${rigctldSettings.nrLevelRange.min}, max=${rigctldSettings.nrLevelRange.max}, step=${rigctldSettings.nrLevelRange.step}`);
+          } else {
+            rigctldSettings.nrLevelRange = { min: 0, max: 1, step: 0.1 };
+          }
+          const rfPowerMatch = getLevelLine.match(/RFPOWER\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+          if (rfPowerMatch) {
+            rigctldSettings.rfPowerRange = {
+              min: parseFloat(rfPowerMatch[1]),
+              max: parseFloat(rfPowerMatch[2]),
+              step: parseFloat(rfPowerMatch[3])
+            };
+            console.log(`[HAMLIB] RF Power range for rig ${rigNumber}: min=${rigctldSettings.rfPowerRange.min}, max=${rigctldSettings.rfPowerRange.max}, step=${rigctldSettings.rfPowerRange.step}`);
+          } else {
+            rigctldSettings.rfPowerRange = { min: 0, max: 1, step: 0.01 };
+          }
+        }
+      }
+      saveSettings();
+      io2.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
+      io2.emit("attenuator-capabilities", rigctldSettings.attenuatorCapabilities);
+      io2.emit("agc-capabilities", rigctldSettings.agcCapabilities);
+      io2.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
+      io2.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
+      io2.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
+      io2.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
+    });
   };
   const addLog = (data) => {
     const lines = data.split("\n").filter((l) => l.trim());
@@ -40553,8 +40846,423 @@ async function startServer() {
       emitRigctldStatus();
     }
   };
-  const startRigctld = () => {
-    stopRigctld();
+  const checkExistingRigctld = () => {
+    return new Promise((resolve) => {
+      const cmd = process.platform === "win32" ? 'tasklist /FI "IMAGENAME eq rigctld.exe"' : "pgrep rigctld";
+      (0, import_child_process.exec)(cmd, (err, stdout) => {
+        if (process.platform === "win32") {
+          resolve(stdout.toLowerCase().includes("rigctld.exe"));
+        } else {
+          resolve(!err && !!stdout.trim());
+        }
+      });
+    });
+  };
+  const listVideoDevices = () => {
+    return new Promise((resolve) => {
+      const ffmpegPath = getFfmpegPath();
+      let cmd = "";
+      if (process.platform === "linux") {
+        cmd = "v4l2-ctl --list-devices || ls /dev/video*";
+      } else if (process.platform === "win32") {
+        cmd = `"${ffmpegPath}" -list_devices true -f dshow -i dummy 2>&1`;
+      } else if (process.platform === "darwin") {
+        cmd = `"${ffmpegPath}" -f avfoundation -list_devices true -i "" 2>&1`;
+      }
+      if (!cmd) return resolve({ devices: [] });
+      (0, import_child_process.exec)(cmd, (err, stdout, stderr) => {
+        const output = stdout + stderr;
+        const devices = [];
+        let error;
+        if (process.platform === "linux") {
+          const lines = output.split("\n");
+          lines.forEach((line) => {
+            if (line.includes("/dev/video")) {
+              const match = line.match(/\/dev\/video\d+/);
+              if (match && !devices.includes(match[0])) {
+                devices.push(match[0]);
+              }
+            }
+          });
+        } else if (process.platform === "win32") {
+          const lines = output.split("\n");
+          let inDirectShow = false;
+          lines.forEach((line) => {
+            const lowerLine = line.toLowerCase();
+            if (lowerLine.includes("directshow video devices")) inDirectShow = true;
+            if (lowerLine.includes("directshow audio devices")) inDirectShow = false;
+            if (inDirectShow && line.includes('"')) {
+              const match = line.match(/"([^"]+)"/);
+              if (match) {
+                const deviceName = match[1];
+                if (!deviceName.startsWith("@device_pnp_") && !devices.includes(deviceName)) {
+                  devices.push(deviceName);
+                }
+              }
+            }
+          });
+          if (devices.length === 0) {
+            lines.forEach((line) => {
+              if (line.includes('"') && line.toLowerCase().includes("(video)")) {
+                const match = line.match(/"([^"]+)"/);
+                if (match && !match[1].startsWith("@device_pnp_") && !devices.includes(match[1])) {
+                  devices.push(match[1]);
+                }
+              }
+            });
+          }
+          if (devices.length === 0) {
+            console.log("[VIDEO] No devices found via ffmpeg, trying PowerShell fallback...");
+            const psCmd = `powershell -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_PnPEntity | Where-Object { $_.Service -eq 'usbvideo' } | Select-Object -ExpandProperty Caption"`;
+            (0, import_child_process.exec)(psCmd, (psErr, psStdout) => {
+              if (!psErr && psStdout.trim()) {
+                const psDevices = psStdout.split("\n").map((d) => d.trim()).filter(Boolean);
+                psDevices.forEach((d) => {
+                  if (!devices.includes(d)) devices.push(d);
+                });
+                console.log(`[VIDEO] PowerShell found ${devices.length} devices:`, devices);
+                resolve({ devices, error });
+              } else {
+                if (err) {
+                  console.error("[VIDEO] Failed to list Windows video devices via ffmpeg:", err.message);
+                  if (output.includes("not recognized") || output.includes("not found")) {
+                    error = "ffmpeg not found in system PATH. Please install ffmpeg to use the video feed feature.";
+                    console.error(`[VIDEO] ${error}`);
+                  }
+                }
+                console.log(`[VIDEO] Found ${devices.length} video devices on ${process.platform}:`, devices);
+                resolve({ devices, error });
+              }
+            });
+            return;
+          }
+        } else if (process.platform === "darwin") {
+          const lines = output.split("\n");
+          let inVideo = false;
+          lines.forEach((line) => {
+            if (line.includes("AVFoundation video devices")) inVideo = true;
+            if (line.includes("AVFoundation audio devices")) inVideo = false;
+            if (inVideo && line.match(/\[\d+\]/)) {
+              const parts = line.split("]");
+              if (parts.length > 1) {
+                const deviceName = parts[1].trim();
+                if (!devices.includes(deviceName)) {
+                  devices.push(deviceName);
+                }
+              }
+            }
+          });
+        }
+        console.log(`[VIDEO] Found ${devices.length} video devices on ${process.platform}:`, devices);
+        resolve({ devices, error });
+      });
+    });
+  };
+  const listAudioDevices = async () => {
+    if (!portAudio) {
+      return { inputs: [], outputs: [], error: audioEngineError || "Audio engine not ready" };
+    }
+    try {
+      const devices = portAudio.getDevices();
+      const inputs = devices.filter((d) => d.maxInputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString() }));
+      const outputs = devices.filter((d) => d.maxOutputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString() }));
+      return { inputs, outputs };
+    } catch (err) {
+      console.error("[AUDIO] Failed to list devices:", err);
+      return { inputs: [], outputs: [], error: err.message };
+    }
+  };
+  const stopAudio = () => {
+    console.log("[AUDIO] Stopping audio streaming...");
+    if (outboundTimer) {
+      clearInterval(outboundTimer);
+      outboundTimer = null;
+    }
+    if (audioInputProcess) {
+      try {
+        audioInputProcess.quit();
+      } catch (e) {
+      }
+      audioInputProcess = null;
+    }
+    if (audioOutputProcess) {
+      try {
+        audioOutputProcess.quit();
+      } catch (e) {
+      }
+      audioOutputProcess = null;
+    }
+    opusEncoder = null;
+    opusDecoder = null;
+    audioStatus = "stopped";
+    io2.emit("audio-status", audioStatus);
+  };
+  const startAudio = () => {
+    console.log("[AUDIO] Starting audio streaming...");
+    stopAudio();
+    if (!isAudioEngineReady) {
+      console.warn("[AUDIO] Cannot start audio: Audio engine is not ready.");
+      return;
+    }
+    if (!audioSettings.inputDevice && !audioSettings.outputDevice) {
+      console.warn("[AUDIO] Cannot start audio: No devices selected.");
+      return;
+    }
+    try {
+      opusEncoder = new libopus.OpusEncoder(48e3, 1);
+      opusDecoder = new libopus.OpusEncoder(48e3, 1);
+      console.log("[AUDIO] Opus encoder/decoder initialized at 48000Hz Mono.");
+    } catch (err) {
+      console.error("[AUDIO] Failed to initialize Opus:", err);
+      return;
+    }
+    if (audioSettings.inputDevice) {
+      try {
+        const deviceId = parseInt(audioSettings.inputDevice, 10);
+        audioInputProcess = new portAudio.AudioIO({
+          inOptions: {
+            channelCount: 1,
+            sampleFormat: portAudio.SampleFormat16Bit,
+            sampleRate: 48e3,
+            deviceId: isNaN(deviceId) ? -1 : deviceId,
+            // -1 is default
+            closeOnError: true,
+            framesPerBuffer: 960,
+            // 20ms at 48kHz
+            maxQueue: 2
+            // Keep queue small to prevent latency buildup
+          }
+        });
+        const FRAME_SIZE_BYTES = 960 * 2;
+        let pcmBuffer = Buffer.alloc(0);
+        audioInputProcess.on("data", (data) => {
+          if (activeMicClientId && lastStatus.ptt) return;
+          pcmBuffer = Buffer.concat([pcmBuffer, data]);
+          while (pcmBuffer.length >= FRAME_SIZE_BYTES) {
+            const frame = pcmBuffer.subarray(0, FRAME_SIZE_BYTES);
+            pcmBuffer = pcmBuffer.subarray(FRAME_SIZE_BYTES);
+            try {
+              const encodedPacket = opusEncoder.encode(frame);
+              io2.emit("audio-inbound", encodedPacket);
+            } catch (err) {
+              console.error("[AUDIO] Opus encode error:", err);
+            }
+          }
+        });
+        audioInputProcess.on("error", (err) => {
+          console.error("[AUDIO-IN] naudiodon error:", err);
+        });
+        audioInputProcess.start();
+        console.log(`[AUDIO-IN] Started capture from device ${audioSettings.inputDevice}`);
+      } catch (err) {
+        console.error("[AUDIO-IN] Failed to start capture:", err);
+      }
+    }
+    if (audioSettings.outputDevice) {
+      try {
+        const deviceId = parseInt(audioSettings.outputDevice, 10);
+        audioOutputProcess = new portAudio.AudioIO({
+          outOptions: {
+            channelCount: 1,
+            sampleFormat: portAudio.SampleFormat16Bit,
+            sampleRate: 48e3,
+            deviceId: isNaN(deviceId) ? -1 : deviceId,
+            closeOnError: false,
+            // Do not close on underflow — underflow is expected before first write
+            framesPerBuffer: 960,
+            // 20ms at 48kHz
+            maxQueue: 20
+            // large queue absorbs bursty socket arrivals; real audio written directly
+          }
+        });
+        audioOutputProcess.on("error", (err) => {
+          console.error("[AUDIO-OUT] naudiodon error:", err);
+        });
+        audioOutputProcess.start();
+        for (let i = 0; i < OUTBOUND_PRE_FILL; i++) {
+          audioOutputProcess.write(OUTBOUND_SILENCE);
+        }
+        outboundTimer = setInterval(() => {
+          if (!audioOutputProcess || lastStatus.ptt) return;
+          audioOutputProcess.write(OUTBOUND_SILENCE);
+        }, 20);
+        console.log(`[AUDIO-OUT] Started playback to device ${audioSettings.outputDevice}`);
+      } catch (err) {
+        console.error("[AUDIO-OUT] Failed to start playback:", err);
+      }
+    }
+    audioStatus = "playing";
+    io2.emit("audio-status", audioStatus);
+  };
+  const stopVideo = () => {
+    console.log("[VIDEO] Stopping video feed...");
+    videoEmitter.emit("stop-clients");
+    if (videoProcess) {
+      console.log(`[VIDEO] Killing ffmpeg process (PID: ${videoProcess.pid})`);
+      videoProcess.kill("SIGKILL");
+      videoProcess = null;
+    } else {
+      console.log("[VIDEO] No active video process to stop.");
+    }
+    videoStatus = "stopped";
+    io2.emit("video-status", videoStatus);
+  };
+  const startVideo = () => {
+    console.log("[VIDEO] Starting video feed...");
+    stopVideo();
+    if (!videoSettings.device || !videoSettings.resolution || !videoSettings.framerate) {
+      console.warn("[VIDEO] Cannot start video: Missing settings (device, resolution, or framerate).");
+      return;
+    }
+    let inputFormat = "";
+    let inputDevice = videoSettings.device;
+    console.log(`[VIDEO] Platform detected: ${process.platform}`);
+    if (process.platform === "linux") {
+      inputFormat = "v4l2";
+    } else if (process.platform === "win32") {
+      inputFormat = "dshow";
+      inputDevice = `video=${videoSettings.device}`;
+    } else if (process.platform === "darwin") {
+      inputFormat = "avfoundation";
+    }
+    console.log(`[VIDEO] Using input format: ${inputFormat}, device: ${inputDevice}`);
+    const args = [
+      "-f",
+      inputFormat,
+      "-framerate",
+      videoSettings.framerate,
+      "-video_size",
+      videoSettings.resolution,
+      "-i",
+      inputDevice,
+      "-vf",
+      `scale=${videoSettings.resolution.replace("x", ":")}`,
+      "-f",
+      "mpjpeg",
+      "-q:v",
+      "5",
+      "pipe:1"
+    ];
+    const ffmpegPath = getFfmpegPath();
+    console.log(`[VIDEO] Executing: ${ffmpegPath} ${args.join(" ")}`);
+    const currentProcess = (0, import_child_process.spawn)(ffmpegPath, args);
+    videoProcess = currentProcess;
+    let hasReceivedData = false;
+    const startupTimeout = setTimeout(() => {
+      if (!hasReceivedData && videoProcess === currentProcess) {
+        console.error("[VIDEO] ffmpeg failed to produce data within 10s. Stopping.");
+        videoAutoStart = false;
+        saveSettings();
+        stopVideo();
+        io2.emit("video-error", "Video device failed to start producing data. Please check if it is in use by another application.");
+      }
+    }, 1e4);
+    currentProcess.stdout?.on("data", (data) => {
+      if (!hasReceivedData && videoProcess === currentProcess) {
+        hasReceivedData = true;
+        clearTimeout(startupTimeout);
+        console.log("[VIDEO] First data chunk received. Stream is now playing.");
+        videoStatus = "playing";
+        videoAutoStart = true;
+        saveSettings();
+        io2.emit("video-status", videoStatus);
+      }
+      if (videoEmitter.listenerCount("data") > 0) {
+        videoEmitter.emit("data", data);
+      }
+    });
+    currentProcess.stderr?.on("data", (data) => {
+      const msg = data.toString();
+      if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("failed") || msg.toLowerCase().includes("cannot open")) {
+        console.error(`[VIDEO] ffmpeg stderr: ${msg.trim()}`);
+      }
+    });
+    currentProcess.on("error", (err) => {
+      if (videoProcess === currentProcess) {
+        console.error("[VIDEO] ffmpeg process error:", err);
+        stopVideo();
+      }
+    });
+    currentProcess.on("exit", (code, signal) => {
+      if (videoProcess === currentProcess) {
+        console.log(`[VIDEO] Current ffmpeg process exited with code ${code} and signal ${signal}`);
+        videoStatus = "stopped";
+        io2.emit("video-status", videoStatus);
+        videoProcess = null;
+        clearTimeout(startupTimeout);
+      } else {
+        console.log(`[VIDEO] Old ffmpeg process (PID: ${currentProcess.pid}) exited with code ${code} and signal ${signal}`);
+      }
+    });
+  };
+  app2.get("/api/video-stream", (req, res) => {
+    const sessionId = req.query.sessionId || "default";
+    videoEmitter.emit(`stop-clients-${sessionId}`);
+    videoConnections++;
+    console.log(`[VIDEO] New stream client connected (Session: ${sessionId}). Total clients: ${videoConnections}`);
+    res.writeHead(200, {
+      "Content-Type": "multipart/x-mixed-replace; boundary=ffmpeg",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "Pragma": "no-cache"
+    });
+    let isClosed = false;
+    let isCongested = false;
+    const cleanup = () => {
+      if (isClosed) return;
+      isClosed = true;
+      videoConnections--;
+      console.log(`[VIDEO] Stream client disconnected (Session: ${sessionId}). Total clients: ${videoConnections}`);
+      videoEmitter.removeListener("data", onData);
+      videoEmitter.removeListener("stop-clients", cleanup);
+      videoEmitter.removeListener(`stop-clients-${sessionId}`, cleanup);
+      res.end();
+    };
+    const onData = (data) => {
+      if (isClosed || isCongested) return;
+      const flushed = res.write(data);
+      if (!flushed) {
+        isCongested = true;
+        res.once("drain", () => {
+          isCongested = false;
+        });
+      }
+    };
+    videoEmitter.on("data", onData);
+    videoEmitter.once("stop-clients", cleanup);
+    videoEmitter.once(`stop-clients-${sessionId}`, cleanup);
+    req.on("close", cleanup);
+    req.on("end", cleanup);
+    res.on("error", cleanup);
+  });
+  const killExistingRigctld = () => {
+    return new Promise((resolve) => {
+      const cmd = process.platform === "win32" ? "taskkill /F /IM rigctld.exe" : "pkill -9 rigctld";
+      (0, import_child_process.exec)(cmd, () => {
+        resolve();
+      });
+    });
+  };
+  const startRigctld = async () => {
+    if (rigctldProcess) {
+      stopRigctld();
+    }
+    rigctldVersion = await getRigctldVersion();
+    isRigctldVersionSupported = checkVersionSupported(rigctldVersion);
+    console.log(`[HAMLIB] rigctld version check: ${rigctldVersion || "unknown"}`);
+    addLog(`Hamlib (rigctld) version check: ${rigctldVersion || "unknown"}`);
+    if (!isRigctldVersionSupported) {
+      console.warn(`rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
+      addLog(`Warning: rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
+    }
+    const isAlreadyRunning = await checkExistingRigctld();
+    if (isAlreadyRunning) {
+      console.warn("rigctld is already running on the system");
+      rigctldStatus = "already_running";
+      emitRigctldStatus();
+      addLog("Error: rigctld is already running on the system. Please stop it or use the 'Kill and Restart' option.");
+      return;
+    }
     const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = rigctldSettings;
     if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
       console.error("Cannot start rigctld: missing settings");
@@ -40562,8 +41270,8 @@ async function startServer() {
       emitRigctldStatus();
       return;
     }
-    console.log(`Starting rigctld: rigctld -m ${rigNumber} -r ${serialPort} -t ${portNumber} -T ${ipAddress} -s ${serialPortSpeed}`);
-    rigctldProcess = (0, import_child_process.spawn)("rigctld", [
+    console.log(`Starting rigctld: ${getRigctldPath()} -m ${rigNumber} -r ${serialPort} -t ${portNumber} -T ${ipAddress} -s ${serialPortSpeed}`);
+    rigctldProcess = (0, import_child_process.spawn)(getRigctldPath(), [
       "-m",
       rigNumber,
       "-r",
@@ -40606,6 +41314,10 @@ async function startServer() {
   if (autoStartEnabled) {
     startRigctld();
   }
+  if (videoAutoStart && videoSettings.device && videoSettings.resolution && videoSettings.framerate) {
+    console.log("[VIDEO] Auto-starting video feed on boot...");
+    startVideo();
+  }
   process.on("exit", stopRigctld);
   process.on("SIGINT", () => {
     stopRigctld();
@@ -40617,10 +41329,18 @@ async function startServer() {
   });
   let rigSocket = null;
   let pollingTimeout = null;
-  let pollRate = 2e3;
   let rigConfig = { host: "", port: 0 };
   let isConnected = false;
   const connectToRig = (host, port, socket) => {
+    if (isConnected && rigConfig.host === host && rigConfig.port === port) {
+      console.log(`Already connected to rigctld at ${host}:${port}. Informing client.`);
+      if (socket) {
+        socket.emit("rig-connected", { host, port });
+      } else {
+        io2.emit("rig-connected", { host, port });
+      }
+      return;
+    }
     if (rigSocket) {
       rigSocket.destroy();
       rigSocket = null;
@@ -40630,27 +41350,30 @@ async function startServer() {
     rigSocket.connect(port, host, () => {
       console.log(`Connected to rigctld at ${host}:${port}`);
       isConnected = true;
-      if (socket) socket.emit("rig-connected", { host, port });
+      io2.emit("rig-connected", { host, port });
       startPolling();
     });
     rigSocket.on("error", (err) => {
       console.error("Rig socket error:", err);
       isConnected = false;
-      if (socket) socket.emit("rig-error", `Connection Error: ${err.message}`);
+      io2.emit("rig-error", `Connection Error: ${err.message}`);
     });
     rigSocket.on("close", () => {
       console.log("Rig connection closed");
       isConnected = false;
-      if (socket) socket.emit("rig-disconnected");
+      io2.emit("rig-disconnected");
       stopPolling();
     });
   };
   const startPolling = () => {
     stopPolling();
     const runPoll = async () => {
-      if (!isConnected && !isMock) return;
+      if (!isConnected) return;
+      const startTime = Date.now();
       await pollRig();
-      pollingTimeout = setTimeout(runPoll, pollRate);
+      const duration = Date.now() - startTime;
+      const nextDelay = Math.max(0, pollRate - duration);
+      pollingTimeout = setTimeout(runPoll, nextDelay);
     };
     pollingTimeout = setTimeout(runPoll, pollRate);
   };
@@ -40660,8 +41383,8 @@ async function startServer() {
       pollingTimeout = null;
     }
   };
-  let isMock = false;
   let visibleMeters = ["swr", "alc"];
+  let pollCycleCount = 0;
   let lastStatus = {
     frequency: "14074000",
     mode: "USB",
@@ -40681,8 +41404,10 @@ async function startServer() {
     attenuation: 0,
     preamp: 0,
     nb: false,
+    nbLevel: 0,
     nr: false,
-    nrLevel: 0.5,
+    anf: false,
+    nrLevel: 8 / 15,
     tuner: false
   };
   const resetRigState = () => {
@@ -40706,7 +41431,8 @@ async function startServer() {
       preamp: 0,
       nb: false,
       nr: false,
-      nrLevel: 0.5,
+      anf: false,
+      nrLevel: 8 / 15,
       tuner: false
     };
   };
@@ -40737,17 +41463,6 @@ async function startServer() {
     }
     return values.join("\n");
   };
-  let mockAtt = 0;
-  let mockPreamp = 0;
-  let mockNB = 0;
-  let mockNR = 0;
-  let mockNRLevel = 0.5;
-  let mockTuner = 0;
-  let mockRFPower = 0.5;
-  let mockRFLevel = 0;
-  let mockAGC = 6;
-  let mockSplit = 0;
-  let mockTxVFO = "VFOB";
   const rigCommandQueue = [];
   let isRigBusy = false;
   const processRigQueue = async () => {
@@ -40764,117 +41479,18 @@ async function startServer() {
       setTimeout(processRigQueue, 10);
     }
   };
-  const sendToRig = (cmd, useExtended = false) => {
+  const sendToRig = (cmd, useExtended = false, priority = false) => {
     return new Promise((resolve, reject) => {
-      rigCommandQueue.push({ cmd, useExtended, resolve, reject });
+      if (priority) {
+        rigCommandQueue.unshift({ cmd, useExtended, resolve, reject });
+      } else {
+        rigCommandQueue.push({ cmd, useExtended, resolve, reject });
+      }
       processRigQueue();
     });
   };
   const executeRigCommand = (cmd, useExtended = false) => {
     const finalCmd = useExtended ? formatExtendedCommand(cmd) : cmd;
-    if (isMock) {
-      return new Promise((resolve, reject) => {
-        setTimeout(() => {
-          let response = "";
-          let longCmd = "";
-          if (cmd === "f") longCmd = "get_freq";
-          else if (cmd === "m") longCmd = "get_mode";
-          else if (cmd === "t") longCmd = "get_ptt";
-          else if (cmd === "v") longCmd = "get_vfo";
-          else if (cmd === "s") longCmd = "get_split_vfo";
-          else if (cmd.startsWith("l")) longCmd = "get_level";
-          else if (cmd.startsWith("u")) longCmd = "get_func";
-          else longCmd = cmd;
-          if (cmd === "f") response = "14250000";
-          else if (cmd === "m") response = "USB\n2400";
-          else if (cmd === "M ?") response = "AM CW USB LSB RTTY FM PKTUSB PKTLSB";
-          else if (cmd === "t") response = "0";
-          else if (cmd === "v") response = "VFOA";
-          else if (cmd === "s") response = `${mockSplit}
-${mockTxVFO}`;
-          else if (cmd.startsWith("G")) response = "RPRT 0";
-          else if (cmd.startsWith("l STRENGTH")) response = (Math.random() * -100).toString();
-          else if (cmd.startsWith("l SWR")) response = (1 + Math.random() * 0.5).toString();
-          else if (cmd.startsWith("l ALC")) response = Math.random().toString();
-          else if (cmd.startsWith("l VD_METER")) response = (13.5 + Math.random() * 0.6).toString();
-          else if (cmd.startsWith("l RFPOWER_METER")) response = (mockRFPower * (0.9 + Math.random() * 0.2)).toString();
-          else if (cmd.startsWith("l RFPOWER")) response = mockRFPower.toString();
-          else if (cmd.startsWith("l RF")) response = mockRFLevel.toString();
-          else if (cmd.startsWith("l AGC")) response = mockAGC.toString();
-          else if (cmd.startsWith("l ATT")) response = mockAtt.toString();
-          else if (cmd.startsWith("l PREAMP")) response = mockPreamp.toString();
-          else if (cmd.startsWith("u NB")) response = mockNB.toString();
-          else if (cmd.startsWith("u NR")) response = mockNR.toString();
-          else if (cmd.startsWith("l NR")) response = mockNRLevel.toString();
-          else if (cmd.startsWith("u TUNER")) response = mockTuner.toString();
-          else if (cmd.startsWith("L ATT")) {
-            mockAtt = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          } else if (cmd.startsWith("L PREAMP")) {
-            mockPreamp = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          } else if (cmd.startsWith("U NB")) {
-            mockNB = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          } else if (cmd.startsWith("U NR")) {
-            mockNR = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          } else if (cmd.startsWith("L NR")) {
-            mockNRLevel = parseFloat(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          } else if (cmd.startsWith("U TUNER")) {
-            mockTuner = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          } else if (cmd.startsWith("G TUNE")) {
-            mockTuner = 1;
-            response = "RPRT 0";
-          } else if (cmd.startsWith("L RFPOWER")) {
-            mockRFPower = parseFloat(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          } else if (cmd.startsWith("L RF")) {
-            mockRFLevel = parseFloat(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          } else if (cmd.startsWith("L AGC")) {
-            mockAGC = parseInt(cmd.split(" ")[2]);
-            response = "RPRT 0";
-          } else if (cmd.startsWith("S ")) {
-            const parts = cmd.split(" ");
-            mockSplit = parseInt(parts[1]);
-            mockTxVFO = parts[2];
-            response = "RPRT 0";
-          } else response = "RPRT 0";
-          if (useExtended) {
-            let extendedResp = `${longCmd}:
-`;
-            const lines = response.split("\n");
-            if (cmd === "m") {
-              extendedResp += `Mode: ${lines[0]}
-Passband: ${lines[1]}
-`;
-            } else if (cmd.startsWith("l")) {
-              const param = cmd.split(" ")[1];
-              extendedResp += `${param}: ${response}
-`;
-            } else if (cmd.startsWith("u")) {
-              const param = cmd.split(" ")[1];
-              extendedResp += `${param}: ${response}
-`;
-            } else {
-              extendedResp += `Value: ${response}
-`;
-            }
-            extendedResp += "RPRT 0";
-            try {
-              resolve(parseExtendedResponse(extendedResp));
-            } catch (e) {
-              reject(e);
-            }
-          } else {
-            resolve(response.trim());
-          }
-        }, 50);
-      });
-    }
     return new Promise((resolve, reject) => {
       if (!rigSocket || rigSocket.destroyed) {
         return reject("Not connected to rig");
@@ -40921,8 +41537,8 @@ Passband: ${lines[1]}
     });
   };
   const pollRig = async () => {
-    if (!isMock && !isConnected) {
-      if (rigConfig.host && rigConfig.host !== "mock" && !isMock) {
+    if (!isConnected) {
+      if (rigConfig.host && rigConfig.host !== "mock") {
         console.log("Attempting background reconnection...");
         connectToRig(rigConfig.host, rigConfig.port);
       }
@@ -40930,12 +41546,14 @@ Passband: ${lines[1]}
     }
     try {
       const now = Date.now();
+      const isSlowPoll = pollCycleCount % 10 === 0;
+      pollCycleCount++;
       const ptt = await sendToRig("t", true);
       const smeter = await sendToRig("l STRENGTH", true);
       const isPttActive = ptt === "1";
-      let alc = "0";
-      let powerMeter = "0";
-      let swr = "1.0";
+      let alc = lastStatus.alc?.toString() || "0";
+      let powerMeter = lastStatus.powerMeter?.toString() || "0";
+      let swr = lastStatus.swr?.toString() || "1.0";
       if (isPttActive) {
         try {
           alc = await sendToRig("l ALC", true);
@@ -40945,25 +41563,50 @@ Passband: ${lines[1]}
           console.warn("TX levels poll failed, might not be supported");
         }
       }
-      let vdd = lastStatus.vdd?.toString() || "13.8";
-      if (visibleMeters.includes("vdd")) {
-        vdd = await sendToRig("l VD_METER", true).catch(() => "13.8");
+      let frequency = lastStatus.frequency;
+      let mode = lastStatus.mode;
+      let bandwidth = lastStatus.bandwidth;
+      let rfpower = lastStatus.rfpower;
+      let rflevel = lastStatus.rfLevel;
+      let agc = lastStatus.agc;
+      let vfo = lastStatus.vfo;
+      let isSplit = lastStatus.isSplit;
+      let txVFO = lastStatus.txVFO;
+      let att = lastStatus.attenuation;
+      let preamp = lastStatus.preamp;
+      let nb = lastStatus.nb;
+      let nbLevel = lastStatus.nbLevel;
+      let nr = lastStatus.nr;
+      let nrLevel = lastStatus.nrLevel;
+      let anf = lastStatus.anf;
+      let tuner = lastStatus.tuner;
+      let vdd = lastStatus.vdd;
+      if (isSlowPoll) {
+        if (visibleMeters.includes("vdd")) {
+          vdd = parseFloat(await sendToRig("l VD_METER", true).catch(() => "13.8"));
+        }
+        frequency = await sendToRig("f", true);
+        const modeBw = await sendToRig("m", true);
+        const [m, b] = modeBw.split("\n");
+        mode = m;
+        bandwidth = b;
+        rfpower = parseFloat(await sendToRig("l RFPOWER", true));
+        rflevel = parseFloat(await sendToRig("l RF", true).catch(() => "0"));
+        agc = parseInt(await sendToRig("l AGC", true).catch(() => "6"));
+        vfo = await sendToRig("v", true);
+        const splitInfo = await sendToRig("s", true);
+        const [isSplitStr, txVFOStr] = splitInfo.split("\n");
+        isSplit = isSplitStr === "1";
+        txVFO = txVFOStr || "VFOB";
+        att = parseInt(await sendToRig("l ATT", true)) || 0;
+        preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
+        nb = await sendToRig("u NB", true).catch(() => "0") === "1";
+        nbLevel = parseFloat(await sendToRig("l NB", true).catch(() => "0"));
+        nr = await sendToRig("u NR", true).catch(() => "0") === "1";
+        nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
+        anf = await sendToRig("u ANF", true).catch(() => "0") === "1";
+        tuner = await sendToRig("u TUNER", true).catch(() => "0") === "1";
       }
-      const frequency = await sendToRig("f", true);
-      const modeBw = await sendToRig("m", true);
-      const [mode, bandwidth] = modeBw.split("\n");
-      const rfpower = parseFloat(await sendToRig("l RFPOWER", true));
-      const rflevel = parseFloat(await sendToRig("l RF", true).catch(() => "0"));
-      const agc = parseInt(await sendToRig("l AGC", true).catch(() => "6"));
-      const vfo = await sendToRig("v", true);
-      const splitInfo = await sendToRig("s", true);
-      const [isSplitStr, txVFO] = splitInfo.split("\n");
-      const att = parseInt(await sendToRig("l ATT", true)) || 0;
-      const preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
-      const nb = await sendToRig("u NB", true) === "1";
-      const nr = await sendToRig("u NR", true).catch(() => "0") === "1";
-      const nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
-      const tuner = await sendToRig("u TUNER", true).catch(() => "0") === "1";
       lastStatus = {
         frequency,
         mode,
@@ -40978,13 +41621,15 @@ Passband: ${lines[1]}
         agc,
         vdd: parseFloat(vdd),
         vfo,
-        isSplit: isSplitStr === "1",
-        txVFO: txVFO || "VFOB",
+        isSplit,
+        txVFO,
         attenuation: att,
         preamp,
         nb,
+        nbLevel,
         nr,
         nrLevel,
+        anf,
         tuner,
         timestamp: now
       };
@@ -40994,21 +41639,17 @@ Passband: ${lines[1]}
     }
   };
   io2.on("connection", (socket) => {
-    console.log("Client connected");
+    const clientId = socket.handshake.auth.clientId || socket.id;
+    console.log(`Client connected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
+    socket.emit("audio-engine-state", {
+      isReady: isAudioEngineReady,
+      error: audioEngineError
+    });
     socket.on("connect-rig", ({ host, port }) => {
       resetRigState();
-      if (host === "mock") {
-        isMock = true;
-        console.log("Starting Mock Rig Mode");
-        socket.emit("rig-connected", { host: "MOCK", port: 0 });
-        startPolling();
-        return;
-      }
-      isMock = false;
       connectToRig(host, port, socket);
     });
     socket.on("disconnect-rig", () => {
-      isMock = false;
       resetRigState();
       if (rigSocket) {
         rigSocket.destroy();
@@ -41016,44 +41657,57 @@ Passband: ${lines[1]}
       }
       isConnected = false;
       stopPolling();
-      socket.emit("rig-disconnected");
+      io2.emit("rig-disconnected");
       console.log("Rig manually disconnected");
     });
     socket.on("set-func", async ({ func, state }) => {
       try {
-        await sendToRig(`U ${func} ${state ? "1" : "0"}`);
-        pollRig();
+        await sendToRig(`U ${func} ${state ? "1" : "0"}`, false, true);
+        const confirmedState = await sendToRig(`u ${func}`, true, true) === "1";
+        const key = func.toLowerCase();
+        lastStatus = { ...lastStatus, [key]: confirmedState };
+        io2.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", `Failed to set ${func}`);
       }
     });
     socket.on("set-level", async ({ level, val }) => {
       try {
-        await sendToRig(`L ${level} ${val}`);
-        pollRig();
+        await sendToRig(`L ${level} ${val}`, false, true);
+        const confirmedVal = parseFloat(await sendToRig(`l ${level}`, true, true));
+        const key = level.toLowerCase() === "rfpower" ? "rfpower" : level.toLowerCase() === "rf" ? "rfLevel" : level.toLowerCase() === "agc" ? "agc" : level.toLowerCase() === "att" ? "attenuation" : level.toLowerCase() === "preamp" ? "preamp" : level.toLowerCase() === "nr" ? "nrLevel" : level.toLowerCase() === "nb" ? "nbLevel" : null;
+        if (key) {
+          lastStatus = { ...lastStatus, [key]: confirmedVal };
+          io2.emit("rig-status", lastStatus);
+        }
       } catch (err) {
         socket.emit("rig-error", `Failed to set ${level}`);
       }
     });
     socket.on("set-frequency", async (freq) => {
       try {
-        await sendToRig(`F ${freq}`);
-        pollRig();
+        await sendToRig(`F ${freq}`, false, true);
+        const confirmedFreq = await sendToRig("f", true, true);
+        lastStatus = { ...lastStatus, frequency: confirmedFreq };
+        io2.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set frequency");
       }
     });
     socket.on("set-mode", async ({ mode, bandwidth }) => {
       try {
-        await sendToRig(`M ${mode} ${bandwidth}`);
-        pollRig();
+        await sendToRig(`M ${mode} ${bandwidth}`, false, true);
+        const modeBw = await sendToRig("m", true, true);
+        const [confirmedMode, confirmedBw] = modeBw.split("\n");
+        lastStatus = { ...lastStatus, mode: confirmedMode, bandwidth: confirmedBw };
+        io2.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set mode/bandwidth");
       }
     });
     socket.on("get-modes", async () => {
       try {
-        const modes = await sendToRig("M ?");
+        const modes = await sendToRig("M ?", false, true);
         const modeList = modes.split(/[\s\n]+/).filter(Boolean);
         socket.emit("available-modes", modeList);
       } catch (err) {
@@ -41062,32 +41716,44 @@ Passband: ${lines[1]}
     });
     socket.on("set-ptt", async (ptt) => {
       try {
-        await sendToRig(`T ${ptt ? "1" : "0"}`);
-        pollRig();
+        await sendToRig(`T ${ptt ? "1" : "0"}`, false, true);
+        const confirmedPtt = await sendToRig("t", true, true) === "1";
+        lastStatus = { ...lastStatus, ptt: confirmedPtt };
+        io2.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set PTT");
       }
     });
     socket.on("set-vfo", async (vfo) => {
       try {
-        await sendToRig(`V ${vfo}`);
-        pollRig();
+        await sendToRig(`V ${vfo}`, false, true);
+        const confirmedVfo = await sendToRig("v", true, true);
+        lastStatus = { ...lastStatus, vfo: confirmedVfo };
+        io2.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set VFO");
       }
     });
     socket.on("set-split-vfo", async ({ split, txVFO }) => {
       try {
-        await sendToRig(`S ${split} ${txVFO}`);
-        pollRig();
+        await sendToRig(`S ${split} ${txVFO}`, false, true);
+        const splitInfo = await sendToRig("s", true, true);
+        const [isSplitStr, confirmedTxVFO] = splitInfo.split("\n");
+        lastStatus = { ...lastStatus, isSplit: isSplitStr === "1", txVFO: confirmedTxVFO || "VFOB" };
+        io2.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", "Failed to set split VFO");
       }
     });
     socket.on("vfo-op", async (op) => {
       try {
-        await sendToRig(`G ${op}`);
-        pollRig();
+        await sendToRig(`G ${op}`, false, true);
+        const frequency = await sendToRig("f", true, true);
+        const modeBw = await sendToRig("m", true, true);
+        const [mode, bandwidth] = modeBw.split("\n");
+        const vfo = await sendToRig("v", true, true);
+        lastStatus = { ...lastStatus, frequency, mode, bandwidth, vfo };
+        io2.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", `Failed to execute VFO operation: ${op}`);
       }
@@ -41097,21 +41763,164 @@ Passband: ${lines[1]}
     });
     socket.on("set-poll-rate", (rate) => {
       pollRate = rate;
+      saveSettings();
       startPolling();
     });
-    socket.on("get-settings", () => {
+    socket.on("set-autoconnect-eligible", (eligible) => {
+      autoconnectEligible = eligible;
+      saveSettings();
+    });
+    socket.on("set-client-config", ({ host, port }) => {
+      clientHost = host;
+      clientPort = port;
+      saveSettings();
+    });
+    socket.on("get-settings", async () => {
+      if (rigctldStatus === "stopped" || rigctldStatus === "error") {
+        const isRunning = await checkExistingRigctld();
+        if (isRunning) {
+          rigctldStatus = "already_running";
+        }
+      }
       socket.emit("settings-data", {
         settings: rigctldSettings,
-        autoStart: autoStartEnabled
+        autoStart: autoStartEnabled,
+        videoSettings,
+        audioSettings,
+        pollRate,
+        autoconnectEligible,
+        clientHost,
+        clientPort,
+        isConnected
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
+      socket.emit("video-status", videoStatus);
+      socket.emit("audio-status", audioStatus);
+      socket.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
+      socket.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
+      socket.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
+      socket.emit("mic-active-client", activeMicClientId);
+      socket.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
+      socket.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
+    });
+    socket.on("get-video-devices", async () => {
+      console.log("[VIDEO] Client requested video devices list");
+      const { devices, error } = await listVideoDevices();
+      if (error) {
+        socket.emit("video-error", error);
+      }
+      console.log(`[VIDEO] Found ${devices.length} devices: ${devices.join(", ")}`);
+      socket.emit("video-devices-list", devices);
+    });
+    socket.on("get-audio-devices", async () => {
+      console.log("[AUDIO] Client requested audio devices list");
+      const { inputs, outputs, error } = await listAudioDevices();
+      if (error) {
+        socket.emit("audio-error", error);
+      }
+      socket.emit("audio-devices-list", { inputs, outputs });
+    });
+    socket.on("update-audio-settings", (settings) => {
+      console.log("[AUDIO] Updating audio settings:", settings);
+      const wasPlaying = audioStatus === "playing";
+      audioSettings = { ...audioSettings, ...settings };
+      saveSettings();
+      io2.emit("settings-data", { audioSettings });
+      if (wasPlaying) {
+        startAudio();
+      }
+    });
+    socket.on("control-audio", (action) => {
+      console.log(`[AUDIO] Control action received: ${action}`);
+      if (action === "start") {
+        startAudio();
+      } else if (action === "stop") {
+        stopAudio();
+      }
+    });
+    socket.on("mic-unmute-request", () => {
+      activeMicClientId = clientId;
+      console.log(`[AUDIO] Mic claimed by client: ${clientId}`);
+      socket.broadcast.emit("mic-mute-forced");
+      io2.emit("mic-active-client", activeMicClientId);
+    });
+    socket.on("mic-mute-notify", () => {
+      if (activeMicClientId === clientId) {
+        activeMicClientId = null;
+        io2.emit("mic-active-client", null);
+      }
+    });
+    let outboundDiagCount = 0;
+    let outboundRecvCount = 0;
+    socket.on("audio-outbound", (data) => {
+      outboundRecvCount++;
+      if (outboundRecvCount <= 5 || outboundRecvCount % 50 === 0) {
+        console.log(`[AUDIO-DIAG] audio-outbound received #${outboundRecvCount} from clientId=${clientId}, bytes=${data.length}, activeMic=${activeMicClientId}, ptt=${lastStatus.ptt}`);
+      }
+      if (activeMicClientId !== clientId) return;
+      if (!audioOutputProcess || !opusDecoder) return;
+      if (!lastStatus.ptt) return;
+      try {
+        const pcmData = opusDecoder.decode(data);
+        if (outboundDiagCount < 5) {
+          console.log(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
+          outboundDiagCount++;
+        }
+        audioOutputProcess.write(pcmData);
+      } catch (err) {
+        console.error("[AUDIO-OUT] Opus decode or write error:", err);
+      }
+    });
+    socket.on("update-video-settings", (settings) => {
+      console.log("[VIDEO] Updating video settings:", settings);
+      const oldRes = videoSettings.resolution;
+      const oldDev = videoSettings.device;
+      const oldFps = videoSettings.framerate;
+      videoSettings = { ...videoSettings, ...settings };
+      if (!videoSettings.device || !videoSettings.resolution || !videoSettings.framerate) {
+        videoAutoStart = false;
+      }
+      saveSettings();
+      if (videoStatus === "playing" && (oldRes !== videoSettings.resolution || oldDev !== videoSettings.device || oldFps !== videoSettings.framerate)) {
+        console.log("[VIDEO] Settings changed while playing, restarting stream...");
+        startVideo();
+      }
+    });
+    socket.on("control-video", (action) => {
+      console.log(`[VIDEO] Control action received: ${action}`);
+      if (action === "play") {
+        startVideo();
+      } else if (action === "pause") {
+        console.log("[VIDEO] Pausing (stopping) stream...");
+        videoAutoStart = false;
+        saveSettings();
+        stopVideo();
+        videoStatus = "paused";
+        io2.emit("video-status", videoStatus);
+      } else if (action === "stop") {
+        videoAutoStart = false;
+        saveSettings();
+        stopVideo();
+      }
     });
     socket.on("save-settings", (data) => {
-      rigctldSettings = data;
+      const oldRigNumber = rigctldSettings.rigNumber;
+      if (data.settings) {
+        rigctldSettings = { ...rigctldSettings, ...data.settings };
+      } else {
+        const { pollRate: pr, clientHost: ch, clientPort: cp, ...rest } = data;
+        rigctldSettings = { ...rigctldSettings, ...rest };
+      }
+      if (data.pollRate !== void 0) {
+        pollRate = Number(data.pollRate);
+        startPolling();
+      }
+      if (data.clientHost !== void 0) clientHost = data.clientHost;
+      if (data.clientPort !== void 0) clientPort = Number(data.clientPort);
       saveSettings();
-      if (autoStartEnabled) {
-        startRigctld();
+      if (oldRigNumber !== rigctldSettings.rigNumber) {
+        fetchRadioCapabilities(rigctldSettings.rigNumber);
       }
     });
     socket.on("toggle-auto-start", (enabled) => {
@@ -41124,52 +41933,67 @@ Passband: ${lines[1]}
       }
     });
     socket.on("start-rigctld", () => {
+      autoStartEnabled = true;
+      saveSettings();
+      startRigctld();
+    });
+    socket.on("kill-existing-rigctld", async () => {
+      addLog("Killing existing rigctld process...");
+      await killExistingRigctld();
+      addLog("Existing rigctld killed. Starting new process...");
       startRigctld();
     });
     socket.on("stop-rigctld", () => {
+      autoStartEnabled = false;
+      saveSettings();
       stopRigctld();
     });
     socket.on("test-rigctld", async (data) => {
       const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = data;
       addLog("Testing rigctld configuration...");
-      const check = (0, import_child_process.spawn)("rigctld", ["-V"]);
-      check.on("error", () => {
-        socket.emit("test-result", { success: false, message: "rigctld binary not found in system PATH" });
+      rigctldVersion = await getRigctldVersion();
+      isRigctldVersionSupported = checkVersionSupported(rigctldVersion);
+      console.log(`[HAMLIB] Test rigctld version check: ${rigctldVersion || "unknown"}`);
+      addLog(`Hamlib (rigctld) version check: ${rigctldVersion || "unknown"}`);
+      emitRigctldStatus();
+      if (!rigctldVersion) {
+        socket.emit("test-result", { success: false, message: "rigctld binary not found in system PATH or bin folder" });
         addLog("Error: rigctld binary not found");
+        return;
+      }
+      if (!isRigctldVersionSupported) {
+        addLog(`Warning: rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
+      }
+      const testProc = (0, import_child_process.spawn)(getRigctldPath(), [
+        "-m",
+        rigNumber,
+        "-r",
+        serialPort,
+        "-t",
+        portNumber,
+        "-T",
+        ipAddress,
+        "-s",
+        serialPortSpeed
+      ]);
+      let errorMsg = "";
+      testProc.stderr?.on("data", (d) => errorMsg += d.toString());
+      const timeout = setTimeout(() => {
+        testProc.kill();
+        socket.emit("test-result", { success: true, message: "Configuration looks valid (process started successfully)" });
+        addLog("Test: Success");
+      }, 2e3);
+      testProc.on("error", (err) => {
+        clearTimeout(timeout);
+        socket.emit("test-result", { success: false, message: `Failed to start: ${err.message}` });
+        addLog(`Test Failed: ${err.message}`);
       });
-      check.on("close", (code) => {
-        if (code !== 0) return;
-        const testProc = (0, import_child_process.spawn)("rigctld", [
-          "-m",
-          rigNumber,
-          "-r",
-          serialPort,
-          "-t",
-          portNumber,
-          "-T",
-          ipAddress,
-          "-s",
-          serialPortSpeed
-        ]);
-        let errorMsg = "";
-        testProc.stderr?.on("data", (d) => errorMsg += d.toString());
-        const timeout = setTimeout(() => {
-          testProc.kill();
-          socket.emit("test-result", { success: true, message: "Configuration looks valid (process started successfully)" });
-          addLog("Test: Success");
-        }, 2e3);
-        testProc.on("error", (err) => {
-          clearTimeout(timeout);
-          socket.emit("test-result", { success: false, message: `Failed to start: ${err.message}` });
-          addLog(`Test Failed: ${err.message}`);
-        });
-        testProc.on("close", (c) => {
-          clearTimeout(timeout);
-          if (c !== null && c !== 0) {
-            socket.emit("test-result", { success: false, message: `Process exited with code ${c}. Error: ${errorMsg}` });
-            addLog(`Test Failed: ${errorMsg}`);
-          }
-        });
+      testProc.on("close", (c) => {
+        clearTimeout(timeout);
+        if (c !== null && c !== 0) {
+          socket.emit("test-result", { success: false, message: `Process exited with code ${c}. Error: ${errorMsg}` });
+          addLog(`Test Failed: ${errorMsg}`);
+        }
       });
     });
     socket.on("get-radios", () => {
@@ -41187,29 +42011,69 @@ Passband: ${lines[1]}
     });
     socket.on("send-raw", async (cmd) => {
       try {
-        const resp = await sendToRig(cmd);
+        const resp = await sendToRig(cmd, false, true);
         socket.emit("raw-response", { cmd, resp });
       } catch (err) {
         socket.emit("raw-response", { cmd, resp: `Error: ${err}` });
       }
     });
     socket.on("disconnect", () => {
-      console.log("Client disconnected");
+      console.log(`Client disconnected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
+      if (activeMicClientId === clientId) {
+        setTimeout(() => {
+          let hasActiveSocket = false;
+          io2.sockets.sockets.forEach((s) => {
+            if ((s.handshake.auth.clientId || s.id) === clientId) {
+              hasActiveSocket = true;
+            }
+          });
+          if (!hasActiveSocket && activeMicClientId === clientId) {
+            console.log(`[AUDIO] Releasing mic for disconnected client: ${clientId}`);
+            activeMicClientId = null;
+            io2.emit("mic-active-client", null);
+          }
+        }, 5e3);
+      }
     });
   });
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa"
-    });
-    app2.use(vite.middlewares);
+  if (process.env.NODE_ENV !== "production" && !process.versions.electron) {
+    try {
+      const v = ["v", "i", "t", "e"].join("");
+      const { createServer: createViteServer } = await import(v);
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa"
+      });
+      app2.use(vite.middlewares);
+      console.log("Vite development middleware loaded.");
+    } catch (e) {
+      console.warn("Vite middleware not loaded:", e);
+    }
   } else {
-    const distPath = import_path.default.join(process.cwd(), "dist");
-    app2.use(import_express.default.static(distPath));
-    app2.get("*", (req, res) => {
-      res.sendFile(import_path.default.join(distPath, "index.html"));
-    });
+    let distPath;
+    if (process.versions.electron && appPath) {
+      distPath = import_path.default.join(appPath, "dist");
+    } else {
+      distPath = import_path.default.join(process.cwd(), "dist");
+    }
+    console.log(`Serving static files from: ${distPath}`);
+    if (import_fs.default.existsSync(distPath)) {
+      app2.use(import_express.default.static(distPath));
+      app2.get("*", (req, res) => {
+        const indexPath = import_path.default.join(distPath, "index.html");
+        if (import_fs.default.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          console.error(`File not found: ${indexPath}`);
+          res.status(404).send(`Not Found: index.html missing in ${distPath}`);
+        }
+      });
+    } else {
+      console.error(`Static directory not found: ${distPath}`);
+      app2.get("*", (req, res) => {
+        res.status(404).send(`Static directory not found: ${distPath}. Current directory: ${process.cwd()}`);
+      });
+    }
   }
   return new Promise((resolve) => {
     httpServer.listen(PORT, "0.0.0.0", () => {
@@ -41218,25 +42082,103 @@ Passband: ${lines[1]}
     });
   });
 }
-if (process.env.NODE_ENV !== "production" && !process.env.ELECTRON_RUN) {
-  startServer();
+if (!process.env.ELECTRON_RUN && !process.versions.electron) {
+  console.log("Starting server in standalone mode...");
+  startServer().catch((err) => {
+    console.error("CRITICAL: Failed to start server:", err);
+    process.exit(1);
+  });
 }
 
 // electron/main.ts
+import_electron2.app.disableHardwareAcceleration();
+import_electron2.app.commandLine.appendSwitch("disable-features", "VaapiVideoDecoder");
+import_electron2.app.commandLine.appendSwitch("disable-gpu-memory-buffer-video-frames");
+import_electron2.app.commandLine.appendSwitch("disable-gpu-compositing");
+import_electron2.app.commandLine.appendSwitch("disable-gpu-rasterization");
+import_electron2.app.commandLine.appendSwitch("disable-gpu");
 if (!electron_is_dev_default) {
   process.env.NODE_ENV = "production";
 }
+console.log(`Electron starting. isDev: ${electron_is_dev_default}, NODE_ENV: ${process.env.NODE_ENV}`);
+var windowStatePath = import_path2.default.join(import_electron2.app.getPath("userData"), "window-state.json");
+function loadWindowState() {
+  try {
+    if (import_fs2.default.existsSync(windowStatePath)) {
+      return JSON.parse(import_fs2.default.readFileSync(windowStatePath, "utf8"));
+    }
+  } catch (e) {
+    console.error("Failed to load window state:", e);
+  }
+  return null;
+}
+function saveWindowState(state) {
+  try {
+    import_fs2.default.writeFileSync(windowStatePath, JSON.stringify(state));
+  } catch (e) {
+    console.error("Failed to save window state:", e);
+  }
+}
 async function createWindow() {
-  await startServer();
+  const appPath = electron_is_dev_default ? process.cwd() : import_electron2.app.getAppPath();
+  const userDataPath = electron_is_dev_default ? process.cwd() : import_electron2.app.getPath("userData");
+  await startServer(appPath, userDataPath);
+  const savedState = loadWindowState();
+  const defaultWidth = 768;
+  const defaultHeight = 600;
   const win = new import_electron2.BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: savedState?.width || defaultWidth,
+    height: savedState?.height || defaultHeight,
+    x: savedState?.x,
+    y: savedState?.y,
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      preload: electron_is_dev_default ? import_path2.default.join(process.cwd(), "dist-electron/preload.cjs") : import_path2.default.join(import_electron2.app.getAppPath(), "dist-electron/preload.cjs")
     },
     title: "RigControl Web",
     autoHideMenuBar: true
+  });
+  setElectronWindow(win);
+  import_electron2.ipcMain.on("resize-window", (event, { width, height }) => {
+    const win2 = import_electron2.BrowserWindow.fromWebContents(event.sender);
+    if (win2) {
+      const [currentWidth, currentHeight] = win2.getContentSize();
+      if (currentWidth !== width || currentHeight !== height) {
+        win2.setContentSize(Math.round(width), Math.round(height), true);
+        const [w, h] = win2.getSize();
+        const [x, y] = win2.getPosition();
+        saveWindowState({ width: w, height: h, x, y });
+      }
+    }
+  });
+  win.on("resize", () => {
+    const [width, height] = win.getSize();
+    const [x, y] = win.getPosition();
+    saveWindowState({ width, height, x, y });
+  });
+  win.on("move", () => {
+    const [width, height] = win.getSize();
+    const [x, y] = win.getPosition();
+    saveWindowState({ width, height, x, y });
+  });
+  win.on("close", () => {
+    const [width, height] = win.getSize();
+    const [x, y] = win.getPosition();
+    saveWindowState({ width, height, x, y });
+  });
+  await win.webContents.session.clearCache();
+  console.log("Electron cache cleared.");
+  win.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    if (permission === "media") return true;
+    return false;
+  });
+  win.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === "media") {
+      callback(true);
+    } else {
+      callback(false);
+    }
   });
   if (electron_is_dev_default) {
     win.loadURL("http://localhost:3000");
