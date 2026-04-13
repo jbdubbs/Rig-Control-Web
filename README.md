@@ -1,41 +1,54 @@
 # RigControl Web
 
-A modern, full-stack web application and desktop client designed to control amateur radio equipment via Hamlib's `rigctld`. It features a real-time dashboard with frequency, mode, and meter displays, and can automatically manage a local `rigctld` process.
+A modern, full-stack web application and native desktop client for controlling amateur radio equipment via Hamlib's `rigctld`. Features a real-time dashboard with frequency, mode, and meter displays, full bidirectional audio over Opus, MJPEG video streaming, and automatic `rigctld` process management.
+
+## Screenshots
+
+### Compact View (Desktop)
+![RigControl Web — Compact View](assets/RigControlWeb-Compact.png)
+
+### Phone View (Mobile)
+![RigControl Web — Phone View](assets/RigControlWeb-Phone.png)
 
 ## Features
 
-- **Real-time Dashboard**: Frequency, mode, and meter displays (S-Meter, SWR, ALC, Power, VDD).
-- **Process Management**: Automatically start and stop `rigctld` from the web interface.
+- **Real-time Dashboard**: Frequency, mode, and meter displays (S-Meter, SWR, ALC, Power, VDD) polled live from the rig.
+- **Bidirectional Audio**: Full transmit and receive audio over the network using the Opus codec. Works for remote SSB, AM, and FM contacts. Powered by native `naudiodon` I/O and `libopus-node`.
+  - Jitter buffer for smooth inbound playback.
+  - Multi-client support with last-interacted-wins mic policy.
+  - Audio device lists refresh automatically when you open the device selector, so newly connected USB devices always appear.
+- **Phone View**: Dedicated portrait-optimized layout for operating from a phone or tablet.
+- **Compact View**: Condensed desktop layout that fits on smaller screens.
+- **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel. Example: FT-710 DVI out → USB HDMI capture card.
+- **Process Management**: Start, stop, and monitor `rigctld` directly from the web interface. View the live log and kill stale instances.
 - **Split VFO Support**: Full control over split operations with visual feedback.
-- **Desktop App**: Can be built as a native application for Windows, Linux, and macOS.
-- **Rig Video Feed**: Displays a system video capture device, like an HDMI capture card or a webcam, so you can see your radio's front screen.  Example: FT-710 DVI out > USB to HDMI capture card.
-- **Mobile Rig Control**: Through your own VPN and installing the app or pointing your VPN'd browser to your rig computer IP on port 3000.
-- **Works With All Hamlib Supported Apps**: Tell your app that your rig is a "Hamlib NET rigctl" with a local address of 127.0.0.1:4532.
-  - WSJTX, WSJTX Improved, FLDigi, VarAC, JS8Call, etc...
+- **Works With All Hamlib-Compatible Software**: Configure your logging app to use "Hamlib NET rigctl" at `127.0.0.1:4532`.
+  - WSJT-X, WSJT-X Improved, FLDigi, VarAC, JS8Call, and more.
+- **Remote Access**: Access your shack from anywhere over your own VPN by pointing a browser to your rig computer's IP on port 3000.
+- **Desktop App**: Native installers for Windows and Linux via Electron. Graceful shutdown ensures audio hardware is released cleanly on exit.
 
 ## TODO
-- **Audio In/Out**: Full audio in/out support for compatible rigs.  You can work remote SSB contacts!
-- **Remote CW**: CW from your phone, tablet, or laptop while away from home.
-- **Testing of All Popular Rigs**: Very limited testing, currently FT-710, 991A, DX10, 101D, 101MP should work fine.
+
+- **Remote CW**: CW keying from a phone, tablet, or laptop while away from home.
+- **macOS Support**: Currently untested — requires externally installed Hamlib 4.7.0 and FFmpeg in the system PATH.
+- **Broader Rig Testing**: Currently well-tested on FT-710, FT-991A, DX10, FT-101D, and FT-101MP. Other Hamlib-supported rigs should work.
 
 ## Prerequisites
 
 ### Common
 - **Operating Systems**:
-  - **Windows 10 or higher** (tested on Windows 11 23H2)
-    - No external dependencies.
-  - **Linux 6.0 kernel or higher** (tested on Fedora 43)
-    - No external dependencies.
-  - **MacOS TBA** (I don't have a Mac for testing...)
-    - Requires externally installed Hamlib 4.7.0 and latest ffmpeg, both in the system PATH.
+  - **Windows 10 or higher** (tested on Windows 11 23H2) — no external dependencies.
+  - **Linux kernel 6.0 or higher** (tested on Fedora 43) — no external dependencies.
+  - **macOS** (TBA — no test hardware available)
+    - Requires externally installed Hamlib 4.7.0 and latest FFmpeg, both in the system PATH.
 
 ### Compile from Source
 - **Node.js**: Version 18 or higher.
 - **FFmpeg**: Required for the video feed feature.
-  - **Electron Apps**: You can bundle `ffmpeg` by placing the binary in the `bin/[linux|windows|mac]/` folder.
-  - **Fallback**: If not bundled, the app will fall back to the system PATH.
+  - **Electron Apps**: Bundle `ffmpeg` by placing the binary in `bin/[linux|windows|mac]/`.
+  - **Fallback**: If not bundled, the app falls back to the system PATH.
 - **Hamlib**: 4.7.0 or higher.
-  - **Electron Apps**: You can bundle `rigctld (Hamlib)` by placing the binary in the `bin/[linux|windows|mac]/` folder.
+  - **Electron Apps**: Bundle `rigctld` by placing the binary in `bin/[linux|windows|mac]/`.
 
 ### Installing Hamlib (if required)
 - **Linux**: `sudo apt install libhamlib-utils`
@@ -54,18 +67,18 @@ A modern, full-stack web application and desktop client designed to control amat
    ```
 3. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+> Note: there is no hot-reload for the backend — restart `npm run dev` after any `server.ts` changes.
+
 ## Desktop App (Electron)
 
-RigControl Web can be run as a native desktop application. In this mode, the backend server runs silently in the background, and the frontend is displayed in a native window.
+RigControl Web can be run as a native desktop application. The backend Express server runs silently in the background and the frontend is displayed in a native window. Audio hardware is released cleanly when the app exits.
 
 ### Run in Development
-To launch the Electron app in development mode:
 ```bash
 npm run electron:dev
 ```
 
 ### Build for Production
-You can create installers for your specific platform using the following commands:
 
 #### Windows (NSIS Installer)
 ```bash
@@ -82,20 +95,22 @@ npm run electron:build -- --linux
 npm run electron:build -- --mac
 ```
 
-The built installers will be located in the `build/` directory.
+Built installers are placed in the `build/` directory.
 
 ### Launching the Installed App
-Once installed, simply launch "RigControl Web" from your applications menu or desktop shortcut. The application will:
+Once installed, launch "RigControl Web" from your applications menu or desktop shortcut. The application will:
 1. Start the background Express server.
-2. Launch the `rigctld` process from the settings menu after entering all required settings.
+2. Open the UI — configure your rig settings and start `rigctld` from the Settings panel.
 
 ## Configuration
 
-Access the **Settings** (gear icon) in the application to configure:
-- **Rig Number**: The Hamlib model ID for your radio.
-- **Serial Port**: The device path (e.g., `/dev/ttyUSB0` or `COM3`).
-- **Baud Rate**: The serial speed for your radio.
-- **Network Settings**: The host and port for the `rigctld` server.
+Open the **Settings** panel (gear icon) to configure:
+- **Rig Number**: Hamlib model ID for your radio.
+- **Serial Port**: Device path (e.g. `/dev/ttyUSB0` or `COM3`).
+- **Baud Rate**: Serial speed for your radio.
+- **Network Settings**: Host and port for the `rigctld` server.
+- **Video Settings**: Capture device selection and stream quality.
+- **Audio Settings**: Backend input/output device (server-side, for the radio), local input/output device (browser-side, for the operator), and enable/disable inbound and outbound audio independently.
 
 ## License
 
