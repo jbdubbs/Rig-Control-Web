@@ -40510,6 +40510,10 @@ var electronWin = null;
 function setElectronWindow(win) {
   electronWin = win;
 }
+var _shutdownAudio = null;
+async function shutdown() {
+  if (_shutdownAudio) await _shutdownAudio();
+}
 async function startServer(appPath, userDataPath) {
   const app2 = (0, import_express.default)();
   const httpServer = (0, import_http.createServer)(app2);
@@ -40972,7 +40976,7 @@ async function startServer(appPath, userDataPath) {
       return { inputs: [], outputs: [], error: err.message };
     }
   };
-  const stopAudio = () => {
+  const stopAudio = async () => {
     console.log("[AUDIO] Stopping audio streaming...");
     if (outboundTimer) {
       clearInterval(outboundTimer);
@@ -40980,14 +40984,14 @@ async function startServer(appPath, userDataPath) {
     }
     if (audioInputProcess) {
       try {
-        audioInputProcess.quit();
+        await audioInputProcess.quit();
       } catch (e) {
       }
       audioInputProcess = null;
     }
     if (audioOutputProcess) {
       try {
-        audioOutputProcess.quit();
+        await audioOutputProcess.quit();
       } catch (e) {
       }
       audioOutputProcess = null;
@@ -40997,9 +41001,10 @@ async function startServer(appPath, userDataPath) {
     audioStatus = "stopped";
     io2.emit("audio-status", audioStatus);
   };
-  const startAudio = () => {
+  _shutdownAudio = stopAudio;
+  const startAudio = async () => {
     console.log("[AUDIO] Starting audio streaming...");
-    stopAudio();
+    await stopAudio();
     if (!isAudioEngineReady) {
       console.warn("[AUDIO] Cannot start audio: Audio engine is not ready.");
       return;
@@ -41091,6 +41096,9 @@ async function startServer(appPath, userDataPath) {
         console.error("[AUDIO-OUT] Failed to start playback:", err);
       }
     }
+    activeMicClientId = null;
+    io2.emit("mic-active-client", null);
+    io2.emit("mic-mute-forced");
     audioStatus = "playing";
     io2.emit("audio-status", audioStatus);
   };
@@ -41803,6 +41811,9 @@ async function startServer(appPath, userDataPath) {
       socket.emit("mic-active-client", activeMicClientId);
       socket.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
       socket.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
+      if (isConnected) {
+        socket.emit("rig-connected", { host: rigConfig.host, port: rigConfig.port });
+      }
     });
     socket.on("get-video-devices", async () => {
       console.log("[VIDEO] Client requested video devices list");
@@ -41821,22 +41832,22 @@ async function startServer(appPath, userDataPath) {
       }
       socket.emit("audio-devices-list", { inputs, outputs });
     });
-    socket.on("update-audio-settings", (settings) => {
+    socket.on("update-audio-settings", async (settings) => {
       console.log("[AUDIO] Updating audio settings:", settings);
       const wasPlaying = audioStatus === "playing";
       audioSettings = { ...audioSettings, ...settings };
       saveSettings();
       io2.emit("settings-data", { audioSettings });
       if (wasPlaying) {
-        startAudio();
+        await startAudio();
       }
     });
-    socket.on("control-audio", (action) => {
+    socket.on("control-audio", async (action) => {
       console.log(`[AUDIO] Control action received: ${action}`);
       if (action === "start") {
-        startAudio();
+        await startAudio();
       } else if (action === "stop") {
-        stopAudio();
+        await stopAudio();
       }
     });
     socket.on("mic-unmute-request", () => {
@@ -42187,6 +42198,13 @@ async function createWindow() {
   }
 }
 import_electron2.app.whenReady().then(createWindow);
+var isShuttingDown = false;
+import_electron2.app.on("will-quit", (event) => {
+  if (isShuttingDown) return;
+  event.preventDefault();
+  isShuttingDown = true;
+  shutdown().then(() => import_electron2.app.quit()).catch(() => import_electron2.app.quit());
+});
 import_electron2.app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     import_electron2.app.quit();

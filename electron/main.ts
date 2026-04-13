@@ -18,7 +18,7 @@ if (!isDev) {
 }
 console.log(`Electron starting. isDev: ${isDev}, NODE_ENV: ${process.env.NODE_ENV}`);
 
-import { startServer, setElectronWindow } from '../server.ts';
+import { startServer, setElectronWindow, shutdown } from '../server.ts';
 
 const windowStatePath = path.join(app.getPath('userData'), 'window-state.json');
 
@@ -134,6 +134,14 @@ async function createWindow() {
 }
 
 app.whenReady().then(createWindow);
+
+let isShuttingDown = false;
+app.on('will-quit', (event) => {
+  if (isShuttingDown) return;
+  event.preventDefault();
+  isShuttingDown = true;
+  shutdown().then(() => app.quit()).catch(() => app.quit());
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

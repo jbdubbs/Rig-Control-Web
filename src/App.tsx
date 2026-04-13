@@ -27,7 +27,8 @@ import {
   Pencil,
   Check,
   AlertCircle,
-  AlertTriangle
+  AlertTriangle,
+  Headphones
 } from "lucide-react";
 import { 
   LineChart, 
@@ -75,6 +76,10 @@ interface RigStatus {
 const MODES_FALLBACK = [
   "USB", "LSB", "CW", "AM", "FM", "RTTY"
 ];
+
+const VOICE_MODES = new Set([
+  "LSB", "USB", "PKTUSB", "PKTLSB", "AM", "AMN", "FM", "FMN", "FM-D", "PKTFMN"
+]);
 
 const BANDWIDTHS = [300, 500, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3200, 3500, 4000];
 
@@ -146,7 +151,24 @@ export default function App() {
   const [nrCapabilities, setNrCapabilities] = useState({ supported: false, range: { min: 0, max: 1, step: 0.066667 } });
   const [anfCapabilities, setAnfCapabilities] = useState({ supported: false });
   const [rfPowerCapabilities, setRfPowerCapabilities] = useState({ range: { min: 0, max: 1, step: 0.01 } });
-  const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem("backend-url") || window.location.origin);
+  const [backendUrl, setBackendUrl] = useState(() => {
+    const stored = localStorage.getItem("backend-url");
+    if (!stored) return window.location.origin;
+    try {
+      const storedUrl = new URL(stored);
+      const currentUrl = new URL(window.location.origin);
+      if (storedUrl.hostname === currentUrl.hostname && storedUrl.port === currentUrl.port && storedUrl.protocol !== currentUrl.protocol) {
+        console.log(`[INIT] Correcting stale backend-url: ${stored} → ${window.location.origin}`);
+        localStorage.setItem("backend-url", window.location.origin);
+        return window.location.origin;
+      }
+    } catch (_) {
+      console.warn("[INIT] Invalid backend-url in storage, resetting to current origin.");
+      localStorage.setItem("backend-url", window.location.origin);
+      return window.location.origin;
+    }
+    return stored;
+  });
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [isCompact, setIsCompact] = useState(() => {
@@ -205,6 +227,9 @@ export default function App() {
   });
   const [inboundMuted, setInboundMuted] = useState(false);
   const [outboundMuted, setOutboundMuted] = useState(true);
+  const [localAudioReady, setLocalAudioReady] = useState(false);
+  const [audioWasRestarted, setAudioWasRestarted] = useState(false);
+  const [isBackendEngineCollapsed, setIsBackendEngineCollapsed] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const playbackNodeRef = useRef<AudioWorkletNode | null>(null);
   const captureNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -222,7 +247,12 @@ export default function App() {
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
   const [isVideoCollapsed, setIsVideoCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [pendingVfoOp, setPendingVfoOp] = useState<string | null>(null);
-  const [isPhoneVFOCollapsed, setIsPhoneVFOCollapsed] = useState(false);
+  const [isTuning, setIsTuning] = useState(false);
+  const [tuneJustFinished, setTuneJustFinished] = useState(false);
+  const tuningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tuneSeenPTTRef = useRef(false);
+  const tuneJustFinishedRef = useRef(false);
+  const [isPhoneVFOCollapsed, setIsPhoneVFOCollapsed] = useState(true);
   const [isPhoneMeterCollapsed, setIsPhoneMeterCollapsed] = useState(true);
   const [isPhoneQuickControlsCollapsed, setIsPhoneQuickControlsCollapsed] = useState(true);
   const [isCompactSMeterCollapsed, setIsCompactSMeterCollapsed] = useState(() => localStorage.getItem("is-compact-smeter-collapsed") === "true");
@@ -414,9 +444,16 @@ export default function App() {
       });
       socket.on("audio-status", (status: "playing" | "stopped") => {
         setAudioStatus(status);
-        if (status === "stopped" && audioContextRef.current) {
-          // We don't close the context, just suspend it to save resources
-          audioContextRef.current.suspend().catch(() => {});
+        if (status === "stopped") {
+          if (localAudioReadyRef.current) {
+            setAudioWasRestarted(true);
+          }
+          // Full pipeline teardown — client must re-join to participate
+          if (opusEncoderRef.current) { try { opusEncoderRef.current.close(); } catch (_) {} opusEncoderRef.current = null; }
+          if (opusDecoderRef.current) { try { opusDecoderRef.current.close(); } catch (_) {} opusDecoderRef.current = null; }
+          if (playbackNodeRef.current) { playbackNodeRef.current.disconnect(); playbackNodeRef.current = null; }
+          if (audioContextRef.current) { audioContextRef.current.close().catch(() => {}); audioContextRef.current = null; }
+          setLocalAudioReady(false);
         }
       });
       socket.on("audio-engine-state", (state: { isReady: boolean, error: string | null }) => {
@@ -640,8 +677,34 @@ export default function App() {
     });
     newSocket.on("rig-status", (newStatus: RigStatus) => {
       if (!newStatus) return;
-      
+
       setPendingVfoOp(null);
+
+      // Snapshot tuneJustFinishedRef at the start of this handler so the cleanup
+      // branch cannot fire in the same poll that sets it.
+      const wasJustFinished = tuneJustFinishedRef.current;
+
+      // Tune cycle state machine — watches PTT to determine cycle start/end.
+      // All checks use refs to avoid stale closure values.
+      if (tuningTimeoutRef.current !== null) {
+        if (newStatus.ptt) {
+          // PTT engaged — radio is actively tuning
+          tuneSeenPTTRef.current = true;
+        } else if (tuneSeenPTTRef.current) {
+          // PTT released after having been engaged — cycle is done
+          setIsTuning(false);
+          tuneJustFinishedRef.current = true;
+          setTuneJustFinished(true); // optimistic: hold green for one full poll cycle
+          tuneSeenPTTRef.current = false;
+          clearTimeout(tuningTimeoutRef.current);
+          tuningTimeoutRef.current = null;
+        }
+        // If !ptt && !tuneSeenPTTRef: PTT hasn't engaged yet — keep spinner
+      } else if (wasJustFinished) {
+        // First poll AFTER the cycle-end poll — now trust status.tuner for final color
+        tuneJustFinishedRef.current = false;
+        setTuneJustFinished(false);
+      }
       
       // Skip polls after a user change to allow rig to stabilize
       if (skipPollsCount.current > 0) {
@@ -829,6 +892,11 @@ export default function App() {
   };
 
   const handleSetPTT = (state: boolean) => {
+    // Auto-claim the mic on PTT press in voice modes if the client is joined but muted
+    if (state && localAudioReady && outboundMuted && VOICE_MODES.has(status?.mode || "")) {
+      setOutboundMuted(false);
+      socket?.emit("mic-unmute-request");
+    }
     skipPollsCount.current = 1;
     setStatus(prev => ({ ...(prev || DEFAULT_STATUS), ptt: state }));
     socket?.emit("set-ptt", state);
@@ -954,6 +1022,22 @@ export default function App() {
       }
     }
     
+    if (op === "TUNE") {
+      if (tuningTimeoutRef.current) clearTimeout(tuningTimeoutRef.current);
+      tuneSeenPTTRef.current = false;
+      setIsTuning(true);
+      tuneJustFinishedRef.current = false;
+      setTuneJustFinished(false);
+      // Safety timeout: clear spinner if PTT never engages within 15s
+      tuningTimeoutRef.current = setTimeout(() => {
+        setIsTuning(false);
+        tuneJustFinishedRef.current = false;
+        setTuneJustFinished(false);
+        tuneSeenPTTRef.current = false;
+        tuningTimeoutRef.current = null;
+      }, 15000);
+    }
+
     setPendingVfoOp(op);
     socket?.emit("vfo-op", op);
   };
@@ -963,17 +1047,20 @@ export default function App() {
   const audioStatusRef = useRef(audioStatus);
   const inboundMutedRef = useRef(inboundMuted);
   const outboundMutedRef = useRef(outboundMuted);
+  const localAudioReadyRef = useRef(localAudioReady);
 
   useEffect(() => { audioSettingsRef.current = audioSettings; }, [audioSettings]);
   useEffect(() => { audioStatusRef.current = audioStatus; }, [audioStatus]);
   useEffect(() => { inboundMutedRef.current = inboundMuted; }, [inboundMuted]);
   useEffect(() => { outboundMutedRef.current = outboundMuted; }, [outboundMuted]);
+  useEffect(() => { localAudioReadyRef.current = localAudioReady; }, [localAudioReady]);
+  useEffect(() => { if (audioStatus === "playing") setIsBackendEngineCollapsed(true); }, [audioStatus]);
 
   useEffect(() => {
     if (!socket) return;
     const handler = (data: ArrayBuffer | Uint8Array) => {
       // console.count("[AUDIO-IN] Packets received");
-      if (inboundMutedRef.current || !audioSettingsRef.current.inboundEnabled || audioStatusRef.current !== "playing") {
+      if (inboundMutedRef.current || !audioSettingsRef.current.inboundEnabled || audioStatusRef.current !== "playing" || !localAudioReadyRef.current) {
         return;
       }
       playInboundAudio(data);
@@ -1009,13 +1096,32 @@ export default function App() {
     }
   };
 
-  const handleStartAudio = async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
-        sampleRate: 48000,
-        latencyHint: 'interactive'
-      });
+  const initLocalAudioPipeline = async () => {
+    // Stop any existing mic capture cleanly before resetting audio state
+    stopMicCapture();
+
+    // Close and null all stale WebCodecs/AudioContext refs so they are always freshly created
+    if (opusEncoderRef.current) {
+      try { opusEncoderRef.current.close(); } catch (_) {}
+      opusEncoderRef.current = null;
     }
+    if (opusDecoderRef.current) {
+      try { opusDecoderRef.current.close(); } catch (_) {}
+      opusDecoderRef.current = null;
+    }
+    if (playbackNodeRef.current) {
+      playbackNodeRef.current.disconnect();
+      playbackNodeRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try { await audioContextRef.current.close(); } catch (_) {}
+      audioContextRef.current = null;
+    }
+
+    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
+      sampleRate: 48000,
+      latencyHint: 'interactive'
+    });
     const ctx = audioContextRef.current;
     console.log(`[AUDIO-DIAG] AudioContext actual sampleRate=${ctx.sampleRate} (requested 48000)`);
 
@@ -1034,7 +1140,7 @@ export default function App() {
 
     try {
       await ctx.audioWorklet.addModule('/audio-processor.js');
-      
+
       if (!playbackNodeRef.current) {
         playbackNodeRef.current = new AudioWorkletNode(ctx, 'playback-processor');
         playbackNodeRef.current.connect(ctx.destination);
@@ -1053,7 +1159,7 @@ export default function App() {
             const buffer = new ArrayBuffer(size);
             audioData.copyTo(buffer, options);
             const float32Data = new Float32Array(buffer);
-            
+
             if (playbackNodeRef.current) {
               playbackNodeRef.current.port.postMessage({ type: 'pcm', pcm: float32Data });
             }
@@ -1072,14 +1178,34 @@ export default function App() {
     } catch (e) {
       console.error("[AUDIO] Failed to setup audio playback:", e);
     }
-    
+
+    setLocalAudioReady(true);
+    setAudioWasRestarted(false);
+  };
+
+  const handleJoinAudio = async () => {
+    // If neither local device has ever been explicitly configured, redirect to audio settings
+    const explicitInput = localStorage.getItem("local-audio-input");
+    const explicitOutput = localStorage.getItem("local-audio-output");
+    if (!explicitInput && !explicitOutput) {
+      setIsVideoSettingsOpen(true);
+      socket?.emit("get-video-devices");
+      socket?.emit("get-audio-devices");
+      return;
+    }
+    await initLocalAudioPipeline();
+  };
+
+  const handleStartAudio = async () => {
+    await initLocalAudioPipeline();
+
     // Auto-enable streams if devices are selected
-    const newSettings = { 
-      ...audioSettings, 
+    const newSettings = {
+      ...audioSettings,
       inboundEnabled: audioSettings.inputDevice !== "" ? true : audioSettings.inboundEnabled,
       outboundEnabled: audioSettings.outputDevice !== "" ? true : audioSettings.outboundEnabled
     };
-    
+
     if (newSettings.inboundEnabled !== audioSettings.inboundEnabled || newSettings.outboundEnabled !== audioSettings.outboundEnabled) {
       setAudioSettings(newSettings);
       socket?.emit("update-audio-settings", newSettings);
@@ -1226,13 +1352,13 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (audioStatus === "playing" && audioSettings.outboundEnabled) {
+    if (audioStatus === "playing" && audioSettings.outboundEnabled && localAudioReady) {
       startMicCapture();
     } else {
       stopMicCapture();
     }
     return () => stopMicCapture();
-  }, [audioStatus, audioSettings.outboundEnabled, localAudioSettings.inputDevice]);
+  }, [audioStatus, audioSettings.outboundEnabled, localAudioSettings.inputDevice, localAudioReady]);
 
   const handleSendRaw = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1554,46 +1680,57 @@ export default function App() {
                   <span className="text-[0.5625rem] uppercase tracking-widest font-bold">Video & Audio</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1 mr-1">
+                  {audioStatus === "playing" && !localAudioReady ? (
                     <button
-                      onClick={() => setInboundMuted(!inboundMuted)}
-                      disabled={audioStatus !== "playing"}
-                      className={cn(
-                        "p-1 rounded-lg transition-all",
-                        audioStatus !== "playing" ? "opacity-30 cursor-not-allowed" :
-                        inboundMuted ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
-                      )}
-                      title={inboundMuted ? "Unmute Inbound Audio" : "Mute Inbound Audio"}
+                      onClick={handleJoinAudio}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[0.5rem] uppercase font-bold bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-all border border-blue-500/30 mr-1"
+                      title="Join the active audio session"
                     >
-                      {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      <Headphones size={10} />
+                      {audioWasRestarted ? "Restarted — Join Audio" : "Join Audio"}
                     </button>
-                    <button
-                      onClick={() => {
-                        const newMuted = !outboundMuted;
-                        setOutboundMuted(newMuted);
-                        if (newMuted) {
-                          socket?.emit("mic-mute-notify");
-                        } else {
-                          socket?.emit("mic-unmute-request");
-                        }
-                      }}
-                      disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled}
-                      className={cn(
-                        "p-1 rounded-lg transition-all",
-                        (audioStatus !== "playing" || !audioSettings.outboundEnabled) ? "opacity-30 cursor-not-allowed" :
-                        outboundMuted ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10 hover:bg-blue-500/20"
-                      )}
-                      title={outboundMuted ? "Unmute Outbound Audio" : "Mute Outbound Audio"}
-                    >
-                      {outboundMuted ? <MicOff size={12} /> : <Mic size={12} />}
-                    </button>
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-1 mr-1">
+                      <button
+                        onClick={() => setInboundMuted(!inboundMuted)}
+                        disabled={audioStatus !== "playing" || !localAudioReady}
+                        className={cn(
+                          "p-1 rounded-lg transition-all",
+                          (audioStatus !== "playing" || !localAudioReady) ? "opacity-30 cursor-not-allowed" :
+                          inboundMuted ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
+                        )}
+                        title={inboundMuted ? "Unmute Inbound Audio" : "Mute Inbound Audio"}
+                      >
+                        {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const newMuted = !outboundMuted;
+                          setOutboundMuted(newMuted);
+                          if (newMuted) {
+                            socket?.emit("mic-mute-notify");
+                          } else {
+                            socket?.emit("mic-unmute-request");
+                          }
+                        }}
+                        disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled || !localAudioReady}
+                        className={cn(
+                          "p-1 rounded-lg transition-all",
+                          (audioStatus !== "playing" || !audioSettings.outboundEnabled || !localAudioReady) ? "opacity-30 cursor-not-allowed" :
+                          outboundMuted ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10 hover:bg-blue-500/20"
+                        )}
+                        title={outboundMuted ? "Unmute Outbound Audio" : "Mute Outbound Audio"}
+                      >
+                        {outboundMuted ? <MicOff size={12} /> : <Mic size={12} />}
+                      </button>
+                    </div>
+                  )}
                   <div className={cn(
                     "w-2 h-2 rounded-full",
-                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
+                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" :
                     videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
                   )} />
-                  <button 
+                  <button
                     onClick={() => {
                       setIsVideoSettingsOpen(true);
                       socket?.emit("get-video-devices");
@@ -1812,20 +1949,25 @@ export default function App() {
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={() => {
+                        if (isTuning) return;
                         if (status.tuner) {
                           handleSetFunc("TUNER", false);
                         } else {
                           handleVfoOp("TUNE");
                         }
                       }}
-                      disabled={!connected || pendingVfoOp === "TUNE"}
+                      disabled={!connected || isTuning}
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
-                        (!connected || pendingVfoOp === "TUNE") && "opacity-50 cursor-not-allowed",
-                        status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                        (!connected || isTuning) && "cursor-not-allowed",
+                        isTuning
+                          ? "bg-red-500/20 border-red-500 text-red-500"
+                          : (status.tuner || tuneJustFinished)
+                            ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+                            : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500"
                       )}
                     >
-                      <RefreshCw size={18} className={cn((status.tuner || pendingVfoOp === "TUNE") && "animate-spin")} />
+                      <RefreshCw size={18} className={cn(isTuning && "animate-spin")} />
                       <span className="text-xs uppercase font-bold leading-none">Tune</span>
                     </button>
                     <button
@@ -2273,46 +2415,57 @@ export default function App() {
                     <span className="text-xs uppercase tracking-widest font-bold">Video & Audio</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 mr-1">
+                    {audioStatus === "playing" && !localAudioReady ? (
                       <button
-                        onClick={() => setInboundMuted(!inboundMuted)}
-                        disabled={audioStatus !== "playing"}
-                        className={cn(
-                          "p-1 rounded-lg transition-all",
-                          audioStatus !== "playing" ? "opacity-30 cursor-not-allowed" :
-                          inboundMuted ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
-                        )}
-                        title={inboundMuted ? "Unmute Inbound Audio" : "Mute Inbound Audio"}
+                        onClick={handleJoinAudio}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[0.5rem] uppercase font-bold bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-all border border-blue-500/30 mr-1"
+                        title="Join the active audio session"
                       >
-                        {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                        <Headphones size={10} />
+                        {audioWasRestarted ? "Restarted — Join Audio" : "Join Audio"}
                       </button>
-                      <button
-                        onClick={() => {
-                          const newMuted = !outboundMuted;
-                          setOutboundMuted(newMuted);
-                          if (newMuted) {
-                            socket?.emit("mic-mute-notify");
-                          } else {
-                            socket?.emit("mic-unmute-request");
-                          }
-                        }}
-                        disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled}
-                        className={cn(
-                          "p-1 rounded-lg transition-all",
-                          (audioStatus !== "playing" || !audioSettings.outboundEnabled) ? "opacity-30 cursor-not-allowed" :
-                          outboundMuted ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10 hover:bg-blue-500/20"
-                        )}
-                        title={outboundMuted ? "Unmute Outbound Audio" : "Mute Outbound Audio"}
-                      >
-                        {outboundMuted ? <MicOff size={12} /> : <Mic size={12} />}
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-1 mr-1">
+                        <button
+                          onClick={() => setInboundMuted(!inboundMuted)}
+                          disabled={audioStatus !== "playing" || !localAudioReady}
+                          className={cn(
+                            "p-1 rounded-lg transition-all",
+                            (audioStatus !== "playing" || !localAudioReady) ? "opacity-30 cursor-not-allowed" :
+                            inboundMuted ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
+                          )}
+                          title={inboundMuted ? "Unmute Inbound Audio" : "Mute Inbound Audio"}
+                        >
+                          {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                        </button>
+                        <button
+                          onClick={() => {
+                            const newMuted = !outboundMuted;
+                            setOutboundMuted(newMuted);
+                            if (newMuted) {
+                              socket?.emit("mic-mute-notify");
+                            } else {
+                              socket?.emit("mic-unmute-request");
+                            }
+                          }}
+                          disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled || !localAudioReady}
+                          className={cn(
+                            "p-1 rounded-lg transition-all",
+                            (audioStatus !== "playing" || !audioSettings.outboundEnabled || !localAudioReady) ? "opacity-30 cursor-not-allowed" :
+                            outboundMuted ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10 hover:bg-blue-500/20"
+                          )}
+                          title={outboundMuted ? "Unmute Outbound Audio" : "Mute Outbound Audio"}
+                        >
+                          {outboundMuted ? <MicOff size={12} /> : <Mic size={12} />}
+                        </button>
+                      </div>
+                    )}
                     <div className={cn(
                       "w-2 h-2 rounded-full",
-                      videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
+                      videoStatus === "playing" ? "bg-emerald-500 animate-pulse" :
                       videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
                     )} />
-                    <button 
+                    <button
                       onClick={() => {
                         setIsVideoSettingsOpen(true);
                         socket?.emit("get-video-devices");
@@ -2392,25 +2545,30 @@ export default function App() {
                       <Mic size={16} />
                       <span className="text-xs uppercase font-bold leading-none">PTT</span>
                     </button>
-                    <button 
+                    <button
                       onClick={() => {
+                        if (isTuning) return;
                         if (status.tuner) {
                           handleSetFunc("TUNER", false);
                         } else {
                           handleVfoOp("TUNE");
                         }
                       }}
-                      disabled={!connected || pendingVfoOp === "TUNE"}
+                      disabled={!connected || isTuning}
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
-                        (!connected || pendingVfoOp === "TUNE") && "opacity-50 cursor-not-allowed",
-                        status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                        (!connected || isTuning) && "cursor-not-allowed",
+                        isTuning
+                          ? "bg-red-500/20 border-red-500 text-red-500"
+                          : (status.tuner || tuneJustFinished)
+                            ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+                            : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500"
                       )}
                     >
-                      <RefreshCw size={16} className={cn((status.tuner || pendingVfoOp === "TUNE") && "animate-spin")} />
+                      <RefreshCw size={16} className={cn(isTuning && "animate-spin")} />
                       <span className="text-xs uppercase font-bold leading-none">Tune</span>
                     </button>
-                    <button 
+                    <button
                       onClick={cycleAttenuator}
                       disabled={!connected || attenuatorLevels.length === 0}
                       className={cn(
@@ -2867,26 +3025,31 @@ export default function App() {
                     <span className="text-[0.625rem] uppercase font-bold">PTT</span>
                   </button>
 
-                  <button 
+                  <button
                     onClick={() => {
+                      if (isTuning) return;
                       if (status.tuner) {
                         handleSetFunc("TUNER", false);
                       } else {
                         handleVfoOp("TUNE");
                       }
                     }}
-                    disabled={!connected || pendingVfoOp === "TUNE"}
+                    disabled={!connected || isTuning}
                     className={cn(
                       "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2 group",
-                      (!connected || pendingVfoOp === "TUNE") && "opacity-50 cursor-not-allowed",
-                      status.tuner ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
+                      (!connected || isTuning) && "cursor-not-allowed",
+                      isTuning
+                        ? "bg-red-500/20 border-red-500 text-red-500"
+                        : (status.tuner || tuneJustFinished)
+                          ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+                          : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500"
                     )}
                   >
-                    <RefreshCw size={20} className={cn("transition-transform", (status.tuner || pendingVfoOp === "TUNE") ? "animate-spin" : "group-active:rotate-180")} />
+                    <RefreshCw size={20} className={cn("transition-transform", isTuning ? "animate-spin" : "group-active:rotate-180")} />
                     <span className="text-[0.625rem] uppercase font-bold">Tune</span>
                   </button>
 
-                  <button 
+                  <button
                     onClick={cycleAttenuator}
                     disabled={!connected || attenuatorLevels.length === 0}
                     className={cn(
@@ -3082,46 +3245,57 @@ export default function App() {
                   <span className="text-[0.625rem] uppercase tracking-widest font-bold">Video & Audio</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1 mr-1">
+                  {audioStatus === "playing" && !localAudioReady ? (
                     <button
-                      onClick={() => setInboundMuted(!inboundMuted)}
-                      disabled={audioStatus !== "playing"}
-                      className={cn(
-                        "p-1 rounded-lg transition-all",
-                        audioStatus !== "playing" ? "opacity-30 cursor-not-allowed" :
-                        inboundMuted ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
-                      )}
-                      title={inboundMuted ? "Unmute Inbound Audio" : "Mute Inbound Audio"}
+                      onClick={handleJoinAudio}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[0.5rem] uppercase font-bold bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-all border border-blue-500/30 mr-1"
+                      title="Join the active audio session"
                     >
-                      {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      <Headphones size={10} />
+                      {audioWasRestarted ? "Restarted — Join Audio" : "Join Audio"}
                     </button>
-                    <button
-                      onClick={() => {
-                        const newMuted = !outboundMuted;
-                        setOutboundMuted(newMuted);
-                        if (newMuted) {
-                          socket?.emit("mic-mute-notify");
-                        } else {
-                          socket?.emit("mic-unmute-request");
-                        }
-                      }}
-                      disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled}
-                      className={cn(
-                        "p-1 rounded-lg transition-all",
-                        (audioStatus !== "playing" || !audioSettings.outboundEnabled) ? "opacity-30 cursor-not-allowed" :
-                        outboundMuted ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10 hover:bg-blue-500/20"
-                      )}
-                      title={outboundMuted ? "Unmute Outbound Audio" : "Mute Outbound Audio"}
-                    >
-                      {outboundMuted ? <MicOff size={12} /> : <Mic size={12} />}
-                    </button>
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-1 mr-1">
+                      <button
+                        onClick={() => setInboundMuted(!inboundMuted)}
+                        disabled={audioStatus !== "playing" || !localAudioReady}
+                        className={cn(
+                          "p-1 rounded-lg transition-all",
+                          (audioStatus !== "playing" || !localAudioReady) ? "opacity-30 cursor-not-allowed" :
+                          inboundMuted ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
+                        )}
+                        title={inboundMuted ? "Unmute Inbound Audio" : "Mute Inbound Audio"}
+                      >
+                        {inboundMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const newMuted = !outboundMuted;
+                          setOutboundMuted(newMuted);
+                          if (newMuted) {
+                            socket?.emit("mic-mute-notify");
+                          } else {
+                            socket?.emit("mic-unmute-request");
+                          }
+                        }}
+                        disabled={audioStatus !== "playing" || !audioSettings.outboundEnabled || !localAudioReady}
+                        className={cn(
+                          "p-1 rounded-lg transition-all",
+                          (audioStatus !== "playing" || !audioSettings.outboundEnabled || !localAudioReady) ? "opacity-30 cursor-not-allowed" :
+                          outboundMuted ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10 hover:bg-blue-500/20"
+                        )}
+                        title={outboundMuted ? "Unmute Outbound Audio" : "Mute Outbound Audio"}
+                      >
+                        {outboundMuted ? <MicOff size={12} /> : <Mic size={12} />}
+                      </button>
+                    </div>
+                  )}
                   <div className={cn(
                     "w-2 h-2 rounded-full",
-                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" : 
+                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" :
                     videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
                   )} />
-                  <button 
+                  <button
                     onClick={() => {
                       setIsVideoSettingsOpen(true);
                       socket?.emit("get-video-devices");
@@ -3132,7 +3306,7 @@ export default function App() {
                   >
                     <Settings size={16} />
                   </button>
-                  <button 
+                  <button
                     onClick={() => setIsVideoCollapsed(!isVideoCollapsed)}
                     className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
                     title={isVideoCollapsed ? "Expand Video & Audio" : "Collapse Video & Audio"}
@@ -3847,223 +4021,250 @@ export default function App() {
 
               {/* Audio Settings Section */}
               <div className="space-y-4 pt-4 border-t border-[#2a2b2e]">
-                <div className="flex items-center justify-between border-b border-blue-500/20 pb-1">
+                <div className="border-b border-blue-500/20 pb-1">
                   <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold">Audio Settings (Bi-Directional)</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[0.5rem] uppercase text-[#8e9299] font-bold">Audio Status:</span>
-                    <span className={cn(
-                      "text-[0.5rem] uppercase font-bold px-1.5 py-0.5 rounded",
-                      audioEngineState.isReady ? "bg-emerald-500/20 text-emerald-500" : "bg-red-500/20 text-red-500"
-                    )}>
-                      {audioEngineState.isReady ? "READY" : "FAILED"}
-                    </span>
-                  </div>
                 </div>
-                
-                {audioEngineState.error && (
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 flex items-center gap-3">
-                    <AlertTriangle className="text-red-500 shrink-0" size={16} />
-                    <p className="text-[0.625rem] text-red-500/80 font-medium leading-tight">
-                      Audio Engine Error: {audioEngineState.error}
-                    </p>
-                  </div>
-                )}
 
-                <div className={cn("space-y-4", !audioEngineState.isReady && "opacity-50 pointer-events-none")}>
+                {/* Local Client Audio — first so users configure their own devices before touching backend controls */}
+                <div className="space-y-4">
+                  <h4 className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Local Client Audio (Your System)</h4>
+
+                  {activeMicClientId && clientId !== activeMicClientId && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 flex items-center gap-3">
+                      <AlertTriangle className="text-amber-500 shrink-0" size={16} />
+                      <p className="text-[0.625rem] text-amber-500/80 font-medium leading-tight">
+                        Microphone is active in another session. Unmute your mic button to take over.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Backend Input (Mic/Line)</label>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[0.5rem] uppercase text-[#4a4b4e]">Enabled</span>
-                        <button 
-                          onClick={() => {
-                            const newSettings = { ...audioSettings, inboundEnabled: !audioSettings.inboundEnabled };
-                            setAudioSettings(newSettings);
-                            socket?.emit("update-audio-settings", newSettings);
+                      <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold">Local Input (Microphone)</label>
+                      {localAudioDevices.inputs.length > 0 && !localAudioDevices.inputs[0].label && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                              stream.getTracks().forEach(t => t.stop());
+                              const devices = await navigator.mediaDevices.enumerateDevices();
+                              const inputs = devices.filter(d => d.kind === 'audioinput');
+                              const outputs = devices.filter(d => d.kind === 'audiooutput');
+                              setLocalAudioDevices({ inputs, outputs });
+                            } catch (err) {
+                              console.error("Failed to get mic permission:", err);
+                            }
                           }}
-                          className={cn(
-                            "w-8 h-4 rounded-full transition-all relative",
-                            audioSettings.inboundEnabled ? "bg-blue-500" : "bg-[#2a2b2e]"
-                          )}
+                          className="text-[0.5rem] uppercase font-bold text-blue-500 hover:text-blue-400 transition-colors"
                         >
-                          <div className={cn(
-                            "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
-                            audioSettings.inboundEnabled ? "left-4.5" : "left-0.5"
-                          )} />
+                          Request Permission
                         </button>
-                      </div>
+                      )}
                     </div>
-                    <select 
-                      value={audioSettings.inputDevice}
+                    <select
+                      value={localAudioSettings.inputDevice}
+                      onFocus={() => navigator.mediaDevices.enumerateDevices().then(devices => {
+                        setLocalAudioDevices({ inputs: devices.filter(d => d.kind === 'audioinput'), outputs: devices.filter(d => d.kind === 'audiooutput') });
+                      }).catch(console.error)}
                       onChange={(e) => {
-                        const newSettings = { ...audioSettings, inputDevice: e.target.value, inboundEnabled: e.target.value !== "" };
-                        setAudioSettings(newSettings);
-                        socket?.emit("update-audio-settings", newSettings);
+                        const newSettings = { ...localAudioSettings, inputDevice: e.target.value };
+                        setLocalAudioSettings(newSettings);
+                        localStorage.setItem("local-audio-input", e.target.value);
+                        // Re-trigger mic capture if active
+                        if (audioStatus === "playing" && audioSettings.outboundEnabled && !outboundMuted && localAudioReady) {
+                          stopMicCapture();
+                          startMicCapture();
+                        }
                       }}
                       className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
                     >
-                      <option value="">Select Backend Input</option>
-                      {audioDevices.inputs.map(d => <option key={d.altName} value={d.altName}>{d.name}</option>)}
+                      <option value="default">Default Input</option>
+                      {localAudioDevices.inputs.map(d => (
+                        <option key={d.deviceId} value={d.deviceId}>{d.label || `Input ${d.deviceId.slice(0, 5)}`}</option>
+                      ))}
                     </select>
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Backend Output (Speakers)</label>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[0.5rem] uppercase text-[#4a4b4e]">Enabled</span>
-                        <button 
-                          onClick={() => {
-                            const newSettings = { ...audioSettings, outboundEnabled: !audioSettings.outboundEnabled };
-                            setAudioSettings(newSettings);
-                            socket?.emit("update-audio-settings", newSettings);
-                          }}
-                          className={cn(
-                            "w-8 h-4 rounded-full transition-all relative",
-                            audioSettings.outboundEnabled ? "bg-blue-500" : "bg-[#2a2b2e]"
-                          )}
-                        >
-                          <div className={cn(
-                            "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
-                            audioSettings.outboundEnabled ? "left-4.5" : "left-0.5"
-                          )} />
-                        </button>
-                      </div>
-                    </div>
-                    <select 
-                      value={audioSettings.outputDevice}
+                    <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold">Local Output (Speakers/Headphones)</label>
+                    <select
+                      value={localAudioSettings.outputDevice}
+                      onFocus={() => navigator.mediaDevices.enumerateDevices().then(devices => {
+                        setLocalAudioDevices({ inputs: devices.filter(d => d.kind === 'audioinput'), outputs: devices.filter(d => d.kind === 'audiooutput') });
+                      }).catch(console.error)}
                       onChange={(e) => {
-                        const newSettings = { ...audioSettings, outputDevice: e.target.value, outboundEnabled: e.target.value !== "" };
-                        setAudioSettings(newSettings);
-                        socket?.emit("update-audio-settings", newSettings);
+                        const newSettings = { ...localAudioSettings, outputDevice: e.target.value };
+                        setLocalAudioSettings(newSettings);
+                        localStorage.setItem("local-audio-output", e.target.value);
+                        if (audioContextRef.current && typeof (audioContextRef.current as any).setSinkId === 'function') {
+                          (audioContextRef.current as any).setSinkId(e.target.value).catch(console.error);
+                        }
                       }}
                       className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
                     >
-                      <option value="">Select Backend Output</option>
-                      {audioDevices.outputs.map(d => <option key={d.altName} value={d.altName}>{d.name}</option>)}
+                      <option value="default">Default Output</option>
+                      {localAudioDevices.outputs.map(d => (
+                        <option key={d.deviceId} value={d.deviceId}>{d.label || `Output ${d.deviceId.slice(0, 5)}`}</option>
+                      ))}
                     </select>
                   </div>
 
-                  {/* Local Client Audio Settings */}
-                  <div className="space-y-4 pt-4 border-t border-[#2a2b2e]/50">
-                    <h4 className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Local Client Audio (Your System)</h4>
-                    
-                    {activeMicClientId && clientId !== activeMicClientId && (
-                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 flex items-center gap-3">
-                        <AlertTriangle className="text-amber-500 shrink-0" size={16} />
-                        <p className="text-[0.625rem] text-amber-500/80 font-medium leading-tight">
-                          Microphone is active in another session. Unmute your mic button to take over.
-                        </p>
+                  <p className="text-[0.5rem] uppercase text-[#4a4b4e] font-bold">
+                    Device changes apply immediately — no restart needed
+                  </p>
+                </div>
+
+                {/* Backend Audio Engine — separated so users don't conflate device config with server control */}
+                <div className="pt-4 border-t border-[#2a2b2e]/50">
+                  <button
+                    onClick={() => setIsBackendEngineCollapsed(!isBackendEngineCollapsed)}
+                    className="w-full flex items-center justify-between mb-3 group"
+                  >
+                    <h4 className="text-[0.625rem] uppercase text-[#8e9299] font-bold group-hover:text-white transition-colors">Backend Audio Engine</h4>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "text-[0.5rem] uppercase font-bold px-1.5 py-0.5 rounded",
+                        audioEngineState.isReady ? "bg-emerald-500/20 text-emerald-500" : "bg-red-500/20 text-red-500"
+                      )}>
+                        {audioEngineState.isReady ? "READY" : "FAILED"}
+                      </span>
+                      <span className={cn(
+                        "text-[0.5rem] uppercase font-bold px-1.5 py-0.5 rounded",
+                        audioStatus === "playing" ? "bg-blue-500/20 text-blue-400" : "bg-[#2a2b2e] text-[#4a4b4e]"
+                      )}>
+                        {audioStatus === "playing" ? "RUNNING" : "STOPPED"}
+                      </span>
+                      {isBackendEngineCollapsed ? <ChevronDown size={12} className="text-[#8e9299]" /> : <ChevronUp size={12} className="text-[#8e9299]" />}
+                    </div>
+                  </button>
+
+                  {!isBackendEngineCollapsed && (<>
+                  {audioEngineState.error && (
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 flex items-center gap-3">
+                      <AlertTriangle className="text-red-500 shrink-0" size={16} />
+                      <p className="text-[0.625rem] text-red-500/80 font-medium leading-tight">
+                        Audio Engine Error: {audioEngineState.error}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className={cn("space-y-4", !audioEngineState.isReady && "opacity-50 pointer-events-none")}>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Backend Input (Mic/Line)</label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[0.5rem] uppercase text-[#4a4b4e]">Enabled</span>
+                          <button
+                            onClick={() => {
+                              const newSettings = { ...audioSettings, inboundEnabled: !audioSettings.inboundEnabled };
+                              setAudioSettings(newSettings);
+                              socket?.emit("update-audio-settings", newSettings);
+                            }}
+                            className={cn(
+                              "w-8 h-4 rounded-full transition-all relative",
+                              audioSettings.inboundEnabled ? "bg-blue-500" : "bg-[#2a2b2e]"
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+                              audioSettings.inboundEnabled ? "left-4.5" : "left-0.5"
+                            )} />
+                          </button>
+                        </div>
                       </div>
-                    )}
+                      <select
+                        value={audioSettings.inputDevice}
+                        onFocus={() => socket?.emit("get-audio-devices")}
+                        onChange={(e) => {
+                          const newSettings = { ...audioSettings, inputDevice: e.target.value, inboundEnabled: e.target.value !== "" };
+                          setAudioSettings(newSettings);
+                          socket?.emit("update-audio-settings", newSettings);
+                        }}
+                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
+                      >
+                        <option value="">Select Backend Input</option>
+                        {audioDevices.inputs.map(d => <option key={d.altName} value={d.altName}>{d.name}</option>)}
+                      </select>
+                    </div>
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold">Local Input (Microphone)</label>
-                        {localAudioDevices.inputs.length > 0 && !localAudioDevices.inputs[0].label && (
-                          <button 
-                            onClick={async () => {
-                              try {
-                                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                                stream.getTracks().forEach(t => t.stop());
-                                // Re-enumerate devices to get labels
-                                const devices = await navigator.mediaDevices.enumerateDevices();
-                                const inputs = devices.filter(d => d.kind === 'audioinput');
-                                const outputs = devices.filter(d => d.kind === 'audiooutput');
-                                setLocalAudioDevices({ inputs, outputs });
-                              } catch (err) {
-                                console.error("Failed to get mic permission:", err);
-                              }
+                        <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Backend Output (Speakers)</label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[0.5rem] uppercase text-[#4a4b4e]">Enabled</span>
+                          <button
+                            onClick={() => {
+                              const newSettings = { ...audioSettings, outboundEnabled: !audioSettings.outboundEnabled };
+                              setAudioSettings(newSettings);
+                              socket?.emit("update-audio-settings", newSettings);
                             }}
-                            className="text-[0.5rem] uppercase font-bold text-blue-500 hover:text-blue-400 transition-colors"
+                            className={cn(
+                              "w-8 h-4 rounded-full transition-all relative",
+                              audioSettings.outboundEnabled ? "bg-blue-500" : "bg-[#2a2b2e]"
+                            )}
                           >
-                            Request Permission
+                            <div className={cn(
+                              "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+                              audioSettings.outboundEnabled ? "left-4.5" : "left-0.5"
+                            )} />
                           </button>
-                        )}
+                        </div>
                       </div>
-                      <select 
-                        value={localAudioSettings.inputDevice}
+                      <select
+                        value={audioSettings.outputDevice}
+                        onFocus={() => socket?.emit("get-audio-devices")}
                         onChange={(e) => {
-                          const newSettings = { ...localAudioSettings, inputDevice: e.target.value };
-                          setLocalAudioSettings(newSettings);
-                          localStorage.setItem("local-audio-input", e.target.value);
-                          // Re-trigger mic capture if active
-                          if (audioStatus === "playing" && audioSettings.outboundEnabled && !outboundMuted) {
-                            stopMicCapture();
-                            startMicCapture();
-                          }
+                          const newSettings = { ...audioSettings, outputDevice: e.target.value, outboundEnabled: e.target.value !== "" };
+                          setAudioSettings(newSettings);
+                          socket?.emit("update-audio-settings", newSettings);
                         }}
                         className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
                       >
-                        <option value="default">Default Input</option>
-                        {localAudioDevices.inputs.map(d => (
-                          <option key={d.deviceId} value={d.deviceId}>{d.label || `Input ${d.deviceId.slice(0, 5)}`}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold">Local Output (Speakers/Headphones)</label>
-                      <select 
-                        value={localAudioSettings.outputDevice}
-                        onChange={(e) => {
-                          const newSettings = { ...localAudioSettings, outputDevice: e.target.value };
-                          setLocalAudioSettings(newSettings);
-                          localStorage.setItem("local-audio-output", e.target.value);
-                          
-                          // Update AudioContext sink if supported
-                          if (audioContextRef.current && typeof (audioContextRef.current as any).setSinkId === 'function') {
-                            (audioContextRef.current as any).setSinkId(e.target.value).catch(console.error);
-                          }
-                        }}
-                        className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
-                      >
-                        <option value="default">Default Output</option>
-                        {localAudioDevices.outputs.map(d => (
-                          <option key={d.deviceId} value={d.deviceId}>{d.label || `Output ${d.deviceId.slice(0, 5)}`}</option>
-                        ))}
+                        <option value="">Select Backend Output</option>
+                        {audioDevices.outputs.map(d => <option key={d.altName} value={d.altName}>{d.name}</option>)}
                       </select>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex gap-3 pt-2">
-                  <button 
-                    onClick={handleStartAudio}
-                    disabled={(!audioSettings.inputDevice && !audioSettings.outputDevice) || audioStatus === "playing"}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
-                      audioStatus === "playing" 
-                        ? "bg-blue-500/20 text-blue-500 cursor-not-allowed" 
-                        : "bg-blue-500 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-                    )}
-                  >
-                    <Power size={16} />
-                    Start Audio
-                  </button>
-                  <button 
-                    onClick={() => socket?.emit("control-audio", "stop")}
-                    disabled={audioStatus === "stopped"}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
-                      audioStatus === "stopped"
-                        ? "bg-red-500/20 text-red-500 cursor-not-allowed"
-                        : "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
-                    )}
-                  >
-                    <X size={16} />
-                    Stop Audio
-                  </button>
-                </div>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={handleStartAudio}
+                      disabled={(!audioSettings.inputDevice && !audioSettings.outputDevice) || audioStatus === "playing"}
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold uppercase text-xs transition-all",
+                        audioStatus === "playing"
+                          ? "bg-blue-500/20 text-blue-500 cursor-not-allowed"
+                          : "bg-blue-500 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                      )}
+                    >
+                      <Power size={16} />
+                      Start Backend Audio
+                    </button>
+                    <button
+                      onClick={() => socket?.emit("control-audio", "stop")}
+                      disabled={audioStatus === "stopped"}
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold uppercase text-xs transition-all",
+                        audioStatus === "stopped"
+                          ? "bg-red-500/20 text-red-500 cursor-not-allowed"
+                          : "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
+                      )}
+                    >
+                      <X size={16} />
+                      Stop Backend Audio
+                    </button>
+                  </div>
 
-                <div className="flex items-center gap-2 p-3 bg-[#0a0a0a] border border-[#2a2b2e] rounded-xl">
-                  <div className={cn(
-                    "w-2 h-2 rounded-full",
-                    audioStatus === "playing" ? "bg-blue-500 animate-pulse" : "bg-[#2a2b2e]"
-                  )} />
-                  <span className="text-[0.625rem] uppercase font-bold text-[#8e9299]">
-                    Audio Status: {audioStatus.toUpperCase()}
-                  </span>
+                  <div className="flex items-center gap-2 p-3 bg-[#0a0a0a] border border-[#2a2b2e] rounded-xl">
+                    <div className={cn(
+                      "w-2 h-2 rounded-full",
+                      audioStatus === "playing" ? "bg-blue-500 animate-pulse" : "bg-[#2a2b2e]"
+                    )} />
+                    <span className="text-[0.625rem] uppercase font-bold text-[#8e9299]">
+                      Backend Audio: {audioStatus.toUpperCase()}
+                    </span>
+                  </div>
+                  </>)}
                 </div>
               </div>
             </div>

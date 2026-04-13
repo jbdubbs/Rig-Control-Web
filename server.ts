@@ -12,6 +12,12 @@ export function setElectronWindow(win: any) {
   electronWin = win;
 }
 
+// Populated by startServer(); called from electron/main.ts on will-quit
+let _shutdownAudio: (() => Promise<void>) | null = null;
+export async function shutdown(): Promise<void> {
+  if (_shutdownAudio) await _shutdownAudio();
+}
+
 export async function startServer(appPath?: string, userDataPath?: string) {
   const app = express();
   const httpServer = createServer(app);
@@ -564,15 +570,15 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     }
   };
 
-  const stopAudio = () => {
+  const stopAudio = async () => {
     console.log("[AUDIO] Stopping audio streaming...");
     if (outboundTimer) { clearInterval(outboundTimer); outboundTimer = null; }
     if (audioInputProcess) {
-      try { audioInputProcess.quit(); } catch (e) {}
+      try { await audioInputProcess.quit(); } catch (e) {}
       audioInputProcess = null;
     }
     if (audioOutputProcess) {
-      try { audioOutputProcess.quit(); } catch (e) {}
+      try { await audioOutputProcess.quit(); } catch (e) {}
       audioOutputProcess = null;
     }
     opusEncoder = null;
@@ -581,9 +587,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     io.emit("audio-status", audioStatus);
   };
 
-  const startAudio = () => {
+  _shutdownAudio = stopAudio;
+
+  const startAudio = async () => {
     console.log("[AUDIO] Starting audio streaming...");
-    stopAudio();
+    await stopAudio();
 
     if (!isAudioEngineReady) {
       console.warn("[AUDIO] Cannot start audio: Audio engine is not ready.");
@@ -696,6 +704,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
     }
 
+    activeMicClientId = null;
+    io.emit("mic-active-client", null);
+    io.emit("mic-mute-forced");
     audioStatus = "playing";
     io.emit("audio-status", audioStatus);
   };
@@ -1515,6 +1526,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       socket.emit("mic-active-client", activeMicClientId);
       socket.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
       socket.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
+      // If the rig is already connected when this client joins, fire rig-connected so the
+      // client populates its mode list without needing to witness the original connection event.
+      if (isConnected) {
+        socket.emit("rig-connected", { host: rigConfig.host, port: rigConfig.port });
+      }
     });
 
     socket.on("get-video-devices", async () => {
@@ -1536,7 +1552,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       socket.emit("audio-devices-list", { inputs, outputs });
     });
 
-    socket.on("update-audio-settings", (settings: any) => {
+    socket.on("update-audio-settings", async (settings: any) => {
       console.log("[AUDIO] Updating audio settings:", settings);
       const wasPlaying = audioStatus === "playing";
       audioSettings = { ...audioSettings, ...settings };
@@ -1546,16 +1562,16 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       // Without this, the old pacat process keeps the old device open and the
       // new selection has no effect until the user manually stops and restarts.
       if (wasPlaying) {
-        startAudio();
+        await startAudio();
       }
     });
 
-    socket.on("control-audio", (action: "start" | "stop") => {
+    socket.on("control-audio", async (action: "start" | "stop") => {
       console.log(`[AUDIO] Control action received: ${action}`);
       if (action === "start") {
-        startAudio();
+        await startAudio();
       } else if (action === "stop") {
-        stopAudio();
+        await stopAudio();
       }
     });
 
