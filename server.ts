@@ -128,6 +128,12 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       try {
         portAudio = await dynamicImport("naudiodon");
         console.log("[AUDIO-INIT] naudiodon loaded successfully.");
+        try {
+          const hostAPIInfo = portAudio.getHostAPIs();
+          console.log("[AUDIO-INIT] Host APIs:", JSON.stringify(hostAPIInfo, null, 2));
+        } catch (e: any) {
+          console.warn("[AUDIO-INIT] Could not enumerate host APIs:", e.message);
+        }
         isAudioEngineReady = true;
       } catch (naudioErr: any) {
         console.error("[AUDIO-INIT] Failed to load naudiodon. Audio I/O will be disabled.", naudioErr.message);
@@ -425,14 +431,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
   };
 
-  const listAudioDevices = async (): Promise<{ inputs: { name: string, altName: string }[], outputs: { name: string, altName: string }[], error?: string }> => {
+  const listAudioDevices = async (): Promise<{ inputs: { name: string, altName: string, hostAPIName: string }[], outputs: { name: string, altName: string, hostAPIName: string }[], error?: string }> => {
     if (!portAudio) {
       return { inputs: [], outputs: [], error: audioEngineError || "Audio engine not ready" };
     }
     try {
       const devices = portAudio.getDevices();
-      const inputs = devices.filter((d: any) => d.maxInputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString() }));
-      const outputs = devices.filter((d: any) => d.maxOutputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString() }));
+      const inputs = devices.filter((d: any) => d.maxInputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "" }));
+      const outputs = devices.filter((d: any) => d.maxOutputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "" }));
       return { inputs, outputs };
     } catch (err: any) {
       console.error("[AUDIO] Failed to list devices:", err);
