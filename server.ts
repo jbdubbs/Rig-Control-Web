@@ -503,8 +503,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             sampleRate: 48000,
             deviceId: isNaN(deviceId) ? -1 : deviceId, // -1 is default
             closeOnError: true,
-            framesPerBuffer: 960, // 20ms at 48kHz
-            maxQueue: 2 // Keep queue small to prevent latency buildup
+            framesPerBuffer: 960, // 20ms at 48kHz — WASAPI may deliver larger chunks; pcmBuffer handles any size
           }
         });
 
