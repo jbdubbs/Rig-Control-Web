@@ -47,10 +47,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # --publish never prevents electron-builder from trying to upload to GitHub
+      # Releases itself (it lacks a token). The next two steps handle publishing.
       - name: Build
-        run: npm run electron:build -- --${{ matrix.platform }}
+        run: npm run electron:build -- --${{ matrix.platform }} --publish never
 
-      # Upload as a workflow artifact (useful for testing builds without a tag release)
+      # Upload as a workflow artifact (useful for inspecting builds without a release)
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -62,3 +64,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: build/${{ matrix.artifact }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
