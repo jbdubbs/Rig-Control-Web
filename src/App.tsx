@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { 
   Activity, 
@@ -83,7 +83,7 @@ const VOICE_MODES = new Set([
 
 const BANDWIDTHS = [300, 500, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3200, 3500, 4000];
 
-const VFO_STEPS = [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10];
+const VFO_STEPS = [0.00001, 0.0001, 0.001, 0.003, 0.01, 0.1];
 
 const DEFAULT_STATUS: RigStatus = {
   frequency: "14074000",
@@ -279,6 +279,10 @@ export default function App() {
   const videoSettingsRef = useRef({ device: "", videoWidth: 640, videoHeight: 480, framerate: "" });
   const videoDevicesRef = useRef<{ id: string; label: string }[]>([]);
   const videoStreamDimsRef = useRef({ width: 640, height: 480 });
+  const [resolutionDraft, setResolutionDraft] = useState({ width: "640", height: "480" });
+  const resolutionDraftRef = useRef({ width: "640", height: "480" });
+  const isResolutionFocusedRef = useRef(false);
+  const resolutionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hasAttemptedAutoconnect = useRef(false);
   const isAutoconnectAttempt = useRef(false);
@@ -411,6 +415,9 @@ export default function App() {
             vs.videoHeight = parseInt(parts[1]) || 480;
           }
           setVideoSettings(prev => ({ ...prev, ...vs }));
+          const draft = { width: String(vs.videoWidth || 640), height: String(vs.videoHeight || 480) };
+          setResolutionDraft(draft);
+          resolutionDraftRef.current = draft;
         }
         if (data.videoAutoStart !== undefined) {
           setVideoAutoStart(data.videoAutoStart);
@@ -479,6 +486,13 @@ export default function App() {
       });
       socket.on("video-settings-updated", (settings: { device: string; videoWidth: number; videoHeight: number; framerate: string }) => {
         setVideoSettings(prev => ({ ...prev, ...settings }));
+        // Only update the draft text if the user isn't currently editing the resolution
+        // fields — otherwise we'd clobber mid-edit input.
+        if (!isResolutionFocusedRef.current) {
+          const draft = { width: String(settings.videoWidth), height: String(settings.videoHeight) };
+          setResolutionDraft(draft);
+          resolutionDraftRef.current = draft;
+        }
         // If this client is the Electron source and currently streaming, restart capture
         // with the new settings. Use the ref so we get the latest values without a stale closure.
         if (isElectronSource && videoStatusRef.current === "streaming") {
@@ -688,9 +702,21 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsLoaded]);
 
-  // Wire the getUserMedia stream to the <video> element once it is in the DOM.
-  // The element only renders when videoStatus === "streaming", so we can't set
-  // srcObject during startVideoCapture() — the ref is null at that point.
+  // Wire the getUserMedia stream to the <video> element.
+  // Two cases require wiring:
+  //   1. Stream becomes active while the current view's <video> node is already mounted
+  //      (videoStatus transitions to "streaming") — handled by the useEffect below.
+  //   2. The view switches (compact ↔ phone ↔ desktop) while streaming, unmounting the
+  //      old <video> node and mounting a new blank one — handled by the callback ref,
+  //      which fires whenever the DOM node identity changes.
+  const videoPreviewCallbackRef = useCallback((node: HTMLVideoElement | null) => {
+    videoPreviewRef.current = node;
+    if (node && isElectronSource && videoStatusRef.current === "streaming" && videoStreamRef.current) {
+      node.srcObject = videoStreamRef.current;
+      node.play().catch(() => {});
+    }
+  }, []); // isElectronSource is a mount-time constant; status/stream accessed via refs
+
   useEffect(() => {
     if (isElectronSource && videoStatus === "streaming" && videoPreviewRef.current && videoStreamRef.current) {
       videoPreviewRef.current.srcObject = videoStreamRef.current;
@@ -1326,9 +1352,20 @@ export default function App() {
         }
         frame.close();
       },
-      error: (e: DOMException) => console.error("[VIDEO] Decoder error:", e)
+      error: (e: DOMException) => {
+        console.error("[VIDEO] Decoder error:", e);
+        // Reinitialize on GPU context loss or other fatal errors so the stream
+        // recovers automatically (e.g. after a window resize with hardware decoding).
+        const { width: w, height: h } = videoStreamDimsRef.current;
+        initVideoDecoder(w, h);
+      }
     });
-    const config: VideoDecoderConfig = { codec: "avc1.42001F", codedWidth: width, codedHeight: height };
+    const config: VideoDecoderConfig = {
+      codec: "avc1.42001F",
+      codedWidth: width,
+      codedHeight: height,
+      hardwareAcceleration: "no-preference",
+    };
     if (description) config.description = description;
     decoder.configure(config);
     console.log(`[VIDEO] Decoder configured, state=${decoder.state} hasDescription=${!!description}`);
@@ -1425,7 +1462,8 @@ export default function App() {
         width,
         height,
         bitrate: Math.min(width * height * fps * 0.07, 2_000_000),
-        framerate: fps
+        framerate: fps,
+        hardwareAcceleration: "no-preference",
       });
 
       videoEncoderRef.current = encoder;
@@ -1785,6 +1823,7 @@ export default function App() {
                       )}>
                         {status.isSplit ? "SPLIT" : status.vfo === "VFOA" ? "A" : "B"}
                       </span>
+                      <span className="text-[#4a4b4e] flex-shrink-0">—</span>
                       <span className={cn("text-sm font-mono font-bold truncate",
                         status.ptt ? "text-red-500" : status.isSplit ? "text-amber-500" : status.vfo === "VFOA" ? "text-emerald-500" : "text-blue-500"
                       )}>
@@ -2037,7 +2076,7 @@ export default function App() {
               </div>
               {!isVideoCollapsed && (
                 <div className="relative aspect-video bg-black flex items-center justify-center">
-                  <video ref={videoPreviewRef} autoPlay muted playsInline
+                  <video ref={videoPreviewCallbackRef} autoPlay muted playsInline
                     className={cn("w-full h-full object-contain", (!isElectronSource || videoStatus !== "streaming") && "hidden")} />
                   <canvas ref={videoCanvasRef}
                     className={cn("w-full h-full object-contain", (isElectronSource || videoStatus !== "streaming") && "hidden")} />
@@ -2245,7 +2284,7 @@ export default function App() {
                           ? "bg-red-500/20 border-red-500 text-red-500"
                           : (status.tuner || tuneJustFinished)
                             ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
-                            : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500"
+                            : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <RefreshCw size={18} className={cn(isTuning && "animate-spin")} />
@@ -2257,7 +2296,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
                         (!connected || attenuatorLevels.length === 0) && "opacity-50 cursor-not-allowed",
-                        status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Signal size={18} />
@@ -2269,7 +2308,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
                         (!connected || preampLevels.length === 0) && "opacity-50 cursor-not-allowed",
-                        status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Zap size={18} />
@@ -2285,7 +2324,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
                         (!connected || !nbCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                        status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Waves size={16} />
@@ -2297,7 +2336,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
                         (!connected || agcLevels.length === 0) && "opacity-50 cursor-not-allowed",
-                        status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Settings size={16} />
@@ -2312,7 +2351,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
                         (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                        status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Activity size={16} />
@@ -2324,7 +2363,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-xl border transition-all gap-1",
                         (!connected || !anfCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                        status.anf ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.anf ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Activity size={16} />
@@ -2439,9 +2478,9 @@ export default function App() {
               "bg-[#151619] p-3 rounded-xl border shadow-lg space-y-2",
               status.vfo === "VFOA" ? "border-emerald-500/30" : "border-blue-500/30"
             )}>
-              <div className="flex items-center justify-between">
+              <div className="grid grid-cols-3 items-center">
                 <div className="flex items-center gap-2">
-                  <button 
+                  <button
                     onClick={() => handleSetVFO("VFOA")}
                     disabled={!connected}
                     className={cn(
@@ -2449,14 +2488,14 @@ export default function App() {
                       !connected && "opacity-50 cursor-not-allowed",
                       status.isSplit
                         ? (status.txVFO === "VFOA" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
-                        : (status.vfo === "VFOA" 
-                          ? "bg-emerald-500 text-white border border-emerald-500" 
+                        : (status.vfo === "VFOA"
+                          ? "bg-emerald-500 text-white border border-emerald-500"
                           : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20")
                     )}
                   >
                     VFO A
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleSetVFO("VFOB")}
                     disabled={!connected}
                     className={cn(
@@ -2464,60 +2503,53 @@ export default function App() {
                       !connected && "opacity-50 cursor-not-allowed",
                       status.isSplit
                         ? (status.txVFO === "VFOB" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
-                        : (status.vfo === "VFOB" 
-                          ? "bg-blue-500 text-white border border-blue-500" 
+                        : (status.vfo === "VFOB"
+                          ? "bg-blue-500 text-white border border-blue-500"
                           : "bg-blue-500/10 text-blue-500 border border-blue-500/30 hover:bg-blue-500/20")
                     )}
                   >
                     VFO B
                   </button>
-                  <button 
+                  <button
                     onClick={handleToggleSplit}
                     disabled={!connected}
                     className={cn(
                       "px-3 py-1 rounded text-xs font-bold uppercase transition-all",
                       !connected && "opacity-50 cursor-not-allowed",
-                      status.isSplit 
-                        ? "bg-red-500 text-white border border-red-500" 
+                      status.isSplit
+                        ? "bg-red-500 text-white border border-red-500"
                         : "bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20"
                     )}
                   >
                     SPLIT
                   </button>
-                  <div className="flex items-center gap-1">
-                    <select 
-                      value={vfoStep}
-                      onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                      disabled={!connected}
-                      className={cn(
-                        "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-xs px-2 py-1 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
-                        !connected && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
-                    </select>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', 1)}
-                        disabled={!connected}
-                        className="p-1 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
-                        title="Frequency Up"
-                      >
-                        <ChevronUp size={12} />
-                      </button>
-                      <button
-                        onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', -1)}
-                        disabled={!connected}
-                        className="p-1 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
-                        title="Frequency Down"
-                      >
-                        <ChevronDown size={12} />
-                      </button>
-                    </div>
-                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <select 
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', -1)}
+                    disabled={!connected}
+                    className="flex items-center gap-1 px-2 py-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                    title="Frequency Down"
+                  >
+                    <ChevronLeft size={12} />
+                    <span className="text-[0.625rem] font-bold">
+                      {vfoStep >= 1 ? `${vfoStep}M` : vfoStep >= 0.001 ? `${Math.round(vfoStep * 1000)}k` : `${Math.round(vfoStep * 1000000)}Hz`}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', 1)}
+                    disabled={!connected}
+                    className="flex items-center gap-1 px-2 py-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                    title="Frequency Up"
+                  >
+                    <span className="text-[0.625rem] font-bold">
+                      {vfoStep >= 1 ? `${vfoStep}M` : vfoStep >= 0.001 ? `${Math.round(vfoStep * 1000)}k` : `${Math.round(vfoStep * 1000000)}Hz`}
+                    </span>
+                    <ChevronRight size={12} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <select
                     value={localMode}
                     onChange={(e) => handleSetMode(e.target.value)}
                     disabled={!connected}
@@ -2577,6 +2609,29 @@ export default function App() {
                   "absolute right-12 top-1/2 -translate-y-1/2 transition-opacity pointer-events-none",
                   status.vfo === "VFOA" ? "text-emerald-500/30" : "text-blue-500/30"
                 )} />
+              </div>
+
+              {/* Step chips */}
+              <div className="flex gap-1 justify-center pb-0.5">
+                {VFO_STEPS.map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setVfoStep(s)}
+                    disabled={!connected}
+                    className={cn(
+                      "flex-shrink-0 px-2 py-1 rounded-lg text-xs font-bold transition-all",
+                      vfoStep === s
+                        ? "bg-emerald-500 text-white"
+                        : "bg-[#0a0a0a] border border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500/50 disabled:opacity-50"
+                    )}
+                  >
+                    {s >= 1
+                      ? `${s}M`
+                      : s >= 0.001
+                        ? `${Math.round(s * 1000)}k`
+                        : `${Math.round(s * 1000000)}Hz`}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -2766,7 +2821,7 @@ export default function App() {
                 </div>
                 {!isVideoCollapsed && (
                   <div className="relative aspect-video bg-black flex items-center justify-center">
-                    <video ref={videoPreviewRef} autoPlay muted playsInline
+                    <video ref={videoPreviewCallbackRef} autoPlay muted playsInline
                       className={cn("w-full h-full object-contain", (!isElectronSource || videoStatus !== "streaming") && "hidden")} />
                     <canvas ref={videoCanvasRef}
                       className={cn("w-full h-full object-contain", (isElectronSource || videoStatus !== "streaming") && "hidden")} />
@@ -2815,7 +2870,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
                         !connected && "opacity-50 cursor-not-allowed",
-                        status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Mic size={16} />
@@ -2838,7 +2893,7 @@ export default function App() {
                           ? "bg-red-500/20 border-red-500 text-red-500"
                           : (status.tuner || tuneJustFinished)
                             ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
-                            : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500"
+                            : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <RefreshCw size={16} className={cn(isTuning && "animate-spin")} />
@@ -2850,7 +2905,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
                         (!connected || attenuatorLevels.length === 0) && "opacity-50 cursor-not-allowed",
-                        status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.attenuation > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Signal size={16} />
@@ -2864,7 +2919,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
                         (!connected || preampLevels.length === 0) && "opacity-50 cursor-not-allowed",
-                        status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.preamp > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Zap size={16} />
@@ -2878,19 +2933,19 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
                         (!connected || !nbCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                        status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.nb ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Waves size={16} />
                       <span className="text-xs uppercase font-bold leading-none">NB</span>
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleSetFunc("ANF", !status.anf)}
                       disabled={!connected || !anfCapabilities.supported}
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
                         (!connected || !anfCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                        status.anf ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.anf ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Activity size={16} />
@@ -2903,7 +2958,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
                         (!connected || agcLevels.length === 0) && "opacity-50 cursor-not-allowed",
-                        status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.agc > 0 ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Settings size={16} />
@@ -2918,7 +2973,7 @@ export default function App() {
                       className={cn(
                         "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
                         (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed",
-                        status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                        status.nr ? "bg-emerald-500/10 border-emerald-500 text-emerald-500" : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                       )}
                     >
                       <Activity size={16} />
@@ -3294,7 +3349,7 @@ export default function App() {
                       !connected && "opacity-50 cursor-not-allowed",
                       status.ptt 
                         ? "bg-red-500/20 border-red-500 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]" 
-                        : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-[#8e9299]"
+                        : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                     )}
                   >
                     <Mic size={20} />
@@ -3318,7 +3373,7 @@ export default function App() {
                         ? "bg-red-500/20 border-red-500 text-red-500"
                         : (status.tuner || tuneJustFinished)
                           ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
-                          : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500"
+                          : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                     )}
                   >
                     <RefreshCw size={20} className={cn("transition-transform", isTuning ? "animate-spin" : "group-active:rotate-180")} />
@@ -3593,7 +3648,7 @@ export default function App() {
               </div>
               {!isVideoCollapsed && (
                 <div className="relative aspect-video bg-black flex items-center justify-center">
-                  <video ref={videoPreviewRef} autoPlay muted playsInline
+                  <video ref={videoPreviewCallbackRef} autoPlay muted playsInline
                     className={cn("w-full h-full object-contain", (!isElectronSource || videoStatus !== "streaming") && "hidden")} />
                   <canvas ref={videoCanvasRef}
                     className={cn("w-full h-full object-contain", (isElectronSource || videoStatus !== "streaming") && "hidden")} />
@@ -4231,14 +4286,24 @@ export default function App() {
                     <input
                       type="text"
                       inputMode="numeric"
-                      value={videoSettings.videoWidth}
-                      onChange={(e) => setVideoSettings(prev => ({ ...prev, videoWidth: parseInt(e.target.value) || 640 }))}
-                      onBlur={(e) => {
-                        const v = parseInt(e.target.value);
-                        const clamped = (v > 0 && v <= 7680) ? v : 640;
-                        const newSettings = { ...videoSettings, videoWidth: clamped };
-                        setVideoSettings(newSettings);
-                        socket?.emit("update-video-settings", newSettings);
+                      value={resolutionDraft.width}
+                      onFocus={() => { isResolutionFocusedRef.current = true; }}
+                      onBlur={() => { isResolutionFocusedRef.current = false; }}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const next = { ...resolutionDraftRef.current, width: raw };
+                        resolutionDraftRef.current = next;
+                        setResolutionDraft(next);
+                        if (resolutionDebounceRef.current) clearTimeout(resolutionDebounceRef.current);
+                        resolutionDebounceRef.current = setTimeout(() => {
+                          const w = parseInt(resolutionDraftRef.current.width);
+                          const h = parseInt(resolutionDraftRef.current.height);
+                          if (w > 0 && w <= 7680 && h > 0 && h <= 4320) {
+                            const newSettings = { ...videoSettingsRef.current, videoWidth: w, videoHeight: h };
+                            setVideoSettings(newSettings);
+                            socket?.emit("update-video-settings", newSettings);
+                          }
+                        }, 800);
                       }}
                       className="w-24 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-3 py-3 text-sm text-center focus:outline-none focus:border-emerald-500 transition-all"
                     />
@@ -4246,14 +4311,24 @@ export default function App() {
                     <input
                       type="text"
                       inputMode="numeric"
-                      value={videoSettings.videoHeight}
-                      onChange={(e) => setVideoSettings(prev => ({ ...prev, videoHeight: parseInt(e.target.value) || 480 }))}
-                      onBlur={(e) => {
-                        const v = parseInt(e.target.value);
-                        const clamped = (v > 0 && v <= 4320) ? v : 480;
-                        const newSettings = { ...videoSettings, videoHeight: clamped };
-                        setVideoSettings(newSettings);
-                        socket?.emit("update-video-settings", newSettings);
+                      value={resolutionDraft.height}
+                      onFocus={() => { isResolutionFocusedRef.current = true; }}
+                      onBlur={() => { isResolutionFocusedRef.current = false; }}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const next = { ...resolutionDraftRef.current, height: raw };
+                        resolutionDraftRef.current = next;
+                        setResolutionDraft(next);
+                        if (resolutionDebounceRef.current) clearTimeout(resolutionDebounceRef.current);
+                        resolutionDebounceRef.current = setTimeout(() => {
+                          const w = parseInt(resolutionDraftRef.current.width);
+                          const h = parseInt(resolutionDraftRef.current.height);
+                          if (w > 0 && w <= 7680 && h > 0 && h <= 4320) {
+                            const newSettings = { ...videoSettingsRef.current, videoWidth: w, videoHeight: h };
+                            setVideoSettings(newSettings);
+                            socket?.emit("update-video-settings", newSettings);
+                          }
+                        }, 800);
                       }}
                       className="w-24 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-3 py-3 text-sm text-center focus:outline-none focus:border-emerald-500 transition-all"
                     />
@@ -4711,7 +4786,7 @@ export default function App() {
                 <div className="pt-4 space-y-3">
                   <div className="flex items-center justify-between text-[0.5rem] text-[#8e9299] opacity-50 uppercase font-bold tracking-widest border-t border-[#2a2b2e] pt-4">
                     <span>App Version</span>
-                    <span>v03.31.2026-Alpha1</span>
+                    <span>v04.14.2026-Alpha3</span>
                   </div>
 
                   {rigctldProcessStatus === "already_running" && (

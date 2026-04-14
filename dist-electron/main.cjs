@@ -1336,7 +1336,7 @@ var require_src = __commonJS({
 var require_destroy = __commonJS({
   "node_modules/destroy/index.js"(exports2, module2) {
     "use strict";
-    var EventEmitter2 = require("events").EventEmitter;
+    var EventEmitter = require("events").EventEmitter;
     var ReadStream = require("fs").ReadStream;
     var Stream = require("stream");
     var Zlib = require("zlib");
@@ -1398,7 +1398,7 @@ var require_destroy = __commonJS({
       return stream instanceof Stream && typeof stream.destroy === "function";
     }
     function isEventEmitter(val) {
-      return val instanceof EventEmitter2;
+      return val instanceof EventEmitter;
     }
     function isFsReadStream(stream) {
       return stream instanceof ReadStream;
@@ -23775,7 +23775,7 @@ var require_express = __commonJS({
   "node_modules/express/lib/express.js"(exports2, module2) {
     "use strict";
     var bodyParser = require_body_parser();
-    var EventEmitter2 = require("events").EventEmitter;
+    var EventEmitter = require("events").EventEmitter;
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
@@ -23787,7 +23787,7 @@ var require_express = __commonJS({
       var app2 = function(req2, res2, next) {
         app2.handle(req2, res2, next);
       };
-      mixin(app2, EventEmitter2.prototype, false);
+      mixin(app2, EventEmitter.prototype, false);
       mixin(app2, proto, false);
       app2.request = Object.create(req, {
         app: { configurable: true, enumerable: true, writable: true, value: app2 }
@@ -28589,7 +28589,7 @@ var require_extension = __commonJS({
 var require_websocket2 = __commonJS({
   "node_modules/engine.io/node_modules/ws/lib/websocket.js"(exports2, module2) {
     "use strict";
-    var EventEmitter2 = require("events");
+    var EventEmitter = require("events");
     var https = require("https");
     var http = require("http");
     var net2 = require("net");
@@ -28621,7 +28621,7 @@ var require_websocket2 = __commonJS({
     var protocolVersions = [8, 13];
     var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
     var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
-    var WebSocket = class _WebSocket extends EventEmitter2 {
+    var WebSocket = class _WebSocket extends EventEmitter {
       /**
        * Create a new `WebSocket`.
        *
@@ -29615,7 +29615,7 @@ var require_subprotocol = __commonJS({
 var require_websocket_server = __commonJS({
   "node_modules/engine.io/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
     "use strict";
-    var EventEmitter2 = require("events");
+    var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
     var { createHash } = require("crypto");
@@ -29628,7 +29628,7 @@ var require_websocket_server = __commonJS({
     var RUNNING = 0;
     var CLOSING = 1;
     var CLOSED = 2;
-    var WebSocketServer = class extends EventEmitter2 {
+    var WebSocketServer = class extends EventEmitter {
       /**
        * Create a `WebSocketServer` instance.
        *
@@ -36935,7 +36935,7 @@ var require_extension2 = __commonJS({
 var require_websocket4 = __commonJS({
   "node_modules/socket.io-adapter/node_modules/ws/lib/websocket.js"(exports2, module2) {
     "use strict";
-    var EventEmitter2 = require("events");
+    var EventEmitter = require("events");
     var https = require("https");
     var http = require("http");
     var net2 = require("net");
@@ -36967,7 +36967,7 @@ var require_websocket4 = __commonJS({
     var protocolVersions = [8, 13];
     var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
     var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
-    var WebSocket = class _WebSocket extends EventEmitter2 {
+    var WebSocket = class _WebSocket extends EventEmitter {
       /**
        * Create a new `WebSocket`.
        *
@@ -37961,7 +37961,7 @@ var require_subprotocol2 = __commonJS({
 var require_websocket_server2 = __commonJS({
   "node_modules/socket.io-adapter/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
     "use strict";
-    var EventEmitter2 = require("events");
+    var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
     var { createHash } = require("crypto");
@@ -37974,7 +37974,7 @@ var require_websocket_server2 = __commonJS({
     var RUNNING = 0;
     var CLOSING = 1;
     var CLOSED = 2;
-    var WebSocketServer = class extends EventEmitter2 {
+    var WebSocketServer = class extends EventEmitter {
       /**
        * Create a `WebSocketServer` instance.
        *
@@ -40505,7 +40505,6 @@ var import_net = __toESM(require("net"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_child_process = require("child_process");
 var import_fs = __toESM(require("fs"), 1);
-var import_events = require("events");
 var electronWin = null;
 function setElectronWindow(win) {
   electronWin = win;
@@ -40535,6 +40534,8 @@ async function startServer(appPath, userDataPath) {
   let rigctldLogs = [];
   let autoStartEnabled = false;
   let videoAutoStart = false;
+  let videoSourceSocketId = null;
+  let lastKeyframe = null;
   let pollRate = 2e3;
   let autoconnectEligible = false;
   let clientHost = "127.0.0.1";
@@ -40557,34 +40558,14 @@ async function startServer(appPath, userDataPath) {
     console.log(`[HAMLIB] Bundled rigctld not found at ${localPath || "unsupported platform"}, falling back to system PATH`);
     return "rigctld";
   };
-  const getFfmpegPath = () => {
-    let platformDir = "";
-    if (process.platform === "win32") platformDir = "windows";
-    else if (process.platform === "linux") platformDir = "linux";
-    else if (process.platform === "darwin") platformDir = "mac";
-    const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
-    let binBase = baseDir;
-    if (baseDir.endsWith(".asar")) {
-      binBase = baseDir.replace(".asar", ".asar.unpacked");
-    }
-    const localPath = platformDir ? import_path.default.join(binBase, "bin", platformDir, binaryName) : "";
-    if (localPath && import_fs.default.existsSync(localPath)) {
-      console.log(`[VIDEO] Using bundled ffmpeg at: ${localPath}`);
-      return localPath;
-    }
-    console.log(`[VIDEO] Bundled ffmpeg not found at ${localPath || "unsupported platform"}, falling back to system PATH`);
-    return "ffmpeg";
-  };
-  let videoProcess = null;
-  const videoEmitter = new import_events.EventEmitter();
-  videoEmitter.setMaxListeners(0);
   let videoSettings = {
     device: "",
-    resolution: "",
+    videoWidth: 640,
+    videoHeight: 480,
     framerate: ""
   };
   let videoStatus = "stopped";
-  let videoConnections = 0;
+  let videoDeviceList = [];
   let audioSettings = {
     inputDevice: "",
     outputDevice: "",
@@ -40656,7 +40637,13 @@ async function startServer(appPath, userDataPath) {
       clientHost = data.clientHost || "127.0.0.1";
       clientPort = Number(data.clientPort) || 4532;
       if (data.videoSettings) {
-        videoSettings = { ...videoSettings, ...data.videoSettings };
+        const vs = data.videoSettings;
+        if (vs.resolution && !vs.videoWidth) {
+          const parts = vs.resolution.split("x");
+          vs.videoWidth = parseInt(parts[0]) || 640;
+          vs.videoHeight = parseInt(parts[1]) || 480;
+        }
+        videoSettings = { ...videoSettings, ...vs };
       }
       if (data.audioSettings) {
         audioSettings = { ...audioSettings, ...data.audioSettings };
@@ -40862,106 +40849,6 @@ async function startServer(appPath, userDataPath) {
       });
     });
   };
-  const listVideoDevices = () => {
-    return new Promise((resolve) => {
-      const ffmpegPath = getFfmpegPath();
-      let cmd = "";
-      if (process.platform === "linux") {
-        cmd = "v4l2-ctl --list-devices || ls /dev/video*";
-      } else if (process.platform === "win32") {
-        cmd = `"${ffmpegPath}" -list_devices true -f dshow -i dummy 2>&1`;
-      } else if (process.platform === "darwin") {
-        cmd = `"${ffmpegPath}" -f avfoundation -list_devices true -i "" 2>&1`;
-      }
-      if (!cmd) return resolve({ devices: [] });
-      (0, import_child_process.exec)(cmd, (err, stdout, stderr) => {
-        const output = stdout + stderr;
-        const devices = [];
-        let error;
-        if (process.platform === "linux") {
-          const lines = output.split("\n");
-          lines.forEach((line) => {
-            if (line.includes("/dev/video")) {
-              const match = line.match(/\/dev\/video\d+/);
-              if (match && !devices.includes(match[0])) {
-                devices.push(match[0]);
-              }
-            }
-          });
-        } else if (process.platform === "win32") {
-          const lines = output.split("\n");
-          let inDirectShow = false;
-          lines.forEach((line) => {
-            const lowerLine = line.toLowerCase();
-            if (lowerLine.includes("directshow video devices")) inDirectShow = true;
-            if (lowerLine.includes("directshow audio devices")) inDirectShow = false;
-            if (inDirectShow && line.includes('"')) {
-              const match = line.match(/"([^"]+)"/);
-              if (match) {
-                const deviceName = match[1];
-                if (!deviceName.startsWith("@device_pnp_") && !devices.includes(deviceName)) {
-                  devices.push(deviceName);
-                }
-              }
-            }
-          });
-          if (devices.length === 0) {
-            lines.forEach((line) => {
-              if (line.includes('"') && line.toLowerCase().includes("(video)")) {
-                const match = line.match(/"([^"]+)"/);
-                if (match && !match[1].startsWith("@device_pnp_") && !devices.includes(match[1])) {
-                  devices.push(match[1]);
-                }
-              }
-            });
-          }
-          if (devices.length === 0) {
-            console.log("[VIDEO] No devices found via ffmpeg, trying PowerShell fallback...");
-            const psCmd = `powershell -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_PnPEntity | Where-Object { $_.Service -eq 'usbvideo' } | Select-Object -ExpandProperty Caption"`;
-            (0, import_child_process.exec)(psCmd, (psErr, psStdout) => {
-              if (!psErr && psStdout.trim()) {
-                const psDevices = psStdout.split("\n").map((d) => d.trim()).filter(Boolean);
-                psDevices.forEach((d) => {
-                  if (!devices.includes(d)) devices.push(d);
-                });
-                console.log(`[VIDEO] PowerShell found ${devices.length} devices:`, devices);
-                resolve({ devices, error });
-              } else {
-                if (err) {
-                  console.error("[VIDEO] Failed to list Windows video devices via ffmpeg:", err.message);
-                  if (output.includes("not recognized") || output.includes("not found")) {
-                    error = "ffmpeg not found in system PATH. Please install ffmpeg to use the video feed feature.";
-                    console.error(`[VIDEO] ${error}`);
-                  }
-                }
-                console.log(`[VIDEO] Found ${devices.length} video devices on ${process.platform}:`, devices);
-                resolve({ devices, error });
-              }
-            });
-            return;
-          }
-        } else if (process.platform === "darwin") {
-          const lines = output.split("\n");
-          let inVideo = false;
-          lines.forEach((line) => {
-            if (line.includes("AVFoundation video devices")) inVideo = true;
-            if (line.includes("AVFoundation audio devices")) inVideo = false;
-            if (inVideo && line.match(/\[\d+\]/)) {
-              const parts = line.split("]");
-              if (parts.length > 1) {
-                const deviceName = parts[1].trim();
-                if (!devices.includes(deviceName)) {
-                  devices.push(deviceName);
-                }
-              }
-            }
-          });
-        }
-        console.log(`[VIDEO] Found ${devices.length} video devices on ${process.platform}:`, devices);
-        resolve({ devices, error });
-      });
-    });
-  };
   const listAudioDevices = async () => {
     if (!portAudio) {
       return { inputs: [], outputs: [], error: audioEngineError || "Audio engine not ready" };
@@ -41102,147 +40989,6 @@ async function startServer(appPath, userDataPath) {
     audioStatus = "playing";
     io2.emit("audio-status", audioStatus);
   };
-  const stopVideo = () => {
-    console.log("[VIDEO] Stopping video feed...");
-    videoEmitter.emit("stop-clients");
-    if (videoProcess) {
-      console.log(`[VIDEO] Killing ffmpeg process (PID: ${videoProcess.pid})`);
-      videoProcess.kill("SIGKILL");
-      videoProcess = null;
-    } else {
-      console.log("[VIDEO] No active video process to stop.");
-    }
-    videoStatus = "stopped";
-    io2.emit("video-status", videoStatus);
-  };
-  const startVideo = () => {
-    console.log("[VIDEO] Starting video feed...");
-    stopVideo();
-    if (!videoSettings.device || !videoSettings.resolution || !videoSettings.framerate) {
-      console.warn("[VIDEO] Cannot start video: Missing settings (device, resolution, or framerate).");
-      return;
-    }
-    let inputFormat = "";
-    let inputDevice = videoSettings.device;
-    console.log(`[VIDEO] Platform detected: ${process.platform}`);
-    if (process.platform === "linux") {
-      inputFormat = "v4l2";
-    } else if (process.platform === "win32") {
-      inputFormat = "dshow";
-      inputDevice = `video=${videoSettings.device}`;
-    } else if (process.platform === "darwin") {
-      inputFormat = "avfoundation";
-    }
-    console.log(`[VIDEO] Using input format: ${inputFormat}, device: ${inputDevice}`);
-    const args = [
-      "-f",
-      inputFormat,
-      "-framerate",
-      videoSettings.framerate,
-      "-video_size",
-      videoSettings.resolution,
-      "-i",
-      inputDevice,
-      "-vf",
-      `scale=${videoSettings.resolution.replace("x", ":")}`,
-      "-f",
-      "mpjpeg",
-      "-q:v",
-      "5",
-      "pipe:1"
-    ];
-    const ffmpegPath = getFfmpegPath();
-    console.log(`[VIDEO] Executing: ${ffmpegPath} ${args.join(" ")}`);
-    const currentProcess = (0, import_child_process.spawn)(ffmpegPath, args);
-    videoProcess = currentProcess;
-    let hasReceivedData = false;
-    const startupTimeout = setTimeout(() => {
-      if (!hasReceivedData && videoProcess === currentProcess) {
-        console.error("[VIDEO] ffmpeg failed to produce data within 10s. Stopping.");
-        videoAutoStart = false;
-        saveSettings();
-        stopVideo();
-        io2.emit("video-error", "Video device failed to start producing data. Please check if it is in use by another application.");
-      }
-    }, 1e4);
-    currentProcess.stdout?.on("data", (data) => {
-      if (!hasReceivedData && videoProcess === currentProcess) {
-        hasReceivedData = true;
-        clearTimeout(startupTimeout);
-        console.log("[VIDEO] First data chunk received. Stream is now playing.");
-        videoStatus = "playing";
-        videoAutoStart = true;
-        saveSettings();
-        io2.emit("video-status", videoStatus);
-      }
-      if (videoEmitter.listenerCount("data") > 0) {
-        videoEmitter.emit("data", data);
-      }
-    });
-    currentProcess.stderr?.on("data", (data) => {
-      const msg = data.toString();
-      if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("failed") || msg.toLowerCase().includes("cannot open")) {
-        console.error(`[VIDEO] ffmpeg stderr: ${msg.trim()}`);
-      }
-    });
-    currentProcess.on("error", (err) => {
-      if (videoProcess === currentProcess) {
-        console.error("[VIDEO] ffmpeg process error:", err);
-        stopVideo();
-      }
-    });
-    currentProcess.on("exit", (code, signal) => {
-      if (videoProcess === currentProcess) {
-        console.log(`[VIDEO] Current ffmpeg process exited with code ${code} and signal ${signal}`);
-        videoStatus = "stopped";
-        io2.emit("video-status", videoStatus);
-        videoProcess = null;
-        clearTimeout(startupTimeout);
-      } else {
-        console.log(`[VIDEO] Old ffmpeg process (PID: ${currentProcess.pid}) exited with code ${code} and signal ${signal}`);
-      }
-    });
-  };
-  app2.get("/api/video-stream", (req, res) => {
-    const sessionId = req.query.sessionId || "default";
-    videoEmitter.emit(`stop-clients-${sessionId}`);
-    videoConnections++;
-    console.log(`[VIDEO] New stream client connected (Session: ${sessionId}). Total clients: ${videoConnections}`);
-    res.writeHead(200, {
-      "Content-Type": "multipart/x-mixed-replace; boundary=ffmpeg",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "Pragma": "no-cache"
-    });
-    let isClosed = false;
-    let isCongested = false;
-    const cleanup = () => {
-      if (isClosed) return;
-      isClosed = true;
-      videoConnections--;
-      console.log(`[VIDEO] Stream client disconnected (Session: ${sessionId}). Total clients: ${videoConnections}`);
-      videoEmitter.removeListener("data", onData);
-      videoEmitter.removeListener("stop-clients", cleanup);
-      videoEmitter.removeListener(`stop-clients-${sessionId}`, cleanup);
-      res.end();
-    };
-    const onData = (data) => {
-      if (isClosed || isCongested) return;
-      const flushed = res.write(data);
-      if (!flushed) {
-        isCongested = true;
-        res.once("drain", () => {
-          isCongested = false;
-        });
-      }
-    };
-    videoEmitter.on("data", onData);
-    videoEmitter.once("stop-clients", cleanup);
-    videoEmitter.once(`stop-clients-${sessionId}`, cleanup);
-    req.on("close", cleanup);
-    req.on("end", cleanup);
-    res.on("error", cleanup);
-  });
   const killExistingRigctld = () => {
     return new Promise((resolve) => {
       const cmd = process.platform === "win32" ? "taskkill /F /IM rigctld.exe" : "pkill -9 rigctld";
@@ -41321,10 +41067,6 @@ async function startServer(appPath, userDataPath) {
   };
   if (autoStartEnabled) {
     startRigctld();
-  }
-  if (videoAutoStart && videoSettings.device && videoSettings.resolution && videoSettings.framerate) {
-    console.log("[VIDEO] Auto-starting video feed on boot...");
-    startVideo();
   }
   process.on("exit", stopRigctld);
   process.on("SIGINT", () => {
@@ -41793,6 +41535,7 @@ async function startServer(appPath, userDataPath) {
       socket.emit("settings-data", {
         settings: rigctldSettings,
         autoStart: autoStartEnabled,
+        videoAutoStart,
         videoSettings,
         audioSettings,
         pollRate,
@@ -41803,7 +41546,18 @@ async function startServer(appPath, userDataPath) {
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
-      socket.emit("video-status", videoStatus);
+      console.log(`[VIDEO] New client ${socket.id} connected. videoStatus=${videoStatus} hasKeyframe=${!!lastKeyframe}`);
+      socket.emit("video-source-status", {
+        status: videoStatus,
+        videoWidth: videoSettings.videoWidth,
+        videoHeight: videoSettings.videoHeight,
+        framerate: videoSettings.framerate
+      });
+      socket.emit("video-devices-list", videoDeviceList);
+      if (videoStatus === "streaming" && lastKeyframe) {
+        console.log(`[VIDEO] Sending buffered keyframe to ${socket.id}: type=${lastKeyframe.type} dataBytes=${lastKeyframe.data.byteLength} hasDescription=${!!lastKeyframe.description}`);
+        socket.emit("video-frame", lastKeyframe);
+      }
       socket.emit("audio-status", audioStatus);
       socket.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
       socket.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
@@ -41814,15 +41568,6 @@ async function startServer(appPath, userDataPath) {
       if (isConnected) {
         socket.emit("rig-connected", { host: rigConfig.host, port: rigConfig.port });
       }
-    });
-    socket.on("get-video-devices", async () => {
-      console.log("[VIDEO] Client requested video devices list");
-      const { devices, error } = await listVideoDevices();
-      if (error) {
-        socket.emit("video-error", error);
-      }
-      console.log(`[VIDEO] Found ${devices.length} devices: ${devices.join(", ")}`);
-      socket.emit("video-devices-list", devices);
     });
     socket.on("get-audio-devices", async () => {
       console.log("[AUDIO] Client requested audio devices list");
@@ -41883,37 +41628,68 @@ async function startServer(appPath, userDataPath) {
         console.error("[AUDIO-OUT] Opus decode or write error:", err);
       }
     });
+    socket.on("get-video-devices", () => {
+      socket.emit("video-devices-list", videoDeviceList);
+    });
+    socket.on("video-devices-update", (devices) => {
+      console.log(`[VIDEO] Device list updated by source (${devices.length} devices):`, devices.map((d) => d.label));
+      videoDeviceList = devices;
+      io2.emit("video-devices-list", videoDeviceList);
+    });
     socket.on("update-video-settings", (settings) => {
       console.log("[VIDEO] Updating video settings:", settings);
-      const oldRes = videoSettings.resolution;
-      const oldDev = videoSettings.device;
-      const oldFps = videoSettings.framerate;
       videoSettings = { ...videoSettings, ...settings };
-      if (!videoSettings.device || !videoSettings.resolution || !videoSettings.framerate) {
-        videoAutoStart = false;
-      }
       saveSettings();
-      if (videoStatus === "playing" && (oldRes !== videoSettings.resolution || oldDev !== videoSettings.device || oldFps !== videoSettings.framerate)) {
-        console.log("[VIDEO] Settings changed while playing, restarting stream...");
-        startVideo();
-      }
+      io2.emit("video-settings-updated", videoSettings);
     });
-    socket.on("control-video", (action) => {
-      console.log(`[VIDEO] Control action received: ${action}`);
-      if (action === "play") {
-        startVideo();
-      } else if (action === "pause") {
-        console.log("[VIDEO] Pausing (stopping) stream...");
-        videoAutoStart = false;
-        saveSettings();
-        stopVideo();
-        videoStatus = "paused";
-        io2.emit("video-status", videoStatus);
-      } else if (action === "stop") {
-        videoAutoStart = false;
-        saveSettings();
-        stopVideo();
+    socket.on("request-video-start", () => {
+      console.log(`[VIDEO] Start requested by socket=${socket.id}`);
+      videoAutoStart = true;
+      saveSettings();
+      io2.emit("video-start-requested");
+    });
+    socket.on("request-video-stop", () => {
+      console.log(`[VIDEO] Stop requested by socket=${socket.id}`);
+      videoAutoStart = false;
+      saveSettings();
+      io2.emit("video-stop-requested");
+    });
+    socket.on("video-source-start", (config) => {
+      console.log(`[VIDEO] Source started: socket=${socket.id}`, config);
+      videoSourceSocketId = socket.id;
+      lastKeyframe = null;
+      videoSettings = { ...videoSettings, ...config };
+      videoStatus = "streaming";
+      videoAutoStart = true;
+      saveSettings();
+      io2.emit("video-source-status", {
+        status: "streaming",
+        videoWidth: config.videoWidth,
+        videoHeight: config.videoHeight,
+        framerate: config.framerate
+      });
+    });
+    let videoFrameRelayCount = 0;
+    socket.on("video-frame", (chunk) => {
+      if (socket.id !== videoSourceSocketId) return;
+      if (chunk.type === "key") {
+        lastKeyframe = chunk;
       }
+      videoFrameRelayCount++;
+      if (chunk.type === "key" || videoFrameRelayCount <= 5) {
+        console.log(`[VIDEO] Relaying frame #${videoFrameRelayCount} type=${chunk.type} dataBytes=${chunk.data.byteLength} connectedClients=${io2.engine.clientsCount}`);
+      }
+      socket.broadcast.emit("video-frame", chunk);
+    });
+    socket.on("video-source-stop", () => {
+      if (socket.id !== videoSourceSocketId) return;
+      console.log("[VIDEO] Source stopped.");
+      videoSourceSocketId = null;
+      lastKeyframe = null;
+      videoStatus = "stopped";
+      videoAutoStart = false;
+      saveSettings();
+      io2.emit("video-source-status", { status: "stopped" });
     });
     socket.on("save-settings", (data) => {
       const oldRigNumber = rigctldSettings.rigNumber;
@@ -42030,6 +41806,15 @@ async function startServer(appPath, userDataPath) {
     });
     socket.on("disconnect", () => {
       console.log(`Client disconnected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
+      if (socket.id === videoSourceSocketId) {
+        console.log("[VIDEO] Source client disconnected \u2014 stopping stream.");
+        videoSourceSocketId = null;
+        lastKeyframe = null;
+        videoStatus = "stopped";
+        videoAutoStart = false;
+        saveSettings();
+        io2.emit("video-source-status", { status: "stopped" });
+      }
       if (activeMicClientId === clientId) {
         setTimeout(() => {
           let hasActiveSocket = false;
@@ -42102,12 +41887,6 @@ if (!process.env.ELECTRON_RUN && !process.versions.electron) {
 }
 
 // electron/main.ts
-import_electron2.app.disableHardwareAcceleration();
-import_electron2.app.commandLine.appendSwitch("disable-features", "VaapiVideoDecoder");
-import_electron2.app.commandLine.appendSwitch("disable-gpu-memory-buffer-video-frames");
-import_electron2.app.commandLine.appendSwitch("disable-gpu-compositing");
-import_electron2.app.commandLine.appendSwitch("disable-gpu-rasterization");
-import_electron2.app.commandLine.appendSwitch("disable-gpu");
 if (!electron_is_dev_default) {
   process.env.NODE_ENV = "production";
 }

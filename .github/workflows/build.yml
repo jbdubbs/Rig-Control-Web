@@ -1,0 +1,64 @@
+name: Build Electron App
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Required for softprops/action-gh-release to create a release and upload assets
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            artifact: '*.AppImage'
+          - os: windows-latest
+            platform: win
+            artifact: '*.exe'
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # naudiodon requires ALSA headers on Linux.
+      # libopus-dev provides Opus headers if libopus-node compiles from source.
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libopus-dev
+
+      # npm ci uses package-lock.json for a clean, reproducible install.
+      # The postinstall script (electron-builder install-app-deps) automatically
+      # rebuilds native modules (naudiodon, libopus-node) for the Electron ABI
+      # on the current platform.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run electron:build -- --${{ matrix.platform }}
+
+      # Upload as a workflow artifact (useful for testing builds without a tag release)
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rigcontrol-web-${{ matrix.platform }}
+          path: build/${{ matrix.artifact }}
+
+      # Attach the installer to the GitHub Release created by the tag push
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/${{ matrix.artifact }}

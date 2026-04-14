@@ -14,7 +14,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - [x] Implement split VFO mode functionality (UI, backend, visual feedback).
 - [x] Optimize multi-window connection stability.
 - [x] Stabilize video streaming session management.
-- [x] Increment app version to 04.05.2026-Alpha2.
+- [x] Increment app version to 04.14.2026-Alpha3.
 - [x] Implement Opus audio decoding for inbound audio (rig -> client).
 - [x] Implement Opus audio encoding for outbound audio (client -> rig).
 - [x] Add server-side FFmpeg-based Opus encoding/decoding.
@@ -27,6 +27,9 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - [x] Phone UI: consolidate Quick Controls, RF Power, and More Controls into single collapsed box; PTT standalone.
 - [x] Fix white browser background on all views via global CSS body color.
 - [x] Replace FFmpeg video streaming with browser-native WebCodecs H.264 pipeline.
+- [x] Compact view VFO header: center tune arrows between VFO/SPLIT buttons and Mode/BW selects using 3-column grid layout.
+- [x] Compact view VFO header: right-justify Mode and BW dropdowns.
+- [x] Phone view collapsed VFO header: add `—` separator between VFO letter and frequency to match the existing MHz/mode separator.
 - [ ] Verify `rigctld` binary availability in the production environment.
 
 ## Decisions Log
@@ -58,6 +61,8 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 | Phone UI — VFO Box Redesign | Replaced the phone VFO controls with a collapsible box: collapsed state shows frequency/mode summary with `[◁ step]` / `[step ▷]` inline tuning buttons and a vertical chevron for expand/collapse, eliminating ambiguity between the two controls. Expanded state uses step chips and left/right arrows for consistency. | 2026-04-11 |
 | Phone UI — Controls Consolidation | Moved PTT to a standalone always-visible button above a single collapsed-by-default Quick Controls box containing Tune/Att/Preamp, NB/AGC/DNR/ANF toggles, and all RF/level sliders. Removed the separate RF Power box and the MORE CONTROLS progressive disclosure toggle. | 2026-04-11 |
 | Global Background Color | Set `html, body { background-color: #0a0a0a }` in `index.css` so the browser chrome behind all views (phone, compact, desktop) matches the app background instead of defaulting to white. | 2026-04-11 |
+| Compact VFO Header 3-Column Grid | Replaced `justify-between` flex with a `grid-cols-3` layout in the compact view VFO header so tune arrows sit visually centered over the frequency display, with VFO/SPLIT buttons anchored left and Mode/BW selects anchored right. | 2026-04-14 |
+| Phone Collapsed VFO Separator | Added a `—` separator between the VFO letter and frequency in the phone collapsed header (e.g. `● A — 14.225 MHz — USB`) to match the existing MHz/mode separator and improve scannability. | 2026-04-14 |
 | WebCodecs Video Pipeline | Replaced FFmpeg MJPEG streaming with a browser-native WebCodecs H.264 pipeline. The Electron app captures via `getUserMedia` + `MediaStreamTrackProcessor`, encodes with `VideoEncoder` (avc1.42001F / OpenH264), and relays encoded chunks through the Socket.io server to remote browser clients which decode with `VideoDecoder` and render to a `<canvas>`. Removes all FFmpeg dependency from the video path. | 2026-04-14 |
 | AVCC Description Propagation | WebCodecs H.264 encoder outputs AVCC-formatted frames. SPS/PPS (the `avcC` box) is delivered once in `EncodedVideoChunkMetadata.decoderConfig.description` after `configure()`. It is attached to every keyframe emission so the server's buffered keyframe always carries it, and any late-joining remote client can correctly configure its `VideoDecoder` on arrival. | 2026-04-14 |
 | Video Device ID vs. Label | Separated `deviceId` (opaque browser UUID used by `getUserMedia`) from human-readable `label` in the device list. `enumerateVideoDevices()` now emits `{ id, label }` pairs; settings store the `deviceId`; the dropdown displays the label. Prevents `OverconstrainedError` from passing a label as a `deviceId` constraint. | 2026-04-14 |
@@ -102,5 +107,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 > [2026-04-11 00:00 UTC] Phone UI iteration: redesigned VFO box with collapsible header showing frequency/mode summary and inline `[◁ step]` / `[step ▷]` tuning buttons. Expanded view uses left/right arrows (matching collapsed) and horizontal step chips. Slimmed the phone header to show "RIGCONTROL WEB" with a status dot. Consolidated Quick Controls, RF Power, and More Controls into a single collapsed-by-default box. PTT moved outside as an always-visible standalone button. Fixed white browser background globally via `html, body { background-color: #0a0a0a }` in `index.css`.
 
 > [2026-04-14 00:00 UTC] Replaced FFmpeg-based MJPEG video streaming with a fully browser-native WebCodecs H.264 pipeline. The Electron app captures via `getUserMedia` + `MediaStreamTrackProcessor` and encodes with `VideoEncoder` (avc1.42001F / OpenH264 Baseline Profile). Encoded AVCC chunks relay through Socket.io to remote clients which decode with `VideoDecoder` and render to `<canvas>`. AVCC SPS/PPS description is extracted from `EncodedVideoChunkMetadata` and attached to every keyframe so late-joining clients can configure their decoder on arrival. Video device list now carries `{ id, label }` pairs to correctly separate browser `deviceId` from human-readable label, preventing `OverconstrainedError`. FFmpeg is no longer a dependency.
+
+> [2026-04-14 00:00 UTC] UI polish pass on compact and phone views. Compact VFO header refactored from `justify-between` flex to a `grid-cols-3` layout: tune arrows now sit centered between the VFO/SPLIT buttons and Mode/BW selects; Mode/BW dropdowns right-justified. Phone collapsed VFO header gains a `—` separator between the VFO letter and frequency to match the existing MHz/mode separator. Version bumped to `04.14.2026-Alpha3`.
 
 > **Next Step**: Implement debounce on resolution text inputs to prevent mid-edit pipeline restarts.
