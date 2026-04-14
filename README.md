@@ -1,6 +1,6 @@
 # RigControl Web
 
-A modern, full-stack web application and native desktop client for controlling amateur radio equipment via Hamlib's `rigctld`. Features a real-time dashboard with frequency, mode, and meter displays, full bidirectional audio over Opus, MJPEG video streaming, and automatic `rigctld` process management.
+A modern, full-stack web application and native desktop client for controlling amateur radio equipment via Hamlib's `rigctld`. Features a real-time dashboard with frequency, mode, and meter displays, full bidirectional audio over Opus, H.264 video streaming via WebCodecs, and automatic `rigctld` process management.
 
 ## Screenshots
 
@@ -19,7 +19,7 @@ A modern, full-stack web application and native desktop client for controlling a
   - Audio device lists refresh automatically when you open the device selector, so newly connected USB devices always appear.
 - **Phone View**: Dedicated portrait-optimized layout for operating from a phone or tablet.
 - **Compact View**: Condensed desktop layout that fits on smaller screens.
-- **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel. Example: FT-710 DVI out → USB HDMI capture card.
+- **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel remotely. Uses a browser-native WebCodecs H.264 pipeline — no FFmpeg required. Example: FT-710 DVI out → USB HDMI capture card.
 - **Process Management**: Start, stop, and monitor `rigctld` directly from the web interface. View the live log and kill stale instances.
 - **Split VFO Support**: Full control over split operations with visual feedback.
 - **Works With All Hamlib-Compatible Software**: Configure your logging app to use "Hamlib NET rigctl" at `127.0.0.1:4532`.
@@ -30,7 +30,7 @@ A modern, full-stack web application and native desktop client for controlling a
 ## TODO
 
 - **Remote CW**: CW keying from a phone, tablet, or laptop while away from home.
-- **macOS Support**: Currently untested — requires externally installed Hamlib 4.7.0 and FFmpeg in the system PATH.
+- **macOS Support**: Currently untested — requires externally installed Hamlib 4.7.0 in the system PATH.
 - **Broader Rig Testing**: Currently well-tested on FT-710, FT-991A, DX10, FT-101D, and FT-101MP. Other Hamlib-supported rigs should work.
 
 ## Prerequisites
@@ -40,13 +40,10 @@ A modern, full-stack web application and native desktop client for controlling a
   - **Windows 10 or higher** (tested on Windows 11 23H2) — no external dependencies.
   - **Linux kernel 6.0 or higher** (tested on Fedora 43) — no external dependencies.
   - **macOS** (TBA — no test hardware available)
-    - Requires externally installed Hamlib 4.7.0 and latest FFmpeg, both in the system PATH.
+    - Requires externally installed Hamlib 4.7.0 in the system PATH.
 
 ### Compile from Source
 - **Node.js**: Version 18 or higher.
-- **FFmpeg**: Required for the video feed feature.
-  - **Electron Apps**: Bundle `ffmpeg` by placing the binary in `bin/[linux|windows|mac]/`.
-  - **Fallback**: If not bundled, the app falls back to the system PATH.
 - **Hamlib**: 4.7.0 or higher.
   - **Electron Apps**: Bundle `rigctld` by placing the binary in `bin/[linux|windows|mac]/`.
 

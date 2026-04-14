@@ -201,14 +201,16 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [radios, setRadios] = useState<{id: string, mfg: string, model: string}[]>([]);
   const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");
-  const [videoStatus, setVideoStatus] = useState<"playing" | "paused" | "stopped">("stopped");
-  const [videoSessionId, setVideoSessionId] = useState(Date.now());
-  const [videoDevices, setVideoDevices] = useState<string[]>([]);
+  const [videoStatus, setVideoStatus] = useState<"streaming" | "stopped">("stopped");
   const [videoSettings, setVideoSettings] = useState({
     device: "",
-    resolution: "",
+    videoWidth: 640,
+    videoHeight: 480,
     framerate: ""
   });
+  const [videoAutoStart, setVideoAutoStart] = useState(false);
+  const [videoDevices, setVideoDevices] = useState<{ id: string; label: string }[]>([]);
+  const isElectronSource = !!(window as any).electron;
 
   const [activeMicClientId, setActiveMicClientId] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<"playing" | "stopped">("stopped");
@@ -267,7 +269,16 @@ export default function App() {
   const [isDesktopSWRCollapsed, setIsDesktopSWRCollapsed] = useState(false);
   const [isDesktopALCCollapsed, setIsDesktopALCCollapsed] = useState(false);
   const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(false);
-  const videoSettingsInitialized = useRef(false);
+  const videoEncoderRef = useRef<any>(null);
+  const videoDecoderRef = useRef<any>(null);
+  const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const videoCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const videoFrameReaderAbortRef = useRef<AbortController | null>(null);
+  const videoFrameCountRef = useRef(0);
+  const videoSettingsRef = useRef({ device: "", videoWidth: 640, videoHeight: 480, framerate: "" });
+  const videoDevicesRef = useRef<{ id: string; label: string }[]>([]);
+  const videoStreamDimsRef = useRef({ width: 640, height: 480 });
   const containerRef = useRef<HTMLDivElement>(null);
   const hasAttemptedAutoconnect = useRef(false);
   const isAutoconnectAttempt = useRef(false);
@@ -351,13 +362,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (videoSettings.device && !videoSettingsInitialized.current) {
-      setIsVideoCollapsed(false);
-      videoSettingsInitialized.current = true;
-    }
-  }, [videoSettings.device]);
-
-  useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
       const mobile = width < 768;
@@ -399,7 +403,17 @@ export default function App() {
         }
         setSettingsLoaded(true);
         if (data.videoSettings) {
-          setVideoSettings(data.videoSettings);
+          const vs = data.videoSettings;
+          // Migrate old 'resolution' string to discrete width/height fields
+          if (vs.resolution && !vs.videoWidth) {
+            const parts = (vs.resolution as string).split("x");
+            vs.videoWidth = parseInt(parts[0]) || 640;
+            vs.videoHeight = parseInt(parts[1]) || 480;
+          }
+          setVideoSettings(prev => ({ ...prev, ...vs }));
+        }
+        if (data.videoAutoStart !== undefined) {
+          setVideoAutoStart(data.videoAutoStart);
         }
         if (data.audioSettings) {
           setAudioSettings(data.audioSettings);
@@ -433,13 +447,77 @@ export default function App() {
           }
         }
       });
-      socket.on("video-devices-list", (list: string[]) => {
+      socket.on("video-devices-list", (list: { id: string; label: string }[]) => {
         setVideoDevices(list);
       });
-      socket.on("video-status", (status: "playing" | "paused" | "stopped") => {
-        setVideoStatus(status);
-        if (status === "playing") {
+      socket.on("video-source-status", (payload: { status: "streaming" | "stopped"; videoWidth?: number; videoHeight?: number; framerate?: string }) => {
+        console.log(`[VIDEO] video-source-status received: status=${payload.status} isElectronSource=${isElectronSource} videoWidth=${payload.videoWidth} videoHeight=${payload.videoHeight}`);
+        setVideoStatus(payload.status);
+        if (payload.status === "streaming") {
           setVideoError(null);
+          if (!isElectronSource && payload.videoWidth && payload.videoHeight) {
+            // Store dims in a ref so the video-frame handler can access them from
+            // its stale closure when it needs to re-configure the decoder.
+            videoStreamDimsRef.current = { width: payload.videoWidth!, height: payload.videoHeight! };
+            setVideoSettings(prev => ({
+              ...prev,
+              videoWidth: payload.videoWidth!,
+              videoHeight: payload.videoHeight!,
+              framerate: payload.framerate ?? prev.framerate
+            }));
+            // Decoder will be fully configured once the first keyframe arrives with its
+            // AVCC description. Calling initVideoDecoder here without description creates
+            // the decoder object early so it's ready to receive that first frame.
+            initVideoDecoder(payload.videoWidth!, payload.videoHeight!);
+          }
+        } else {
+          if (!isElectronSource && videoDecoderRef.current) {
+            try { videoDecoderRef.current.close(); } catch (_) {}
+            videoDecoderRef.current = null;
+          }
+        }
+      });
+      socket.on("video-settings-updated", (settings: { device: string; videoWidth: number; videoHeight: number; framerate: string }) => {
+        setVideoSettings(prev => ({ ...prev, ...settings }));
+        // If this client is the Electron source and currently streaming, restart capture
+        // with the new settings. Use the ref so we get the latest values without a stale closure.
+        if (isElectronSource && videoStatusRef.current === "streaming") {
+          // Merge into the ref immediately so startVideoCapture picks them up
+          videoSettingsRef.current = { ...videoSettingsRef.current, ...settings };
+          startVideoCapture();
+        }
+      });
+      socket.on("video-start-requested", () => {
+        if (isElectronSource) startVideoCapture();
+      });
+      socket.on("video-stop-requested", () => {
+        if (isElectronSource) stopVideoCapture();
+      });
+      let clientFrameCount = 0;
+      socket.on("video-frame", (chunk: { data: ArrayBuffer; type: string; timestamp: number; description?: ArrayBuffer }) => {
+        if (isElectronSource) return;
+        clientFrameCount++;
+        const hasDecoder = !!videoDecoderRef.current;
+        const decoderState = videoDecoderRef.current?.state ?? "none";
+        if (chunk.type === "key" || clientFrameCount <= 5) {
+          console.log(`[VIDEO] video-frame received #${clientFrameCount}: type=${chunk.type} dataBytes=${chunk.data?.byteLength ?? "?"} hasDecoder=${hasDecoder} decoderState=${decoderState} hasDescription=${!!chunk.description}`);
+        }
+        // Keyframes carry the AVCC description (SPS/PPS). Re-configure the decoder with
+        // it so AVCC-formatted frames can be decoded. This handles both initial setup and
+        // any future encoder reconfiguration.
+        if (chunk.type === "key" && chunk.description) {
+          const { width, height } = videoStreamDimsRef.current;
+          initVideoDecoder(width, height, chunk.description);
+        }
+        if (!videoDecoderRef.current) return;
+        try {
+          videoDecoderRef.current.decode(new EncodedVideoChunk({
+            type: chunk.type as "key" | "delta",
+            data: chunk.data,
+            timestamp: chunk.timestamp
+          }));
+        } catch (e) {
+          console.error(`[VIDEO] decode() threw on frame #${clientFrameCount} type=${chunk.type}:`, e);
         }
       });
       socket.on("audio-status", (status: "playing" | "stopped") => {
@@ -467,9 +545,6 @@ export default function App() {
       });
       socket.on("audio-devices-list", (devices: { inputs: { name: string, altName: string }[], outputs: { name: string, altName: string }[] }) => {
         setAudioDevices(devices);
-      });
-      socket.on("video-error", (msg: string) => {
-        setVideoError(msg);
       });
       socket.on("radios-list", (list: any) => {
         const unique = Array.from(new Map(list.map((r: any) => [r.id, r])).values()) as any[];
@@ -523,6 +598,7 @@ export default function App() {
       socket.emit("get-settings");
       socket.emit("get-radios");
       socket.emit("get-video-devices");
+      if (isElectronSource) enumerateVideoDevices();
     }
   }, [socket]);
 
@@ -595,6 +671,38 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("backend-url", backendUrl);
   }, [backendUrl]);
+
+  // Auto-start video capture on the Electron source if settings were previously saved
+  useEffect(() => {
+    if (
+      isElectronSource &&
+      settingsLoaded &&
+      videoAutoStart &&
+      videoSettings.device &&
+      videoSettings.framerate &&
+      videoSettings.videoWidth > 0 &&
+      videoSettings.videoHeight > 0
+    ) {
+      startVideoCapture();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsLoaded]);
+
+  // Wire the getUserMedia stream to the <video> element once it is in the DOM.
+  // The element only renders when videoStatus === "streaming", so we can't set
+  // srcObject during startVideoCapture() — the ref is null at that point.
+  useEffect(() => {
+    if (isElectronSource && videoStatus === "streaming" && videoPreviewRef.current && videoStreamRef.current) {
+      videoPreviewRef.current.srcObject = videoStreamRef.current;
+      videoPreviewRef.current.play().catch(() => {});
+    }
+  }, [videoStatus, isElectronSource]);
+
+  // Keep refs in sync so socket handlers (registered once at mount) always see current values.
+  const videoStatusRef = useRef(videoStatus);
+  useEffect(() => { videoStatusRef.current = videoStatus; }, [videoStatus]);
+  useEffect(() => { videoSettingsRef.current = videoSettings; }, [videoSettings]);
+  useEffect(() => { videoDevicesRef.current = videoDevices; }, [videoDevices]);
 
   useEffect(() => {
     localStorage.setItem("is-compact", isCompact.toString());
@@ -1183,6 +1291,182 @@ export default function App() {
     setAudioWasRestarted(false);
   };
 
+  // ── Video pipeline ─────────────────────────────────────────────────────────
+
+  const enumerateVideoDevices = async () => {
+    if (!isElectronSource) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices
+        .filter(d => d.kind === "videoinput")
+        .map(d => ({ id: d.deviceId, label: d.label || d.deviceId }));
+      setVideoDevices(videoInputs);
+      socket?.emit("video-devices-update", videoInputs);
+    } catch (e) {
+      console.error("[VIDEO] enumerateDevices failed:", e);
+    }
+  };
+
+  const initVideoDecoder = (width: number, height: number, description?: ArrayBuffer) => {
+    console.log(`[VIDEO] initVideoDecoder called: ${width}x${height} hasDescription=${!!description}`);
+    if (videoDecoderRef.current) {
+      try { videoDecoderRef.current.close(); } catch (_) {}
+    }
+    let frameCount = 0;
+    const decoder = new VideoDecoder({
+      output: (frame: VideoFrame) => {
+        frameCount++;
+        const canvas = videoCanvasRef.current;
+        console.log(`[VIDEO] Decoder output frame #${frameCount}: canvas=${canvas ? `${canvas.width}x${canvas.height} (offsetW=${canvas.offsetWidth} offsetH=${canvas.offsetHeight})` : "NULL"}`);
+        if (canvas) {
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(frame, 0, 0, canvas.width, canvas.height);
+        }
+        frame.close();
+      },
+      error: (e: DOMException) => console.error("[VIDEO] Decoder error:", e)
+    });
+    const config: VideoDecoderConfig = { codec: "avc1.42001F", codedWidth: width, codedHeight: height };
+    if (description) config.description = description;
+    decoder.configure(config);
+    console.log(`[VIDEO] Decoder configured, state=${decoder.state} hasDescription=${!!description}`);
+    videoDecoderRef.current = decoder;
+  };
+
+  const stopVideoCapture = () => {
+    videoFrameReaderAbortRef.current?.abort();
+    videoFrameReaderAbortRef.current = null;
+    if (videoEncoderRef.current) {
+      try { videoEncoderRef.current.close(); } catch (_) {}
+      videoEncoderRef.current = null;
+    }
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach(t => t.stop());
+      videoStreamRef.current = null;
+    }
+    if (videoPreviewRef.current) {
+      videoPreviewRef.current.srcObject = null;
+    }
+    videoFrameCountRef.current = 0;
+    socket?.emit("video-source-stop");
+  };
+
+  const startVideoCapture = async () => {
+    if (!isElectronSource) return;
+    stopVideoCapture();
+
+    // Read from refs so this function always uses current values even when called
+    // from a stale socket handler closure registered at mount time.
+    const currentSettings = videoSettingsRef.current;
+    const fps = parseInt(currentSettings.framerate) || 15;
+    const width = currentSettings.videoWidth || 640;
+    const height = currentSettings.videoHeight || 480;
+
+    // Validate the stored device value against the enumerated device list.
+    // settings.device stores a deviceId (opaque browser UUID). If the stored value
+    // doesn't match any known deviceId — e.g. a stale label from the old FFmpeg
+    // implementation — fall back to the default camera rather than throwing
+    // OverconstrainedError.
+    const knownIds = videoDevicesRef.current.map(d => d.id);
+    const validDeviceId = currentSettings.device && knownIds.includes(currentSettings.device)
+      ? currentSettings.device
+      : undefined;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: validDeviceId ? { exact: validDeviceId } : undefined,
+          width: { ideal: width },
+          height: { ideal: height },
+          frameRate: { ideal: fps }
+        }
+      });
+
+      videoStreamRef.current = stream;
+      // srcObject is wired in a useEffect that watches videoStatus so the
+      // <video> element is guaranteed to be in the DOM when it fires.
+
+      const track = stream.getVideoTracks()[0];
+      const keyframeInterval = Math.max(fps * 2, 30);
+
+      // The encoder outputs AVCC-formatted H.264. The SPS/PPS (avcC box) needed by the
+      // decoder arrives once in metadata.decoderConfig.description after configure().
+      // We attach it to every keyframe so any client — including late joiners receiving
+      // the buffered keyframe — can configure their decoder correctly.
+      let avcDescription: ArrayBuffer | null = null;
+
+      const encoder = new VideoEncoder({
+        output: (chunk: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) => {
+          if (metadata?.decoderConfig?.description) {
+            avcDescription = metadata.decoderConfig.description as ArrayBuffer;
+          }
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data);
+          const payload: { data: ArrayBuffer; type: string; timestamp: number; description?: ArrayBuffer } = {
+            data: data.buffer,
+            type: chunk.type,
+            timestamp: chunk.timestamp,
+          };
+          if (chunk.type === "key" && avcDescription) {
+            payload.description = avcDescription;
+          }
+          socket?.emit("video-frame", payload);
+        },
+        error: (e: DOMException) => {
+          console.error("[VIDEO] Encoder error:", e);
+          setVideoError("Video encoder error: " + e.message);
+        }
+      });
+
+      encoder.configure({
+        codec: "avc1.42001F",
+        width,
+        height,
+        bitrate: Math.min(width * height * fps * 0.07, 2_000_000),
+        framerate: fps
+      });
+
+      videoEncoderRef.current = encoder;
+
+      const abortController = new AbortController();
+      videoFrameReaderAbortRef.current = abortController;
+
+      const processor = new (window as any).MediaStreamTrackProcessor({ track });
+      const reader = processor.readable.getReader();
+
+      socket?.emit("video-source-start", {
+        device: currentSettings.device,
+        videoWidth: width,
+        videoHeight: height,
+        framerate: currentSettings.framerate
+      });
+
+      (async () => {
+        try {
+          while (!abortController.signal.aborted) {
+            const { value: frame, done } = await reader.read();
+            if (done || abortController.signal.aborted) break;
+            const isKey = videoFrameCountRef.current % keyframeInterval === 0;
+            encoder.encode(frame, { keyFrame: isKey });
+            frame.close();
+            videoFrameCountRef.current++;
+          }
+        } catch (e) {
+          if (!abortController.signal.aborted) {
+            console.error("[VIDEO] Frame read error:", e);
+          }
+        } finally {
+          reader.cancel();
+        }
+      })();
+    } catch (e: any) {
+      console.error("[VIDEO] getUserMedia failed:", e);
+      setVideoError("Could not access camera: " + (e.message || e));
+    }
+  };
+
   const handleJoinAudio = async () => {
     // If neither local device has ever been explicitly configured, redirect to audio settings
     const explicitInput = localStorage.getItem("local-audio-input");
@@ -1191,6 +1475,7 @@ export default function App() {
       setIsVideoSettingsOpen(true);
       socket?.emit("get-video-devices");
       socket?.emit("get-audio-devices");
+      if (isElectronSource) enumerateVideoDevices();
       return;
     }
     await initLocalAudioPipeline();
@@ -1727,14 +2012,14 @@ export default function App() {
                   )}
                   <div className={cn(
                     "w-2 h-2 rounded-full",
-                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" :
-                    videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
+                    videoStatus === "streaming" ? "bg-emerald-500 animate-pulse" : "bg-[#2a2b2e]"
                   )} />
                   <button
                     onClick={() => {
                       setIsVideoSettingsOpen(true);
                       socket?.emit("get-video-devices");
                       socket?.emit("get-audio-devices");
+                      if (isElectronSource) enumerateVideoDevices();
                     }}
                     className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
                     title="Video & Audio Settings"
@@ -1752,32 +2037,28 @@ export default function App() {
               </div>
               {!isVideoCollapsed && (
                 <div className="relative aspect-video bg-black flex items-center justify-center">
-                  {videoStatus === "playing" ? (
-                    <img 
-                      key={videoSessionId}
-                      src={`${backendUrl}/api/video-stream?sessionId=${videoSessionId}`} 
-                      alt="Video Stream"
-                      className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
+                  <video ref={videoPreviewRef} autoPlay muted playsInline
+                    className={cn("w-full h-full object-contain", (!isElectronSource || videoStatus !== "streaming") && "hidden")} />
+                  <canvas ref={videoCanvasRef}
+                    className={cn("w-full h-full object-contain", (isElectronSource || videoStatus !== "streaming") && "hidden")} />
+                  {videoStatus !== "streaming" && (
                     <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
                       <Monitor size={32} strokeWidth={1} />
-                      <span className="text-[0.5rem] uppercase font-bold tracking-widest">
-                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
-                      </span>
+                      <span className="text-[0.5rem] uppercase font-bold tracking-widest">Stream Stopped</span>
                     </div>
                   )}
                   {videoError && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-4 text-center z-10">
                       <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
                       <p className="text-xs text-red-400 font-medium">{videoError}</p>
-                      <button 
-                        onClick={() => socket?.emit("control-video", "play")}
-                        className="mt-3 px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-[10px] transition-colors"
-                      >
-                        Retry Connection
-                      </button>
+                      {isElectronSource && (
+                        <button
+                          onClick={() => { setVideoError(null); socket?.emit("request-video-start"); }}
+                          className="mt-3 px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-[10px] transition-colors"
+                        >
+                          Retry
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2462,13 +2743,12 @@ export default function App() {
                     )}
                     <div className={cn(
                       "w-2 h-2 rounded-full",
-                      videoStatus === "playing" ? "bg-emerald-500 animate-pulse" :
-                      videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
+                      videoStatus === "streaming" ? "bg-emerald-500 animate-pulse" : "bg-[#2a2b2e]"
                     )} />
                     <button
                       onClick={() => {
                         setIsVideoSettingsOpen(true);
-                        socket?.emit("get-video-devices");
+                        if (isElectronSource) enumerateVideoDevices();
                         socket?.emit("get-audio-devices");
                       }}
                       className="p-1 hover:bg-[#2a2b2e] rounded text-[#8e9299] transition-all"
@@ -2476,7 +2756,7 @@ export default function App() {
                     >
                       <Settings size={12} />
                     </button>
-                    <button 
+                    <button
                       onClick={() => setIsVideoCollapsed(!isVideoCollapsed)}
                       className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
                     >
@@ -2486,32 +2766,28 @@ export default function App() {
                 </div>
                 {!isVideoCollapsed && (
                   <div className="relative aspect-video bg-black flex items-center justify-center">
-                    {videoStatus === "playing" ? (
-                      <img 
-                        key={videoSessionId}
-                        src={`${backendUrl}/api/video-stream?sessionId=${videoSessionId}`} 
-                        alt="Video Stream"
-                        className="w-full h-full object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
+                    <video ref={videoPreviewRef} autoPlay muted playsInline
+                      className={cn("w-full h-full object-contain", (!isElectronSource || videoStatus !== "streaming") && "hidden")} />
+                    <canvas ref={videoCanvasRef}
+                      className={cn("w-full h-full object-contain", (isElectronSource || videoStatus !== "streaming") && "hidden")} />
+                    {videoStatus !== "streaming" && (
                       <div className="flex flex-col items-center gap-2 text-[#3a3b3e]">
                         <Monitor size={24} strokeWidth={1} />
-                        <span className="text-[0.5rem] uppercase font-bold tracking-widest">
-                          {videoStatus === "paused" ? "Paused" : "Stopped"}
-                        </span>
+                        <span className="text-[0.5rem] uppercase font-bold tracking-widest">Stopped</span>
                       </div>
                     )}
                     {videoError && (
                       <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-4 text-center z-10">
                         <AlertCircle className="w-6 h-6 text-red-500 mb-1" />
                         <p className="text-[10px] text-red-400 font-medium">{videoError}</p>
-                        <button 
-                          onClick={() => socket?.emit("control-video", "play")}
-                          className="mt-2 px-2 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-[9px] transition-colors"
-                        >
-                          Retry
-                        </button>
+                        {isElectronSource && (
+                          <button
+                            onClick={() => { setVideoError(null); socket?.emit("request-video-start"); }}
+                            className="mt-2 px-2 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-[9px] transition-colors"
+                          >
+                            Retry
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3292,14 +3568,14 @@ export default function App() {
                   )}
                   <div className={cn(
                     "w-2 h-2 rounded-full",
-                    videoStatus === "playing" ? "bg-emerald-500 animate-pulse" :
-                    videoStatus === "paused" ? "bg-amber-500" : "bg-[#2a2b2e]"
+                    videoStatus === "streaming" ? "bg-emerald-500 animate-pulse" : "bg-[#2a2b2e]"
                   )} />
                   <button
                     onClick={() => {
                       setIsVideoSettingsOpen(true);
                       socket?.emit("get-video-devices");
                       socket?.emit("get-audio-devices");
+                      if (isElectronSource) enumerateVideoDevices();
                     }}
                     className="p-1.5 hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all"
                     title="Video & Audio Settings"
@@ -3317,32 +3593,28 @@ export default function App() {
               </div>
               {!isVideoCollapsed && (
                 <div className="relative aspect-video bg-black flex items-center justify-center">
-                  {videoStatus === "playing" ? (
-                    <img 
-                      key={videoSessionId}
-                      src={`${backendUrl}/api/video-stream?sessionId=${videoSessionId}`} 
-                      alt="Video Stream"
-                      className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
+                  <video ref={videoPreviewRef} autoPlay muted playsInline
+                    className={cn("w-full h-full object-contain", (!isElectronSource || videoStatus !== "streaming") && "hidden")} />
+                  <canvas ref={videoCanvasRef}
+                    className={cn("w-full h-full object-contain", (isElectronSource || videoStatus !== "streaming") && "hidden")} />
+                  {videoStatus !== "streaming" && (
                     <div className="flex flex-col items-center gap-4 text-[#3a3b3e]">
                       <Monitor size={48} strokeWidth={1} />
-                      <span className="text-[0.625rem] uppercase font-bold tracking-widest">
-                        {videoStatus === "paused" ? "Stream Paused" : "Stream Stopped"}
-                      </span>
+                      <span className="text-[0.625rem] uppercase font-bold tracking-widest">Stream Stopped</span>
                     </div>
                   )}
                   {videoError && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-4 text-center z-10">
                       <AlertCircle className="w-10 h-10 text-red-500 mb-3" />
                       <p className="text-sm text-red-400 font-medium">{videoError}</p>
-                      <button 
-                        onClick={() => socket?.emit("control-video", "play")}
-                        className="mt-4 px-4 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-xs transition-colors"
-                      >
-                        Retry Connection
-                      </button>
+                      {isElectronSource && (
+                        <button
+                          onClick={() => { setVideoError(null); socket?.emit("request-video-start"); }}
+                          className="mt-4 px-4 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-xs transition-colors"
+                        >
+                          Retry
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -3932,10 +4204,11 @@ export default function App() {
 
             <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
               <div className="space-y-4">
-                <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Video & Audio Settings</h3>
+                <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Video Settings</h3>
+
                 <div className="space-y-2">
                   <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Video Device</label>
-                  <select 
+                  <select
                     value={videoSettings.device}
                     onChange={(e) => {
                       const newSettings = { ...videoSettings, device: e.target.value };
@@ -3945,66 +4218,86 @@ export default function App() {
                     className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all"
                   >
                     <option value="">Select Device</option>
-                    {videoDevices.map(d => <option key={d} value={d}>{d}</option>)}
+                    {videoDevices.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                  </select>
+                  {!isElectronSource && videoDevices.length === 0 && (
+                    <p className="text-[0.625rem] text-[#8e9299]">Device list is populated by the host Electron app.</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Resolution (Width × Height)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={videoSettings.videoWidth}
+                      onChange={(e) => setVideoSettings(prev => ({ ...prev, videoWidth: parseInt(e.target.value) || 640 }))}
+                      onBlur={(e) => {
+                        const v = parseInt(e.target.value);
+                        const clamped = (v > 0 && v <= 7680) ? v : 640;
+                        const newSettings = { ...videoSettings, videoWidth: clamped };
+                        setVideoSettings(newSettings);
+                        socket?.emit("update-video-settings", newSettings);
+                      }}
+                      className="w-24 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-3 py-3 text-sm text-center focus:outline-none focus:border-emerald-500 transition-all"
+                    />
+                    <span className="text-[#8e9299] font-bold text-sm">×</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={videoSettings.videoHeight}
+                      onChange={(e) => setVideoSettings(prev => ({ ...prev, videoHeight: parseInt(e.target.value) || 480 }))}
+                      onBlur={(e) => {
+                        const v = parseInt(e.target.value);
+                        const clamped = (v > 0 && v <= 4320) ? v : 480;
+                        const newSettings = { ...videoSettings, videoHeight: clamped };
+                        setVideoSettings(newSettings);
+                        socket?.emit("update-video-settings", newSettings);
+                      }}
+                      className="w-24 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-3 py-3 text-sm text-center focus:outline-none focus:border-emerald-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Framerate</label>
+                  <select
+                    value={videoSettings.framerate}
+                    onChange={(e) => {
+                      const newSettings = { ...videoSettings, framerate: e.target.value };
+                      setVideoSettings(newSettings);
+                      socket?.emit("update-video-settings", newSettings);
+                    }}
+                    className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all"
+                  >
+                    <option value="">Select FPS</option>
+                    <option value="5">5 fps</option>
+                    <option value="10">10 fps</option>
+                    <option value="15">15 fps</option>
+                    <option value="24">24 fps</option>
+                    <option value="30">30 fps</option>
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Resolution</label>
-                    <select 
-                      value={videoSettings.resolution}
-                      onChange={(e) => {
-                        const newSettings = { ...videoSettings, resolution: e.target.value };
-                        setVideoSettings(newSettings);
-                        socket?.emit("update-video-settings", newSettings);
-                      }}
-                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all"
-                    >
-                      <option value="">Select Resolution</option>
-                      <option value="320x240">320x240</option>
-                      <option value="640x480">640x480</option>
-                      <option value="800x600">800x600</option>
-                      <option value="1280x720">1280x720</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Framerate</label>
-                    <select 
-                      value={videoSettings.framerate}
-                      onChange={(e) => {
-                        const newSettings = { ...videoSettings, framerate: e.target.value };
-                        setVideoSettings(newSettings);
-                        socket?.emit("update-video-settings", newSettings);
-                      }}
-                      className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all"
-                    >
-                      <option value="">Select FPS</option>
-                      <option value="5">5 fps</option>
-                      <option value="10">10 fps</option>
-                      <option value="15">15 fps</option>
-                      <option value="24">24 fps</option>
-                      <option value="30">30 fps</option>
-                    </select>
-                  </div>
-                </div>
-
                 <div className="flex gap-3 pt-2">
-                  <button 
-                    onClick={() => socket?.emit("control-video", "play")}
-                    disabled={!videoSettings.device || videoStatus === "playing"}
+                  <button
+                    onClick={() => socket?.emit("request-video-start")}
+                    disabled={!videoSettings.device || !videoSettings.framerate || videoStatus === "streaming"}
                     className={cn(
                       "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",
-                      videoStatus === "playing" 
-                        ? "bg-emerald-500/20 text-emerald-500 cursor-not-allowed" 
-                        : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
+                      videoStatus === "streaming"
+                        ? "bg-emerald-500/20 text-emerald-500 cursor-not-allowed"
+                        : (!videoSettings.device || !videoSettings.framerate)
+                          ? "bg-emerald-500/20 text-emerald-500/50 cursor-not-allowed"
+                          : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
                     )}
                   >
                     <Power size={16} />
-                    Play Video
+                    Start Video
                   </button>
-                  <button 
-                    onClick={() => socket?.emit("control-video", "stop")}
+                  <button
+                    onClick={() => socket?.emit("request-video-stop")}
                     disabled={videoStatus === "stopped"}
                     className={cn(
                       "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-xs transition-all",

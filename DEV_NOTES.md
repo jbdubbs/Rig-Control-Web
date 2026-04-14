@@ -26,6 +26,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - [x] Phone UI: collapsible VFO box with inline tuning arrows, step chips, and consistent left/right arrow language.
 - [x] Phone UI: consolidate Quick Controls, RF Power, and More Controls into single collapsed box; PTT standalone.
 - [x] Fix white browser background on all views via global CSS body color.
+- [x] Replace FFmpeg video streaming with browser-native WebCodecs H.264 pipeline.
 - [ ] Verify `rigctld` binary availability in the production environment.
 
 ## Decisions Log
@@ -52,12 +53,14 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 | Opus Audio Codec | Implemented Opus encoding/decoding for both inbound and outbound audio using FFmpeg on the server and WebCodecs on the client, significantly reducing bandwidth while maintaining quality. | 2026-04-05 |
 | Native Audio Subsystem | Replaced FFmpeg/pacat subprocesses with `naudiodon` and `libopus-node` for robust, cross-platform, low-latency audio I/O and encoding directly within the Node.js process. | 2026-04-09 |
 | Audio Build Pipeline | Implemented bundler bypass for native modules, configured ASAR unpacking, and forked `naudiodon` to fix GCC 15 compatibility and remove outdated dependencies. | 2026-04-10 |
-
 | Persistent `clientId` for Audio | Used a `localStorage` UUID passed via `socket.handshake.auth` instead of the transient `socket.id` to track the active mic client, surviving reconnects without losing mic ownership. | 2026-04-11 |
 | `getUserMedia` Device Fallback | Added try/catch around `getUserMedia` with `{ exact: deviceId }` to fall back to the default device when a stored device ID is stale or unavailable, preventing silent capture failure. | 2026-04-11 |
 | Phone UI — VFO Box Redesign | Replaced the phone VFO controls with a collapsible box: collapsed state shows frequency/mode summary with `[◁ step]` / `[step ▷]` inline tuning buttons and a vertical chevron for expand/collapse, eliminating ambiguity between the two controls. Expanded state uses step chips and left/right arrows for consistency. | 2026-04-11 |
 | Phone UI — Controls Consolidation | Moved PTT to a standalone always-visible button above a single collapsed-by-default Quick Controls box containing Tune/Att/Preamp, NB/AGC/DNR/ANF toggles, and all RF/level sliders. Removed the separate RF Power box and the MORE CONTROLS progressive disclosure toggle. | 2026-04-11 |
 | Global Background Color | Set `html, body { background-color: #0a0a0a }` in `index.css` so the browser chrome behind all views (phone, compact, desktop) matches the app background instead of defaulting to white. | 2026-04-11 |
+| WebCodecs Video Pipeline | Replaced FFmpeg MJPEG streaming with a browser-native WebCodecs H.264 pipeline. The Electron app captures via `getUserMedia` + `MediaStreamTrackProcessor`, encodes with `VideoEncoder` (avc1.42001F / OpenH264), and relays encoded chunks through the Socket.io server to remote browser clients which decode with `VideoDecoder` and render to a `<canvas>`. Removes all FFmpeg dependency from the video path. | 2026-04-14 |
+| AVCC Description Propagation | WebCodecs H.264 encoder outputs AVCC-formatted frames. SPS/PPS (the `avcC` box) is delivered once in `EncodedVideoChunkMetadata.decoderConfig.description` after `configure()`. It is attached to every keyframe emission so the server's buffered keyframe always carries it, and any late-joining remote client can correctly configure its `VideoDecoder` on arrival. | 2026-04-14 |
+| Video Device ID vs. Label | Separated `deviceId` (opaque browser UUID used by `getUserMedia`) from human-readable `label` in the device list. `enumerateVideoDevices()` now emits `{ id, label }` pairs; settings store the `deviceId`; the dropdown displays the label. Prevents `OverconstrainedError` from passing a label as a `deviceId` constraint. | 2026-04-14 |
 
 ## Known Issues / Tech Debt
 - `rigctld` path is assumed to be in the system PATH.
@@ -73,7 +76,7 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 - **Log Buffering**: The server keeps the last 100 lines of `rigctld` output in memory to provide context to newly connected clients.
 - **Split VFO State**: Managed as a boolean in the rig status, triggering specific UI color overrides.
 - **Multi-Window Awareness**: The backend now avoids resetting the rig connection if a new client connects to the same host/port, ensuring stability across multiple tabs.
-- **Video Session Management**: Uses a `sessionId` query parameter to enforce a "last-one-wins" policy per window, preventing resource exhaustion from multiple concurrent streams.
+- **WebCodecs Video Pipeline**: The Electron app is always the video source. It captures via `getUserMedia` + `MediaStreamTrackProcessor`, encodes H.264 (AVCC, avc1.42001F) with `VideoEncoder`, and emits chunks to the server. The server buffers the latest keyframe (with its AVCC description) and relays all chunks to remote clients, which decode with `VideoDecoder` and render to a `<canvas>`. Any client can configure video settings and request start/stop; the server broadcasts changes to the Electron source.
 - **Client Audio Routing**: Uses `getUserMedia` with specific `deviceId` for input and `setSinkId` for output, allowing full control over local audio hardware.
 - **Native Audio Backend**: Uses `naudiodon` for direct access to host audio devices (ALSA/Pulse/CoreAudio/WASAPI) without spawning external processes, improving reliability and latency.
 - **Multi-Client Mic Policy**: Server tracks `activeAudioClientId` based on client interaction events, enforcing a single-source audio stream to the backend.
@@ -98,4 +101,6 @@ A full-stack web application (Express + Vite + Socket.io) designed to control am
 
 > [2026-04-11 00:00 UTC] Phone UI iteration: redesigned VFO box with collapsible header showing frequency/mode summary and inline `[◁ step]` / `[step ▷]` tuning buttons. Expanded view uses left/right arrows (matching collapsed) and horizontal step chips. Slimmed the phone header to show "RIGCONTROL WEB" with a status dot. Consolidated Quick Controls, RF Power, and More Controls into a single collapsed-by-default box. PTT moved outside as an always-visible standalone button. Fixed white browser background globally via `html, body { background-color: #0a0a0a }` in `index.css`.
 
-> **Next Step**: Implement the test-driven development framework and write unit tests for the new modules and components.
+> [2026-04-14 00:00 UTC] Replaced FFmpeg-based MJPEG video streaming with a fully browser-native WebCodecs H.264 pipeline. The Electron app captures via `getUserMedia` + `MediaStreamTrackProcessor` and encodes with `VideoEncoder` (avc1.42001F / OpenH264 Baseline Profile). Encoded AVCC chunks relay through Socket.io to remote clients which decode with `VideoDecoder` and render to `<canvas>`. AVCC SPS/PPS description is extracted from `EncodedVideoChunkMetadata` and attached to every keyframe so late-joining clients can configure their decoder on arrival. Video device list now carries `{ id, label }` pairs to correctly separate browser `deviceId` from human-readable label, preventing `OverconstrainedError`. FFmpeg is no longer a dependency.
+
+> **Next Step**: Implement debounce on resolution text inputs to prevent mid-edit pipeline restarts.
