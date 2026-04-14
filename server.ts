@@ -504,6 +504,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             deviceId: isNaN(deviceId) ? -1 : deviceId, // -1 is default
             closeOnError: true,
             framesPerBuffer: 960, // 20ms at 48kHz — WASAPI may deliver larger chunks; pcmBuffer handles any size
+            maxQueue: 100 // Must be set explicitly — naudiodon defaults to 2, which causes WASAPI back-pressure starvation
           }
         });
 
