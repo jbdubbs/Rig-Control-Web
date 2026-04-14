@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions UI
 
 # Required for softprops/action-gh-release to create a release and upload assets
 permissions:
@@ -59,8 +60,9 @@ jobs:
           name: rigcontrol-web-${{ matrix.platform }}
           path: build/${{ matrix.artifact }}
 
-      # Attach the installer to the GitHub Release created by the tag push
+      # Attach the installer to the GitHub Release — only runs on tag pushes, not manual dispatches
       - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: build/${{ matrix.artifact }}

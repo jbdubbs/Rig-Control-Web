@@ -113,6 +113,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const OUTBOUND_PRE_FILL = 3;  // silence frames written at startup to cover first timer tick gap
   let outboundTimer: ReturnType<typeof setInterval> | null = null;
 
+  // Server-side outbound jitter buffer (browser → radio).
+  // Decoded PCM frames are queued here; the silence/write timer drains them at a
+  // steady 20ms cadence so WASAPI never sees a gap caused by network jitter.
+  const JB_MIN_FRAMES = 3;  // 60ms pre-roll before starting playback
+  const JB_MAX_FRAMES = 12; // 240ms max — drop oldest frames if exceeded
+  let outboundJitterBuffer: Buffer[] = [];
+  let outboundJitterReady = false;
+
   const initAudioEngine = async () => {
     try {
       // Use a Function constructor to hide the dynamic import from the bundler (esbuild/vite).
@@ -443,6 +451,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const stopAudio = async () => {
     console.log("[AUDIO] Stopping audio streaming...");
     if (outboundTimer) { clearInterval(outboundTimer); outboundTimer = null; }
+    outboundJitterBuffer = [];
+    outboundJitterReady = false;
     if (audioInputProcess) {
       try { await audioInputProcess.quit(); } catch (e) {}
       audioInputProcess = null;
@@ -560,12 +570,23 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           audioOutputProcess.write(OUTBOUND_SILENCE);
         }
 
-        // Silence-maintenance timer: keeps the PortAudio stream alive when PTT is off.
-        // Real audio is written directly from the audio-outbound socket handler, bypassing
-        // this timer entirely — avoiding setInterval timing imprecision on the audio path.
+        // Audio pump: fires every 20ms and is the sole writer to naudiodon.
+        // When PTT is active and the jitter buffer has enough pre-roll, drains one
+        // decoded PCM frame per tick. Otherwise writes silence to keep the PortAudio
+        // stream alive. This prevents WASAPI underflows caused by network jitter on
+        // the browser→radio path.
         outboundTimer = setInterval(() => {
-          if (!audioOutputProcess || lastStatus.ptt) return;
-          audioOutputProcess.write(OUTBOUND_SILENCE);
+          if (!audioOutputProcess) return;
+          if (lastStatus.ptt && outboundJitterReady && outboundJitterBuffer.length > 0) {
+            const frame = outboundJitterBuffer.shift()!;
+            audioOutputProcess.write(frame);
+            // If the buffer empties, reset so we re-accumulate pre-roll before resuming
+            if (outboundJitterBuffer.length === 0) {
+              outboundJitterReady = false;
+            }
+          } else {
+            audioOutputProcess.write(OUTBOUND_SILENCE);
+          }
         }, 20);
 
         console.log(`[AUDIO-OUT] Started playback to device ${audioSettings.outputDevice}`);
@@ -1319,7 +1340,16 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           console.log(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
           outboundDiagCount++;
         }
-        audioOutputProcess.write(pcmData); // write directly — no timer intermediary
+        // Push into the jitter buffer; the timer drains it at a steady 20ms cadence.
+        outboundJitterBuffer.push(Buffer.from(pcmData));
+        // Overflow protection: if the buffer grows beyond the max, drop the oldest frames.
+        while (outboundJitterBuffer.length > JB_MAX_FRAMES) {
+          outboundJitterBuffer.shift();
+        }
+        // Begin draining once we have enough pre-roll to smooth over network jitter.
+        if (!outboundJitterReady && outboundJitterBuffer.length >= JB_MIN_FRAMES) {
+          outboundJitterReady = true;
+        }
       } catch (err) {
         console.error("[AUDIO-OUT] Opus decode or write error:", err);
       }
