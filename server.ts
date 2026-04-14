@@ -509,10 +509,29 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         });
 
         // PCM Ring Buffer for chunking 960 samples (1920 bytes for 16-bit mono)
-        const FRAME_SIZE_BYTES = 960 * 2; 
+        const FRAME_SIZE_BYTES = 960 * 2;
         let pcmBuffer = Buffer.alloc(0);
 
+        // Inbound diagnostic state
+        let inDiagCount = 0;
+        let inLastDataTime: number | null = null;
+        let inPacketsEmitted = 0;
+
         audioInputProcess.on('data', (data: Buffer) => {
+          const now = Date.now();
+          const intervalMs = inLastDataTime !== null ? now - inLastDataTime : null;
+          inLastDataTime = now;
+          inDiagCount++;
+
+          // Log every event for the first 10, then every 50th
+          if (inDiagCount <= 10 || inDiagCount % 50 === 0) {
+            console.log(
+              `[AUDIO-IN-DIAG] event #${inDiagCount} bytes=${data.length} ` +
+              `samples=${data.length / 2} interval=${intervalMs !== null ? intervalMs + 'ms' : 'first'} ` +
+              `packetsEmitted=${inPacketsEmitted}`
+            );
+          }
+
           // Don't broadcast rig audio if someone is transmitting (PTT engaged)
           if (activeMicClientId && lastStatus.ptt) return;
 
@@ -524,7 +543,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
             try {
               const encodedPacket = opusEncoder.encode(frame);
-              // Broadcast to all clients
+              inPacketsEmitted++;
               io.emit("audio-inbound", encodedPacket);
             } catch (err) {
               console.error("[AUDIO] Opus encode error:", err);
