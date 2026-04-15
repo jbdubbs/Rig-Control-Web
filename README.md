@@ -19,7 +19,7 @@ A web-first Electron app for controlling your radio via a Hamlib rigctld network
   - **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel remotely. Example: FT-710 DVI out → USB HDMI capture card.
 - **Phone View**: Dedicated portrait-optimized layout for operating from a phone or tablet.
 - **Split VFO Support**: Full control over split operations with visual feedback.
-- **Works With All Hamlib-Compatible Software**: Configure your logging app to use "Hamlib NET rigctl" at `127.0.0.1:4532`.
+- **Works With All Hamlib-Compatible Software**: Configure your logging app or other Hamlib enabled application to use "Hamlib NET rigctl" at `127.0.0.1:4532`.
   - WSJT-X, WSJT-X Improved, FLDigi, VarAC, JS8Call, and more.
   - This means not having to split serial ports to use multiple apps.
 - **Remote Access**: Access your shack from anywhere over your own VPN by pointing a browser to your rig computer's IP on port 3000.
@@ -125,4 +125,4 @@ Open the **Settings** panel (gear icon) to configure:
 
 ## License
 
-MIT
+Apache-2.0. See [LICENSE.md](LICENSE.md) for the full license text and third-party dependency licenses.
