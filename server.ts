@@ -110,8 +110,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   // Outbound audio state
   const OUTBOUND_SILENCE = Buffer.alloc(960 * 2); // one silence frame (Int16 mono)
-  const OUTBOUND_PRE_FILL = 3;  // silence frames written at startup to cover first timer tick gap
+  const OUTBOUND_PRE_FILL = 3;  // silence frames written at startup to prime the hardware buffer
+  const OUTBOUND_JITTER_MAX = 8; // max jitter buffer depth (8 frames = 160ms); prevents unbounded growth
   let outboundTimer: ReturnType<typeof setInterval> | null = null;
+  let outboundJitterBuffer: Buffer[] = [];
 
   const initAudioEngine = async () => {
     try {
@@ -449,6 +451,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const stopAudio = async () => {
     console.log("[AUDIO] Stopping audio streaming...");
     if (outboundTimer) { clearInterval(outboundTimer); outboundTimer = null; }
+    outboundJitterBuffer = [];
     if (audioInputProcess) {
       try { await audioInputProcess.quit(); } catch (e) {}
       audioInputProcess = null;
@@ -555,8 +558,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             sampleRate: 48000,
             deviceId: isNaN(deviceId) ? -1 : deviceId,
             closeOnError: false, // Do not close on underflow — underflow is expected before first write
-            framesPerBuffer: 960, // 20ms at 48kHz
-            maxQueue: 20 // large queue absorbs bursty socket arrivals; real audio written directly
+            framesPerBuffer: 0, // Let PortAudio choose native buffer size for the host API
+            maxQueue: 20
           }
         });
 
@@ -571,12 +574,20 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           audioOutputProcess.write(OUTBOUND_SILENCE);
         }
 
-        // Silence-maintenance timer: keeps the PortAudio stream alive when PTT is off.
-        // Real audio is written directly from the audio-outbound socket handler, bypassing
-        // this timer entirely — avoiding setInterval timing imprecision on the audio path.
+        // Unified write timer: the sole writer to audioOutputProcess.
+        // Drains the jitter buffer when PTT is on and frames are available; writes silence
+        // otherwise. Centralising all writes here eliminates race conditions between the
+        // socket handler and a separate silence timer.
         outboundTimer = setInterval(() => {
-          if (!audioOutputProcess || lastStatus.ptt) return;
-          audioOutputProcess.write(OUTBOUND_SILENCE);
+          if (!audioOutputProcess) return;
+          let frame: Buffer;
+          if (lastStatus.ptt && outboundJitterBuffer.length > 0) {
+            frame = outboundJitterBuffer.shift()!;
+          } else {
+            outboundJitterBuffer = []; // discard stale frames when PTT is off
+            frame = OUTBOUND_SILENCE;
+          }
+          audioOutputProcess.write(frame);
         }, 20);
 
         console.log(`[AUDIO-OUT] Started playback to device ${audioSettings.outputDevice}`);
@@ -1322,7 +1333,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
       if (activeMicClientId !== clientId) return; // Only accept audio from the active mic
       if (!audioOutputProcess || !opusDecoder) return;
-      if (!lastStatus.ptt) return; // Drop when PTT is off; silence timer keeps stream alive
+      if (!lastStatus.ptt) return; // Drop when PTT is off; timer keeps stream alive with silence
 
       try {
         const pcmData = opusDecoder.decode(data);
@@ -1330,9 +1341,13 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           console.log(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
           outboundDiagCount++;
         }
-        audioOutputProcess.write(pcmData); // write directly — no timer intermediary
+        outboundJitterBuffer.push(pcmData);
+        // Cap to prevent unbounded growth if the write timer falls behind
+        while (outboundJitterBuffer.length > OUTBOUND_JITTER_MAX) {
+          outboundJitterBuffer.shift();
+        }
       } catch (err) {
-        console.error("[AUDIO-OUT] Opus decode or write error:", err);
+        console.error("[AUDIO-OUT] Opus decode error:", err);
       }
     });
 
