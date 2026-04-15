@@ -1,6 +1,6 @@
 # RigControl Web
 
-A modern, full-stack web application and native desktop client for controlling amateur radio equipment via Hamlib's `rigctld`. Features a real-time dashboard with frequency, mode, and meter displays, full bidirectional audio over Opus, H.264 video streaming via WebCodecs, and automatic `rigctld` process management.
+A web-first Electron app for controlling your radio via a Hamlib rigctld network which also includes bidirectional audio for making SSB contacts, and video support so you can see the front panel of your radio.  Audio via your radio's virtual USB Audio Device, Digirig or similar.  Video feeding your radio's video output back into your computer with a USB to HDMI adapter (or any old webcam pointed at it).
 
 ## Screenshots
 
@@ -13,42 +13,38 @@ A modern, full-stack web application and native desktop client for controlling a
 ## Features
 
 - **Real-time Dashboard**: Frequency, mode, and meter displays (S-Meter, SWR, ALC, Power, VDD) polled live from the rig.
-- **Bidirectional Audio**: Full transmit and receive audio over the network using the Opus codec. Works for remote SSB, AM, and FM contacts. Powered by native `naudiodon` I/O and `libopus-node`.
-  - Jitter buffer on the outbound path for smooth, glitch-free transmit audio on Windows and Linux.
-  - Multi-client support with last-interacted-wins mic policy.
-  - Audio device lists show the host API (MME, DirectSound, WASAPI, ALSA) and native sample rate so you can pick the right entry for your hardware.
-  - Incompatible WASAPI entries (device not at 48 kHz) are automatically disabled with a hint to fix the Windows sound settings.
-  - Audio device lists refresh automatically when you open the device selector, so newly connected USB devices always appear.
+- **Bidirectional Audio**: Full transmit and receive audio over the network using the Opus 1.5 codec. Works for remote SSB, AM, and FM contacts. Powered by native `naudiodon` I/O and `libopus-node`.
+  - Multi-client support.
+  - Audio device lists show the host API (MME, DirectSound, WASAPI, ALSA, Pipewire/PulseAudio) and native sample rate so you can pick the right entry for your hardware.
+  - **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel remotely. Example: FT-710 DVI out → USB HDMI capture card.
 - **Phone View**: Dedicated portrait-optimized layout for operating from a phone or tablet.
-- **Compact View**: Condensed desktop layout that fits on smaller screens.
-- **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel remotely. Uses a browser-native WebCodecs H.264 pipeline — no FFmpeg required. Example: FT-710 DVI out → USB HDMI capture card.
-- **Process Management**: Start, stop, and monitor `rigctld` directly from the web interface. View the live log and kill stale instances.
 - **Split VFO Support**: Full control over split operations with visual feedback.
 - **Works With All Hamlib-Compatible Software**: Configure your logging app to use "Hamlib NET rigctl" at `127.0.0.1:4532`.
   - WSJT-X, WSJT-X Improved, FLDigi, VarAC, JS8Call, and more.
+  - This means not having to split serial ports to use multiple apps.
 - **Remote Access**: Access your shack from anywhere over your own VPN by pointing a browser to your rig computer's IP on port 3000.
-- **Desktop App**: Native installers for Windows and Linux via Electron. Graceful shutdown ensures audio hardware is released cleanly on exit.
+  - IMPORTANT: A REVERSE PROXY IS REQUIRED TO ACCESS AUDIO FUNCTIONS REMOTELY!!!
 
 ## TODO
 
 - **Remote CW**: CW keying from a phone, tablet, or laptop while away from home.
 - **macOS Support**: Currently untested — requires externally installed Hamlib 4.7.0 in the system PATH.
-- **Broader Rig Testing**: Currently well-tested on FT-710, FT-991A, DX10, FT-101D, and FT-101MP. Other Hamlib-supported rigs should work.
+- **Broader Rig Testing**: Currently tested on FT-710 only, which means other similar modern Yaesu radios should work well. Other Hamlib-supported rigs should work.  Let me know with a bug report.
 
 ## Prerequisites
 
 ### Common
 - **Operating Systems**:
-  - **Windows 10 or higher** (tested on Windows 11 23H2) — no external dependencies.
-    - For audio, use MME or DirectSound devices from the backend audio device selector. WASAPI requires the Windows audio device to be configured at 48 kHz in Sound settings.
-  - **Linux kernel 6.0 or higher** (tested on Fedora 43) — no external dependencies.
+  - **Windows 10 or higher** (tested on Windows 11 23H2) — Requires Hamlib 4.7.0 or later installed.
+    - For audio, use MME or DirectSound devices from the backend audio device selector. WASAPI requires the Windows audio device to be configured at 48 kHz in Sound settings (for example, FT-710 only works at 44,100).
+  - **Linux kernel 6.0 or higher** (tested on Fedora 43) — Bundled with latest daily Hamlib snapshot.  Hamlib install not required.
   - **macOS** (TBA — no test hardware available)
     - Requires externally installed Hamlib 4.7.0 in the system PATH.
 
 ### Compile from Source
 - **Node.js**: Version 18 or higher.
 - **Hamlib**: 4.7.0 or higher.
-  - **Electron Apps**: Bundle `rigctld` by placing the binary in `bin/[linux|windows|mac]/`.
+  - **Electron Apps**: Bundle `rigctld` by placing the binary in `bin/[linux|windows|mac]/`.  Not required.  Will fall back to system Hamlib binaries.
 
 ### Installing Hamlib (if required)
 - **Linux**: `sudo apt install libhamlib-utils`
@@ -66,8 +62,6 @@ A modern, full-stack web application and native desktop client for controlling a
    npm run dev
    ```
 3. Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-> Note: there is no hot-reload for the backend — restart `npm run dev` after any `server.ts` changes.
 
 ## Desktop App (Electron)
 
