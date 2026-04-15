@@ -7,6 +7,11 @@ import { spawn, ChildProcess, exec } from "child_process";
 import fs from "fs";
 
 
+// Verbose logging — enabled with the -v / --verbose command-line flag.
+// Errors and critical status always print; diagnostics only print in verbose mode.
+const VERBOSE = process.argv.includes('-v') || process.argv.includes('--verbose');
+const vlog = (...args: any[]) => { if (VERBOSE) console.log(...args); };
+
 let electronWin: any = null;
 export function setElectronWindow(win: any) {
   electronWin = win;
@@ -35,9 +40,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const SETTINGS_FILE = path.join(dataDir, "settings.json");
   const RADIOS_FILE = path.join(baseDir, "radios.json");
   
-  console.log(`Server initializing. Base directory (assets): ${baseDir}`);
-  console.log(`Data directory (settings): ${dataDir}`);
-  console.log(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
+  vlog(`Server initializing. Base directory (assets): ${baseDir}`);
+  vlog(`Data directory (settings): ${dataDir}`);
+  vlog(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
 
   let rigctldProcess: ChildProcess | null = null;
   let rigctldStatus: "running" | "stopped" | "error" | "already_running" = "stopped";
@@ -132,7 +137,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         console.log("[AUDIO-INIT] naudiodon loaded successfully.");
         try {
           const hostAPIInfo = portAudio.getHostAPIs();
-          console.log("[AUDIO-INIT] Host APIs:", JSON.stringify(hostAPIInfo, null, 2));
+          vlog("[AUDIO-INIT] Host APIs:", JSON.stringify(hostAPIInfo, null, 2));
         } catch (e: any) {
           console.warn("[AUDIO-INIT] Could not enumerate host APIs:", e.message);
         }
@@ -202,7 +207,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   }
 
   const saveSettings = () => {
-    console.log(`[SETTINGS] Saving settings to ${SETTINGS_FILE}...`);
+    vlog(`[SETTINGS] Saving settings to ${SETTINGS_FILE}...`);
     try {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
         settings: rigctldSettings,
@@ -261,7 +266,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   getRigctldVersion().then(v => {
     rigctldVersion = v;
     isRigctldVersionSupported = checkVersionSupported(v);
-    console.log(`[HAMLIB] Detected rigctld version: ${v || "unknown"}`);
+    vlog(`[HAMLIB] Detected rigctld version: ${v || "unknown"}`);
     emitRigctldStatus();
   });
 
@@ -279,7 +284,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     }
 
     const rigctldPath = getRigctldPath();
-    console.log(`[HAMLIB] Fetching radio capabilities for rig ${rigNumber}...`);
+    vlog(`[HAMLIB] Fetching radio capabilities for rig ${rigNumber}...`);
     
     // Use exec to get capabilities
     exec(`"${rigctldPath}" -m ${rigNumber} -u`, (error, stdout, stderr) => {
@@ -300,10 +305,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           // Example: "Preamp: 10dB 20dB"
           const levels = preampLine.replace('Preamp:', '').trim().split(/\s+/).filter(Boolean);
           rigctldSettings.preampCapabilities = levels;
-          console.log(`[HAMLIB] Found preamp capabilities for rig ${rigNumber}: ${rigctldSettings.preampCapabilities.join(", ")}`);
+          vlog(`[HAMLIB] Found preamp capabilities for rig ${rigNumber}: ${rigctldSettings.preampCapabilities.join(", ")}`);
         } else {
           rigctldSettings.preampCapabilities = [];
-          console.log(`[HAMLIB] No preamp capabilities found for rig ${rigNumber}`);
+          vlog(`[HAMLIB] No preamp capabilities found for rig ${rigNumber}`);
         }
 
         // Parse Attenuator
@@ -312,10 +317,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           // Example: "Attenuator: 6dB 12dB 18dB"
           const levels = attenuatorLine.replace('Attenuator:', '').trim().split(/\s+/).filter(Boolean);
           rigctldSettings.attenuatorCapabilities = levels;
-          console.log(`[HAMLIB] Found attenuator capabilities for rig ${rigNumber}: ${rigctldSettings.attenuatorCapabilities.join(", ")}`);
+          vlog(`[HAMLIB] Found attenuator capabilities for rig ${rigNumber}: ${rigctldSettings.attenuatorCapabilities.join(", ")}`);
         } else {
           rigctldSettings.attenuatorCapabilities = [];
-          console.log(`[HAMLIB] No attenuator capabilities found for rig ${rigNumber}`);
+          vlog(`[HAMLIB] No attenuator capabilities found for rig ${rigNumber}`);
         }
 
         // Parse AGC
@@ -324,10 +329,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           // Example: "AGC levels: 0=OFF 2=FAST 5=MEDIUM 3=SLOW 6=AUTO"
           const levels = agcLine.replace('AGC levels:', '').trim().split(/\s+/).filter(Boolean);
           rigctldSettings.agcCapabilities = levels;
-          console.log(`[HAMLIB] Found AGC capabilities for rig ${rigNumber}: ${rigctldSettings.agcCapabilities.join(", ")}`);
+          vlog(`[HAMLIB] Found AGC capabilities for rig ${rigNumber}: ${rigctldSettings.agcCapabilities.join(", ")}`);
         } else {
           rigctldSettings.agcCapabilities = [];
-          console.log(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
+          vlog(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
         }
 
         // Parse Set functions for NB and NR
@@ -337,14 +342,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           rigctldSettings.nbSupported = functions.includes('NB');
           rigctldSettings.nrSupported = functions.includes('NR');
           rigctldSettings.anfSupported = functions.includes('ANF');
-          console.log(`[HAMLIB] NB supported for rig ${rigNumber}: ${rigctldSettings.nbSupported}`);
-          console.log(`[HAMLIB] NR supported for rig ${rigNumber}: ${rigctldSettings.nrSupported}`);
-          console.log(`[HAMLIB] ANF supported for rig ${rigNumber}: ${rigctldSettings.anfSupported}`);
+          vlog(`[HAMLIB] NB supported for rig ${rigNumber}: ${rigctldSettings.nbSupported}`);
+          vlog(`[HAMLIB] NR supported for rig ${rigNumber}: ${rigctldSettings.nrSupported}`);
+          vlog(`[HAMLIB] ANF supported for rig ${rigNumber}: ${rigctldSettings.anfSupported}`);
         } else {
           rigctldSettings.nbSupported = false;
           rigctldSettings.nrSupported = false;
           rigctldSettings.anfSupported = false;
-          console.log(`[HAMLIB] NB/NR/ANF not supported for rig ${rigNumber}`);
+          vlog(`[HAMLIB] NB/NR/ANF not supported for rig ${rigNumber}`);
         }
 
         // Parse Get level for NB and NR range
@@ -358,7 +363,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
               max: parseFloat(nbMatch[2]),
               step: parseFloat(nbMatch[3])
             };
-            console.log(`[HAMLIB] NB level range for rig ${rigNumber}: min=${rigctldSettings.nbLevelRange.min}, max=${rigctldSettings.nbLevelRange.max}, step=${rigctldSettings.nbLevelRange.step}`);
+            vlog(`[HAMLIB] NB level range for rig ${rigNumber}: min=${rigctldSettings.nbLevelRange.min}, max=${rigctldSettings.nbLevelRange.max}, step=${rigctldSettings.nbLevelRange.step}`);
           } else {
             rigctldSettings.nbLevelRange = { min: 0, max: 1, step: 0.1 };
           }
@@ -370,7 +375,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
               max: parseFloat(nrMatch[2]),
               step: parseFloat(nrMatch[3])
             };
-            console.log(`[HAMLIB] NR level range for rig ${rigNumber}: min=${rigctldSettings.nrLevelRange.min}, max=${rigctldSettings.nrLevelRange.max}, step=${rigctldSettings.nrLevelRange.step}`);
+            vlog(`[HAMLIB] NR level range for rig ${rigNumber}: min=${rigctldSettings.nrLevelRange.min}, max=${rigctldSettings.nrLevelRange.max}, step=${rigctldSettings.nrLevelRange.step}`);
           } else {
             rigctldSettings.nrLevelRange = { min: 0, max: 1, step: 0.1 };
           }
@@ -382,7 +387,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
               max: parseFloat(rfPowerMatch[2]),
               step: parseFloat(rfPowerMatch[3])
             };
-            console.log(`[HAMLIB] RF Power range for rig ${rigNumber}: min=${rigctldSettings.rfPowerRange.min}, max=${rigctldSettings.rfPowerRange.max}, step=${rigctldSettings.rfPowerRange.step}`);
+            vlog(`[HAMLIB] RF Power range for rig ${rigNumber}: min=${rigctldSettings.rfPowerRange.min}, max=${rigctldSettings.rfPowerRange.max}, step=${rigctldSettings.rfPowerRange.step}`);
           } else {
             rigctldSettings.rfPowerRange = { min: 0, max: 1, step: 0.01 };
           }
@@ -662,7 +667,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     rigctldProcess.stdout?.on("data", (data) => {
       const str = data.toString();
-      console.log(`rigctld stdout: ${str}`);
+      vlog(`rigctld stdout: ${str}`);
       addLog(str);
     });
 
@@ -1069,6 +1074,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       isReady: isAudioEngineReady,
       error: audioEngineError
     });
+    socket.emit("verbose-mode", VERBOSE);
 
     socket.on("connect-rig", ({ host, port }) => {
       resetRigState();
@@ -1246,7 +1252,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
       // Inform this client of current video source status; if streaming, also send last keyframe
-      console.log(`[VIDEO] New client ${socket.id} connected. videoStatus=${videoStatus} hasKeyframe=${!!lastKeyframe}`);
+      vlog(`[VIDEO] New client ${socket.id} connected. videoStatus=${videoStatus} hasKeyframe=${!!lastKeyframe}`);
       socket.emit("video-source-status", {
         status: videoStatus,
         videoWidth: videoSettings.videoWidth,
@@ -1255,7 +1261,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       });
       socket.emit("video-devices-list", videoDeviceList);
       if (videoStatus === "streaming" && lastKeyframe) {
-        console.log(`[VIDEO] Sending buffered keyframe to ${socket.id}: type=${lastKeyframe.type} dataBytes=${lastKeyframe.data.byteLength} hasDescription=${!!lastKeyframe.description}`);
+        vlog(`[VIDEO] Sending buffered keyframe to ${socket.id}: type=${lastKeyframe.type} dataBytes=${lastKeyframe.data.byteLength} hasDescription=${!!lastKeyframe.description}`);
         socket.emit("video-frame", lastKeyframe);
       }
       socket.emit("audio-status", audioStatus);
@@ -1274,7 +1280,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
 
     socket.on("get-audio-devices", async () => {
-      console.log("[AUDIO] Client requested audio devices list");
+      vlog("[AUDIO] Client requested audio devices list");
       const { inputs, outputs, error } = await listAudioDevices();
       if (error) {
         socket.emit("audio-error", error);
@@ -1283,7 +1289,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("update-audio-settings", async (settings: any) => {
-      console.log("[AUDIO] Updating audio settings:", settings);
+      vlog("[AUDIO] Updating audio settings:", settings);
       const wasPlaying = audioStatus === "playing";
       audioSettings = { ...audioSettings, ...settings };
       saveSettings();
@@ -1297,7 +1303,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     });
 
     socket.on("control-audio", async (action: "start" | "stop") => {
-      console.log(`[AUDIO] Control action received: ${action}`);
+      vlog(`[AUDIO] Control action received: ${action}`);
       if (action === "start") {
         await startAudio();
       } else if (action === "stop") {
@@ -1329,7 +1335,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     socket.on("audio-outbound", (data: Buffer) => {
       outboundRecvCount++;
       if (outboundRecvCount <= 5 || outboundRecvCount % 50 === 0) {
-        console.log(`[AUDIO-DIAG] audio-outbound received #${outboundRecvCount} from clientId=${clientId}, bytes=${data.length}, activeMic=${activeMicClientId}, ptt=${lastStatus.ptt}`);
+        vlog(`[AUDIO-DIAG] audio-outbound received #${outboundRecvCount} from clientId=${clientId}, bytes=${data.length}, activeMic=${activeMicClientId}, ptt=${lastStatus.ptt}`);
       }
       if (activeMicClientId !== clientId) return; // Only accept audio from the active mic
       if (!audioOutputProcess || !opusDecoder) return;
@@ -1338,7 +1344,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       try {
         const pcmData = opusDecoder.decode(data);
         if (outboundDiagCount < 5) {
-          console.log(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
+          vlog(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
           outboundDiagCount++;
         }
         outboundJitterBuffer.push(pcmData);
@@ -1358,14 +1364,14 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     // The Electron source pushes its enumerated camera device list up to the server.
     socket.on("video-devices-update", (devices: { id: string; label: string }[]) => {
-      console.log(`[VIDEO] Device list updated by source (${devices.length} devices):`, devices.map(d => d.label));
+      vlog(`[VIDEO] Device list updated by source (${devices.length} devices):`, devices.map(d => d.label));
       videoDeviceList = devices;
       io.emit("video-devices-list", videoDeviceList);
     });
 
     // Any client can update video settings; server saves and broadcasts to all (including Electron source).
     socket.on("update-video-settings", (settings: { device?: string; videoWidth?: number; videoHeight?: number; framerate?: string }) => {
-      console.log("[VIDEO] Updating video settings:", settings);
+      vlog("[VIDEO] Updating video settings:", settings);
       videoSettings = { ...videoSettings, ...settings };
       saveSettings();
       io.emit("video-settings-updated", videoSettings);
@@ -1373,7 +1379,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     // Any client can request the Electron source to start streaming.
     socket.on("request-video-start", () => {
-      console.log(`[VIDEO] Start requested by socket=${socket.id}`);
+      vlog(`[VIDEO] Start requested by socket=${socket.id}`);
       videoAutoStart = true;
       saveSettings();
       io.emit("video-start-requested");
@@ -1381,7 +1387,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     // Any client can request the Electron source to stop streaming.
     socket.on("request-video-stop", () => {
-      console.log(`[VIDEO] Stop requested by socket=${socket.id}`);
+      vlog(`[VIDEO] Stop requested by socket=${socket.id}`);
       videoAutoStart = false;
       saveSettings();
       io.emit("video-stop-requested");
@@ -1389,7 +1395,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     // Electron source announces it has started capturing and encoding.
     socket.on("video-source-start", (config: { device: string; videoWidth: number; videoHeight: number; framerate: string }) => {
-      console.log(`[VIDEO] Source started: socket=${socket.id}`, config);
+      vlog(`[VIDEO] Source started: socket=${socket.id}`, config);
       videoSourceSocketId = socket.id;
       lastKeyframe = null;
       videoSettings = { ...videoSettings, ...config };
@@ -1413,7 +1419,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
       videoFrameRelayCount++;
       if (chunk.type === "key" || videoFrameRelayCount <= 5) {
-        console.log(`[VIDEO] Relaying frame #${videoFrameRelayCount} type=${chunk.type} dataBytes=${chunk.data.byteLength} connectedClients=${io.engine.clientsCount}`);
+        vlog(`[VIDEO] Relaying frame #${videoFrameRelayCount} type=${chunk.type} dataBytes=${chunk.data.byteLength} connectedClients=${io.engine.clientsCount}`);
       }
       socket.broadcast.emit("video-frame", chunk);
     });
@@ -1421,7 +1427,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     // Electron source announces it has stopped capturing.
     socket.on("video-source-stop", () => {
       if (socket.id !== videoSourceSocketId) return;
-      console.log("[VIDEO] Source stopped.");
+      vlog("[VIDEO] Source stopped.");
       videoSourceSocketId = null;
       lastKeyframe = null;
       videoStatus = "stopped";
@@ -1566,7 +1572,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       console.log(`Client disconnected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
       // If the video source disconnects, clear its state and notify all other clients
       if (socket.id === videoSourceSocketId) {
-        console.log("[VIDEO] Source client disconnected — stopping stream.");
+        vlog("[VIDEO] Source client disconnected — stopping stream.");
         videoSourceSocketId = null;
         lastKeyframe = null;
         videoStatus = "stopped";
@@ -1585,7 +1591,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
           });
           
           if (!hasActiveSocket && activeMicClientId === clientId) {
-            console.log(`[AUDIO] Releasing mic for disconnected client: ${clientId}`);
+            vlog(`[AUDIO] Releasing mic for disconnected client: ${clientId}`);
             activeMicClientId = null;
             io.emit("mic-active-client", null);
           }

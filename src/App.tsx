@@ -112,6 +112,11 @@ const DEFAULT_STATUS: RigStatus = {
   timestamp: Date.now()
 };
 
+// Verbose logging — set to true when the server was started with -v / --verbose.
+// Updated via the 'verbose-mode' socket event on connect.
+let clientVerbose = false;
+const vlog = (...args: any[]) => { if (clientVerbose) console.log(...args); };
+
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
@@ -386,7 +391,7 @@ export default function App() {
   useEffect(() => {
     if (socket) {
       socket.on("settings-data", (data: any) => {
-        console.log("[SOCKET] Received settings-data", data);
+        vlog("[SOCKET] Received settings-data", data);
         if (data.settings) {
           setRigctldSettings(data.settings);
           if (data.settings.preampCapabilities) {
@@ -444,13 +449,13 @@ export default function App() {
             isAutoconnectAttempt.current = true;
             const savedHost = data.clientHost || "127.0.0.1";
             const savedPort = data.clientPort || 4532;
-            console.log(`[AUTOCONNECT] Attempting connection to ${savedHost}:${savedPort}`);
+            vlog(`[AUTOCONNECT] Attempting connection to ${savedHost}:${savedPort}`);
             socket.emit("connect-rig", { 
               host: savedHost, 
               port: savedPort
             });
           } else {
-            console.log("[AUTOCONNECT] Not eligible for autoconnect");
+            vlog("[AUTOCONNECT] Not eligible for autoconnect");
           }
         }
       });
@@ -458,7 +463,7 @@ export default function App() {
         setVideoDevices(list);
       });
       socket.on("video-source-status", (payload: { status: "streaming" | "stopped"; videoWidth?: number; videoHeight?: number; framerate?: string }) => {
-        console.log(`[VIDEO] video-source-status received: status=${payload.status} isElectronSource=${isElectronSource} videoWidth=${payload.videoWidth} videoHeight=${payload.videoHeight}`);
+        vlog(`[VIDEO] video-source-status received: status=${payload.status} isElectronSource=${isElectronSource} videoWidth=${payload.videoWidth} videoHeight=${payload.videoHeight}`);
         setVideoStatus(payload.status);
         if (payload.status === "streaming") {
           setVideoError(null);
@@ -514,7 +519,7 @@ export default function App() {
         const hasDecoder = !!videoDecoderRef.current;
         const decoderState = videoDecoderRef.current?.state ?? "none";
         if (chunk.type === "key" || clientFrameCount <= 5) {
-          console.log(`[VIDEO] video-frame received #${clientFrameCount}: type=${chunk.type} dataBytes=${chunk.data?.byteLength ?? "?"} hasDecoder=${hasDecoder} decoderState=${decoderState} hasDescription=${!!chunk.description}`);
+          vlog(`[VIDEO] video-frame received #${clientFrameCount}: type=${chunk.type} dataBytes=${chunk.data?.byteLength ?? "?"} hasDecoder=${hasDecoder} decoderState=${decoderState} hasDescription=${!!chunk.description}`);
         }
         // Keyframes carry the AVCC description (SPS/PPS). Re-configure the decoder with
         // it so AVCC-formatted frames can be decoded. This handles both initial setup and
@@ -557,6 +562,7 @@ export default function App() {
       socket.on("mic-mute-forced", () => {
         setOutboundMuted(true);
       });
+      socket.on("verbose-mode", (v: boolean) => { clientVerbose = v; });
       socket.on("audio-devices-list", (devices: { inputs: { name: string, altName: string, hostAPIName: string, defaultSampleRate: number }[], outputs: { name: string, altName: string, hostAPIName: string, defaultSampleRate: number }[] }) => {
         setAudioDevices(devices);
       });
@@ -1257,7 +1263,7 @@ export default function App() {
       latencyHint: 'interactive'
     });
     const ctx = audioContextRef.current;
-    console.log(`[AUDIO-DIAG] AudioContext actual sampleRate=${ctx.sampleRate} (requested 48000)`);
+    vlog(`[AUDIO-DIAG] AudioContext actual sampleRate=${ctx.sampleRate} (requested 48000)`);
 
     // Handle output device if supported
     if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (ctx as any).setSinkId === 'function') {
@@ -1334,7 +1340,7 @@ export default function App() {
   };
 
   const initVideoDecoder = (width: number, height: number, description?: ArrayBuffer) => {
-    console.log(`[VIDEO] initVideoDecoder called: ${width}x${height} hasDescription=${!!description}`);
+    vlog(`[VIDEO] initVideoDecoder called: ${width}x${height} hasDescription=${!!description}`);
     if (videoDecoderRef.current) {
       try { videoDecoderRef.current.close(); } catch (_) {}
     }
@@ -1343,7 +1349,7 @@ export default function App() {
       output: (frame: VideoFrame) => {
         frameCount++;
         const canvas = videoCanvasRef.current;
-        console.log(`[VIDEO] Decoder output frame #${frameCount}: canvas=${canvas ? `${canvas.width}x${canvas.height} (offsetW=${canvas.offsetWidth} offsetH=${canvas.offsetHeight})` : "NULL"}`);
+        vlog(`[VIDEO] Decoder output frame #${frameCount}: canvas=${canvas ? `${canvas.width}x${canvas.height} (offsetW=${canvas.offsetWidth} offsetH=${canvas.offsetHeight})` : "NULL"}`);
         if (canvas) {
           canvas.width = width;
           canvas.height = height;
@@ -1368,7 +1374,7 @@ export default function App() {
     };
     if (description) config.description = description;
     decoder.configure(config);
-    console.log(`[VIDEO] Decoder configured, state=${decoder.state} hasDescription=${!!description}`);
+    vlog(`[VIDEO] Decoder configured, state=${decoder.state} hasDescription=${!!description}`);
     videoDecoderRef.current = decoder;
   };
 
@@ -1550,7 +1556,7 @@ export default function App() {
         });
       }
       const ctx = audioContextRef.current;
-      console.log(`[AUDIO-DIAG] Capture AudioContext actual sampleRate=${ctx.sampleRate} (requested 48000)`);
+      vlog(`[AUDIO-DIAG] Capture AudioContext actual sampleRate=${ctx.sampleRate} (requested 48000)`);
 
       const isPhoneDefault = !localAudioSettings.inputDevice || localAudioSettings.inputDevice === 'default';
       const specificConstraints = {
@@ -1591,13 +1597,13 @@ export default function App() {
           output: (chunk: any, metadata: any) => {
             encodeCount++;
             if (encodeCount % 50 === 0) {
-              console.log(`[AUDIO-ENCODE] Encoded 50 packets. Emitting to socket...`);
+              vlog(`[AUDIO-ENCODE] Encoded 50 packets. Emitting to socket...`);
             }
             if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;
             const buffer = new ArrayBuffer(chunk.byteLength);
             chunk.copyTo(buffer);
             if (encodeCount <= 5 || encodeCount % 50 === 0) {
-              console.log(`[AUDIO-EMIT] Emitting audio-outbound packet #${encodeCount}, bytes=${buffer.byteLength}, socket connected=${socket?.connected}`);
+              vlog(`[AUDIO-EMIT] Emitting audio-outbound packet #${encodeCount}, bytes=${buffer.byteLength}, socket connected=${socket?.connected}`);
             }
             socket?.emit("audio-outbound", buffer);
           },
@@ -1623,7 +1629,7 @@ export default function App() {
       captureNode.port.onmessage = (e) => {
         captureFrameCount++;
         if (captureFrameCount % 50 === 0) {
-          console.log(`[AUDIO-CAPTURE] Captured 50 frames. outboundMuted: ${outboundMutedRef.current}, audioStatus: ${audioStatusRef.current}, encoderState: ${opusEncoderRef.current?.state}`);
+          vlog(`[AUDIO-CAPTURE] Captured 50 frames. outboundMuted: ${outboundMutedRef.current}, audioStatus: ${audioStatusRef.current}, encoderState: ${opusEncoderRef.current?.state}`);
         }
 
         if (outboundMutedRef.current || audioStatusRef.current !== "playing") return;

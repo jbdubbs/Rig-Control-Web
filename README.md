@@ -14,8 +14,10 @@ A modern, full-stack web application and native desktop client for controlling a
 
 - **Real-time Dashboard**: Frequency, mode, and meter displays (S-Meter, SWR, ALC, Power, VDD) polled live from the rig.
 - **Bidirectional Audio**: Full transmit and receive audio over the network using the Opus codec. Works for remote SSB, AM, and FM contacts. Powered by native `naudiodon` I/O and `libopus-node`.
-  - Jitter buffer for smooth inbound playback.
+  - Jitter buffer on the outbound path for smooth, glitch-free transmit audio on Windows and Linux.
   - Multi-client support with last-interacted-wins mic policy.
+  - Audio device lists show the host API (MME, DirectSound, WASAPI, ALSA) and native sample rate so you can pick the right entry for your hardware.
+  - Incompatible WASAPI entries (device not at 48 kHz) are automatically disabled with a hint to fix the Windows sound settings.
   - Audio device lists refresh automatically when you open the device selector, so newly connected USB devices always appear.
 - **Phone View**: Dedicated portrait-optimized layout for operating from a phone or tablet.
 - **Compact View**: Condensed desktop layout that fits on smaller screens.
@@ -38,6 +40,7 @@ A modern, full-stack web application and native desktop client for controlling a
 ### Common
 - **Operating Systems**:
   - **Windows 10 or higher** (tested on Windows 11 23H2) — no external dependencies.
+    - For audio, use MME or DirectSound devices from the backend audio device selector. WASAPI requires the Windows audio device to be configured at 48 kHz in Sound settings.
   - **Linux kernel 6.0 or higher** (tested on Fedora 43) — no external dependencies.
   - **macOS** (TBA — no test hardware available)
     - Requires externally installed Hamlib 4.7.0 in the system PATH.
@@ -98,6 +101,23 @@ Built installers are placed in the `build/` directory.
 Once installed, launch "RigControl Web" from your applications menu or desktop shortcut. The application will:
 1. Start the background Express server.
 2. Open the UI — configure your rig settings and start `rigctld` from the Settings panel.
+
+### Verbose Logging
+By default the app runs quietly — only errors and key status messages are printed. To enable full diagnostic output (audio pipeline details, video frame relay, Hamlib capability detection, etc.), launch with the `-v` flag:
+
+**Windows:**
+```
+"RigControl Web.exe" -v
+```
+**Linux:**
+```
+rigcontrol-web -v
+```
+**Development:**
+```
+npm run dev -- -v
+```
+The verbose flag is also forwarded to connected browser clients, which will print matching diagnostic output to their DevTools console.
 
 ## Configuration
 

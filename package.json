@@ -1,7 +1,7 @@
 {
   "name": "rigcontrol-web",
   "private": true,
-  "version": "04.14.2026-Alpha3",
+  "version": "04.14.2026-Beta1",
   "author": "Jason Weisberger NT0Y",
   "description": "A web-based frontend for hamlib rigctld for local installation and portable backend capabilities.",
   "type": "module",
