@@ -499,32 +499,37 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             sampleRate: 48000,
             deviceId: isNaN(deviceId) ? -1 : deviceId, // -1 is default
             closeOnError: true,
-            framesPerBuffer: 960, // 20ms at 48kHz
-            maxQueue: 2 // Keep queue small to prevent latency buildup
+            framesPerBuffer: 0, // Let PortAudio choose native buffer size for the host API
+            maxQueue: 10,
+            highwaterMark: 1920 // 960 samples * 2 bytes; keeps read() requests small so data events fire promptly
           }
         });
 
         // PCM Ring Buffer for chunking 960 samples (1920 bytes for 16-bit mono)
-        const FRAME_SIZE_BYTES = 960 * 2; 
+        const FRAME_SIZE_BYTES = 960 * 2;
         let pcmBuffer = Buffer.alloc(0);
 
         audioInputProcess.on('data', (data: Buffer) => {
-          // Don't broadcast rig audio if someone is transmitting (PTT engaged)
-          if (activeMicClientId && lastStatus.ptt) return;
+          try {
+            // Don't broadcast rig audio if someone is transmitting (PTT engaged)
+            if (activeMicClientId && lastStatus.ptt) return;
 
-          pcmBuffer = Buffer.concat([pcmBuffer, data]);
+            pcmBuffer = Buffer.concat([pcmBuffer, data]);
 
-          while (pcmBuffer.length >= FRAME_SIZE_BYTES) {
-            const frame = pcmBuffer.subarray(0, FRAME_SIZE_BYTES);
-            pcmBuffer = pcmBuffer.subarray(FRAME_SIZE_BYTES);
+            while (pcmBuffer.length >= FRAME_SIZE_BYTES) {
+              const frame = pcmBuffer.subarray(0, FRAME_SIZE_BYTES);
+              pcmBuffer = pcmBuffer.subarray(FRAME_SIZE_BYTES);
 
-            try {
-              const encodedPacket = opusEncoder.encode(frame);
-              // Broadcast to all clients
-              io.emit("audio-inbound", encodedPacket);
-            } catch (err) {
-              console.error("[AUDIO] Opus encode error:", err);
+              try {
+                const encodedPacket = opusEncoder.encode(frame);
+                // Broadcast to all clients
+                io.emit("audio-inbound", encodedPacket);
+              } catch (err) {
+                console.error("[AUDIO] Opus encode error:", err);
+              }
             }
+          } catch (err) {
+            console.error("[AUDIO-IN] Unhandled exception in data handler:", err);
           }
         });
 
