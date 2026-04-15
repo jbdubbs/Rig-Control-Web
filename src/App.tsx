@@ -215,7 +215,7 @@ export default function App() {
   const [activeMicClientId, setActiveMicClientId] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<"playing" | "stopped">("stopped");
   const [audioEngineState, setAudioEngineState] = useState<{ isReady: boolean, error: string | null }>({ isReady: false, error: null });
-  const [audioDevices, setAudioDevices] = useState<{ inputs: { name: string, altName: string, hostAPIName: string }[], outputs: { name: string, altName: string, hostAPIName: string }[] }>({ inputs: [], outputs: [] });
+  const [audioDevices, setAudioDevices] = useState<{ inputs: { name: string, altName: string, hostAPIName: string, defaultSampleRate: number }[], outputs: { name: string, altName: string, hostAPIName: string, defaultSampleRate: number }[] }>({ inputs: [], outputs: [] });
   const [audioSettings, setAudioSettings] = useState({
     inputDevice: "",
     outputDevice: "",
@@ -557,7 +557,7 @@ export default function App() {
       socket.on("mic-mute-forced", () => {
         setOutboundMuted(true);
       });
-      socket.on("audio-devices-list", (devices: { inputs: { name: string, altName: string, hostAPIName: string }[], outputs: { name: string, altName: string, hostAPIName: string }[] }) => {
+      socket.on("audio-devices-list", (devices: { inputs: { name: string, altName: string, hostAPIName: string, defaultSampleRate: number }[], outputs: { name: string, altName: string, hostAPIName: string, defaultSampleRate: number }[] }) => {
         setAudioDevices(devices);
       });
       socket.on("radios-list", (list: any) => {
@@ -4551,7 +4551,12 @@ export default function App() {
                         className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
                       >
                         <option value="">Select Backend Input</option>
-                        {audioDevices.inputs.map(d => <option key={d.altName} value={d.altName}>{d.name}{d.hostAPIName ? ` [${d.hostAPIName}]` : ''}</option>)}
+                        {audioDevices.inputs.map(d => {
+                          const api = d.hostAPIName.replace(/^Windows\s+/i, '');
+                          const rateK = d.defaultSampleRate / 1000;
+                          const rate = d.defaultSampleRate ? `${rateK === Math.floor(rateK) ? rateK : rateK.toFixed(1)}k` : '';
+                          return <option key={d.altName} value={d.altName}>{d.name}{api || rate ? ` [${[api, rate].filter(Boolean).join(', ')}]` : ''}</option>;
+                        })}
                       </select>
                     </div>
 
@@ -4589,7 +4594,12 @@ export default function App() {
                         className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
                       >
                         <option value="">Select Backend Output</option>
-                        {audioDevices.outputs.map(d => <option key={d.altName} value={d.altName}>{d.name}{d.hostAPIName ? ` [${d.hostAPIName}]` : ''}</option>)}
+                        {audioDevices.outputs.map(d => {
+                          const api = d.hostAPIName.replace(/^Windows\s+/i, '');
+                          const rateK = d.defaultSampleRate / 1000;
+                          const rate = d.defaultSampleRate ? `${rateK === Math.floor(rateK) ? rateK : rateK.toFixed(1)}k` : '';
+                          return <option key={d.altName} value={d.altName}>{d.name}{api || rate ? ` [${[api, rate].filter(Boolean).join(', ')}]` : ''}</option>;
+                        })}
                       </select>
                     </div>
                   </div>

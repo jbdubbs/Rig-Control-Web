@@ -437,8 +437,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     }
     try {
       const devices = portAudio.getDevices();
-      const inputs = devices.filter((d: any) => d.maxInputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "" }));
-      const outputs = devices.filter((d: any) => d.maxOutputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "" }));
+      const inputs = devices.filter((d: any) => d.maxInputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "", defaultSampleRate: d.defaultSampleRate || 0 }));
+      const outputs = devices.filter((d: any) => d.maxOutputChannels > 0).map((d: any) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "", defaultSampleRate: d.defaultSampleRate || 0 }));
       return { inputs, outputs };
     } catch (err: any) {
       console.error("[AUDIO] Failed to list devices:", err);
