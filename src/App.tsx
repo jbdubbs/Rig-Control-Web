@@ -4553,9 +4553,14 @@ export default function App() {
                         <option value="">Select Backend Input</option>
                         {audioDevices.inputs.map(d => {
                           const api = d.hostAPIName.replace(/^Windows\s+/i, '');
+                          const isWASAPI = /WASAPI/i.test(api);
+                          const wasapiIncompatible = isWASAPI && d.defaultSampleRate !== 48000;
                           const rateK = d.defaultSampleRate / 1000;
                           const rate = d.defaultSampleRate ? `${rateK === Math.floor(rateK) ? rateK : rateK.toFixed(1)}k` : '';
-                          return <option key={d.altName} value={d.altName}>{d.name}{api || rate ? ` [${[api, rate].filter(Boolean).join(', ')}]` : ''}</option>;
+                          const label = isWASAPI
+                            ? `${d.name} [WASAPI${wasapiIncompatible ? ` – set device to 48k in Windows` : ''}]`
+                            : `${d.name}${api || rate ? ` [${[api, rate].filter(Boolean).join(', ')}]` : ''}`;
+                          return <option key={d.altName} value={d.altName} disabled={wasapiIncompatible}>{label}</option>;
                         })}
                       </select>
                     </div>
@@ -4596,9 +4601,14 @@ export default function App() {
                         <option value="">Select Backend Output</option>
                         {audioDevices.outputs.map(d => {
                           const api = d.hostAPIName.replace(/^Windows\s+/i, '');
+                          const isWASAPI = /WASAPI/i.test(api);
+                          const wasapiIncompatible = isWASAPI && d.defaultSampleRate !== 48000;
                           const rateK = d.defaultSampleRate / 1000;
                           const rate = d.defaultSampleRate ? `${rateK === Math.floor(rateK) ? rateK : rateK.toFixed(1)}k` : '';
-                          return <option key={d.altName} value={d.altName}>{d.name}{api || rate ? ` [${[api, rate].filter(Boolean).join(', ')}]` : ''}</option>;
+                          const label = isWASAPI
+                            ? `${d.name} [WASAPI${wasapiIncompatible ? ` – set device to 48k in Windows` : ''}]`
+                            : `${d.name}${api || rate ? ` [${[api, rate].filter(Boolean).join(', ')}]` : ''}`;
+                          return <option key={d.altName} value={d.altName} disabled={wasapiIncompatible}>{label}</option>;
                         })}
                       </select>
                     </div>
