@@ -501,7 +501,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
             closeOnError: true,
             framesPerBuffer: 0, // Let PortAudio choose native buffer size for the host API
             maxQueue: 10,
-            highwaterMark: 1920 // 960 samples * 2 bytes; keeps read() requests small so data events fire promptly
+            highwaterMark: 256 // small value to keep read() requests tiny and data events firing as frequently as possible
           }
         });
 
