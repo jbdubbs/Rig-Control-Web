@@ -57,6 +57,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let autoconnectEligible = false;
   let clientHost = "127.0.0.1";
   let clientPort = 4532;
+  let potaSettings: { enabled: boolean; pollRate: number; maxAge: number } = { enabled: false, pollRate: 5, maxAge: 15 };
   
   const getRigctldPath = (): string => {
     let platformDir = "";
@@ -201,6 +202,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (data.audioSettings) {
         audioSettings = { ...audioSettings, ...data.audioSettings };
       }
+      if (data.potaSettings) {
+        potaSettings = { ...potaSettings, ...data.potaSettings };
+      }
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
@@ -218,7 +222,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         pollRate: Number(pollRate),
         autoconnectEligible: autoconnectEligible,
         clientHost: clientHost,
-        clientPort: Number(clientPort)
+        clientPort: Number(clientPort),
+        potaSettings: potaSettings
       }, null, 2));
     } catch (e) {
       console.error("[SETTINGS] Failed to save settings:", e);
@@ -1247,7 +1252,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         autoconnectEligible: autoconnectEligible,
         clientHost: clientHost,
         clientPort: clientPort,
-        isConnected: isConnected
+        isConnected: isConnected,
+        potaSettings: potaSettings
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
@@ -1454,6 +1460,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
       if (data.clientHost !== undefined) clientHost = data.clientHost;
       if (data.clientPort !== undefined) clientPort = Number(data.clientPort);
+      if (data.potaSettings !== undefined) potaSettings = { ...potaSettings, ...data.potaSettings };
 
       saveSettings();
       if (oldRigNumber !== rigctldSettings.rigNumber) {

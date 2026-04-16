@@ -17,6 +17,13 @@ A web-first Electron app for controlling your radio via a Hamlib rigctld network
   - Multi-client support.
   - Audio device lists show the host API (MME, DirectSound, WASAPI, ALSA, Pipewire/PulseAudio) and native sample rate so you can pick the right entry for your hardware.
   - **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel remotely. Example: FT-710 DVI out → USB HDMI capture card.
+- **POTA Spots**: Live Parks on the Air spot display, pulled directly from the POTA API at a configurable poll interval.
+  - Deduplicated per activator — only the latest spot per callsign is shown.
+  - Filterable by mode (SSB, CW, FT8, FT4) and band (160M through 440, multi-select).
+  - Configurable maximum spot age (1–15 minutes).
+  - Sortable columns (activator, frequency, mode, location, age) with ascending/descending/API-order cycle.
+  - Click any frequency to instantly tune the VFO and set the mode. SSB spots auto-resolve to USB or LSB based on the 10 MHz boundary.
+  - Layout-aware: inline box below Quick Controls (phone), slide-in drawer via header button (compact), inline box below Video & Audio (desktop).
 - **Phone View**: Dedicated portrait-optimized layout for operating from a phone or tablet.
 - **Split VFO Support**: Full control over split operations with visual feedback.
 - **Works With All Hamlib-Compatible Software**: Configure your logging app or other Hamlib enabled application to use "Hamlib NET rigctl" at `127.0.0.1:4532`.
@@ -115,13 +122,22 @@ The verbose flag is also forwarded to connected browser clients, which will prin
 
 ## Configuration
 
-Open the **Settings** panel (gear icon) to configure:
+Open the **General Settings** panel (gear icon) to configure. Settings are organized into tabs:
+
+### RIGCTLD Tab
 - **Rig Number**: Hamlib model ID for your radio.
 - **Serial Port**: Device path (e.g. `/dev/ttyUSB0` or `COM3`).
 - **Baud Rate**: Serial speed for your radio.
 - **Network Settings**: Host and port for the `rigctld` server.
 - **Video Settings**: Capture device selection and stream quality.
 - **Audio Settings**: Backend input/output device (server-side, for the radio), local input/output device (browser-side, for the operator), and enable/disable inbound and outbound audio independently.
+
+### SPOTS Tab
+- **POTA**: Enable/disable live Parks on the Air spot display.
+  - **Poll Frequency**: How often to fetch from the POTA API (1–5 minutes).
+  - **Max Spot Age**: Discard spots older than this threshold (1, 3, 5, 10, or 15 minutes).
+  - **Band Filter**: Multi-select checkbox grid to limit spots to specific bands (6M through 440). No selection = all bands shown.
+  - **Mode Filter**: Limit spots to a single mode — SSB, CW, FT8, FT4, or ALL.
 
 ## License
 

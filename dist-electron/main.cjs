@@ -40505,6 +40505,10 @@ var import_net = __toESM(require("net"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_child_process = require("child_process");
 var import_fs = __toESM(require("fs"), 1);
+var VERBOSE = process.argv.includes("-v") || process.argv.includes("--verbose");
+var vlog = (...args) => {
+  if (VERBOSE) console.log(...args);
+};
 var electronWin = null;
 function setElectronWindow(win) {
   electronWin = win;
@@ -40524,9 +40528,9 @@ async function startServer(appPath, userDataPath) {
   const dataDir = userDataPath || (process.env.NODE_ENV === "production" ? "/tmp" : process.cwd());
   const SETTINGS_FILE = import_path.default.join(dataDir, "settings.json");
   const RADIOS_FILE = import_path.default.join(baseDir, "radios.json");
-  console.log(`Server initializing. Base directory (assets): ${baseDir}`);
-  console.log(`Data directory (settings): ${dataDir}`);
-  console.log(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
+  vlog(`Server initializing. Base directory (assets): ${baseDir}`);
+  vlog(`Data directory (settings): ${dataDir}`);
+  vlog(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
   let rigctldProcess = null;
   let rigctldStatus = "stopped";
   let rigctldVersion = null;
@@ -40540,6 +40544,7 @@ async function startServer(appPath, userDataPath) {
   let autoconnectEligible = false;
   let clientHost = "127.0.0.1";
   let clientPort = 4532;
+  let potaSettings = { enabled: false, pollRate: 5, maxAge: 15 };
   const getRigctldPath = () => {
     let platformDir = "";
     if (process.platform === "win32") platformDir = "windows";
@@ -40584,7 +40589,9 @@ async function startServer(appPath, userDataPath) {
   let opusDecoder = null;
   const OUTBOUND_SILENCE = Buffer.alloc(960 * 2);
   const OUTBOUND_PRE_FILL = 3;
+  const OUTBOUND_JITTER_MAX = 8;
   let outboundTimer = null;
+  let outboundJitterBuffer = [];
   const initAudioEngine = async () => {
     try {
       const dynamicImport = new Function("modulePath", "return import(modulePath)");
@@ -40595,6 +40602,12 @@ async function startServer(appPath, userDataPath) {
       try {
         portAudio = await dynamicImport("naudiodon");
         console.log("[AUDIO-INIT] naudiodon loaded successfully.");
+        try {
+          const hostAPIInfo = portAudio.getHostAPIs();
+          vlog("[AUDIO-INIT] Host APIs:", JSON.stringify(hostAPIInfo, null, 2));
+        } catch (e) {
+          console.warn("[AUDIO-INIT] Could not enumerate host APIs:", e.message);
+        }
         isAudioEngineReady = true;
       } catch (naudioErr) {
         console.error("[AUDIO-INIT] Failed to load naudiodon. Audio I/O will be disabled.", naudioErr.message);
@@ -40648,12 +40661,15 @@ async function startServer(appPath, userDataPath) {
       if (data.audioSettings) {
         audioSettings = { ...audioSettings, ...data.audioSettings };
       }
+      if (data.potaSettings) {
+        potaSettings = { ...potaSettings, ...data.potaSettings };
+      }
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
   }
   const saveSettings = () => {
-    console.log(`[SETTINGS] Saving settings to ${SETTINGS_FILE}...`);
+    vlog(`[SETTINGS] Saving settings to ${SETTINGS_FILE}...`);
     try {
       import_fs.default.writeFileSync(SETTINGS_FILE, JSON.stringify({
         settings: rigctldSettings,
@@ -40664,7 +40680,8 @@ async function startServer(appPath, userDataPath) {
         pollRate: Number(pollRate),
         autoconnectEligible,
         clientHost,
-        clientPort: Number(clientPort)
+        clientPort: Number(clientPort),
+        potaSettings
       }, null, 2));
     } catch (e) {
       console.error("[SETTINGS] Failed to save settings:", e);
@@ -40706,7 +40723,7 @@ async function startServer(appPath, userDataPath) {
   getRigctldVersion().then((v) => {
     rigctldVersion = v;
     isRigctldVersionSupported = checkVersionSupported(v);
-    console.log(`[HAMLIB] Detected rigctld version: ${v || "unknown"}`);
+    vlog(`[HAMLIB] Detected rigctld version: ${v || "unknown"}`);
     emitRigctldStatus();
   });
   const fetchRadioCapabilities = async (rigNumber) => {
@@ -40722,7 +40739,7 @@ async function startServer(appPath, userDataPath) {
       return;
     }
     const rigctldPath = getRigctldPath();
-    console.log(`[HAMLIB] Fetching radio capabilities for rig ${rigNumber}...`);
+    vlog(`[HAMLIB] Fetching radio capabilities for rig ${rigNumber}...`);
     (0, import_child_process.exec)(`"${rigctldPath}" -m ${rigNumber} -u`, (error, stdout, stderr) => {
       if (error) {
         console.error(`[HAMLIB] Error getting radio capabilities: ${error.message}`);
@@ -40738,28 +40755,28 @@ async function startServer(appPath, userDataPath) {
         if (preampLine) {
           const levels = preampLine.replace("Preamp:", "").trim().split(/\s+/).filter(Boolean);
           rigctldSettings.preampCapabilities = levels;
-          console.log(`[HAMLIB] Found preamp capabilities for rig ${rigNumber}: ${rigctldSettings.preampCapabilities.join(", ")}`);
+          vlog(`[HAMLIB] Found preamp capabilities for rig ${rigNumber}: ${rigctldSettings.preampCapabilities.join(", ")}`);
         } else {
           rigctldSettings.preampCapabilities = [];
-          console.log(`[HAMLIB] No preamp capabilities found for rig ${rigNumber}`);
+          vlog(`[HAMLIB] No preamp capabilities found for rig ${rigNumber}`);
         }
         const attenuatorLine = lines.find((line) => line.trim().startsWith("Attenuator:"));
         if (attenuatorLine) {
           const levels = attenuatorLine.replace("Attenuator:", "").trim().split(/\s+/).filter(Boolean);
           rigctldSettings.attenuatorCapabilities = levels;
-          console.log(`[HAMLIB] Found attenuator capabilities for rig ${rigNumber}: ${rigctldSettings.attenuatorCapabilities.join(", ")}`);
+          vlog(`[HAMLIB] Found attenuator capabilities for rig ${rigNumber}: ${rigctldSettings.attenuatorCapabilities.join(", ")}`);
         } else {
           rigctldSettings.attenuatorCapabilities = [];
-          console.log(`[HAMLIB] No attenuator capabilities found for rig ${rigNumber}`);
+          vlog(`[HAMLIB] No attenuator capabilities found for rig ${rigNumber}`);
         }
         const agcLine = lines.find((line) => line.trim().startsWith("AGC levels:"));
         if (agcLine) {
           const levels = agcLine.replace("AGC levels:", "").trim().split(/\s+/).filter(Boolean);
           rigctldSettings.agcCapabilities = levels;
-          console.log(`[HAMLIB] Found AGC capabilities for rig ${rigNumber}: ${rigctldSettings.agcCapabilities.join(", ")}`);
+          vlog(`[HAMLIB] Found AGC capabilities for rig ${rigNumber}: ${rigctldSettings.agcCapabilities.join(", ")}`);
         } else {
           rigctldSettings.agcCapabilities = [];
-          console.log(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
+          vlog(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
         }
         const setFunctionsLine = lines.find((line) => line.trim().startsWith("Set functions:"));
         if (setFunctionsLine) {
@@ -40767,14 +40784,14 @@ async function startServer(appPath, userDataPath) {
           rigctldSettings.nbSupported = functions.includes("NB");
           rigctldSettings.nrSupported = functions.includes("NR");
           rigctldSettings.anfSupported = functions.includes("ANF");
-          console.log(`[HAMLIB] NB supported for rig ${rigNumber}: ${rigctldSettings.nbSupported}`);
-          console.log(`[HAMLIB] NR supported for rig ${rigNumber}: ${rigctldSettings.nrSupported}`);
-          console.log(`[HAMLIB] ANF supported for rig ${rigNumber}: ${rigctldSettings.anfSupported}`);
+          vlog(`[HAMLIB] NB supported for rig ${rigNumber}: ${rigctldSettings.nbSupported}`);
+          vlog(`[HAMLIB] NR supported for rig ${rigNumber}: ${rigctldSettings.nrSupported}`);
+          vlog(`[HAMLIB] ANF supported for rig ${rigNumber}: ${rigctldSettings.anfSupported}`);
         } else {
           rigctldSettings.nbSupported = false;
           rigctldSettings.nrSupported = false;
           rigctldSettings.anfSupported = false;
-          console.log(`[HAMLIB] NB/NR/ANF not supported for rig ${rigNumber}`);
+          vlog(`[HAMLIB] NB/NR/ANF not supported for rig ${rigNumber}`);
         }
         const getLevelLine = lines.find((line) => line.trim().startsWith("Get level:"));
         if (getLevelLine) {
@@ -40785,7 +40802,7 @@ async function startServer(appPath, userDataPath) {
               max: parseFloat(nbMatch[2]),
               step: parseFloat(nbMatch[3])
             };
-            console.log(`[HAMLIB] NB level range for rig ${rigNumber}: min=${rigctldSettings.nbLevelRange.min}, max=${rigctldSettings.nbLevelRange.max}, step=${rigctldSettings.nbLevelRange.step}`);
+            vlog(`[HAMLIB] NB level range for rig ${rigNumber}: min=${rigctldSettings.nbLevelRange.min}, max=${rigctldSettings.nbLevelRange.max}, step=${rigctldSettings.nbLevelRange.step}`);
           } else {
             rigctldSettings.nbLevelRange = { min: 0, max: 1, step: 0.1 };
           }
@@ -40796,7 +40813,7 @@ async function startServer(appPath, userDataPath) {
               max: parseFloat(nrMatch[2]),
               step: parseFloat(nrMatch[3])
             };
-            console.log(`[HAMLIB] NR level range for rig ${rigNumber}: min=${rigctldSettings.nrLevelRange.min}, max=${rigctldSettings.nrLevelRange.max}, step=${rigctldSettings.nrLevelRange.step}`);
+            vlog(`[HAMLIB] NR level range for rig ${rigNumber}: min=${rigctldSettings.nrLevelRange.min}, max=${rigctldSettings.nrLevelRange.max}, step=${rigctldSettings.nrLevelRange.step}`);
           } else {
             rigctldSettings.nrLevelRange = { min: 0, max: 1, step: 0.1 };
           }
@@ -40807,7 +40824,7 @@ async function startServer(appPath, userDataPath) {
               max: parseFloat(rfPowerMatch[2]),
               step: parseFloat(rfPowerMatch[3])
             };
-            console.log(`[HAMLIB] RF Power range for rig ${rigNumber}: min=${rigctldSettings.rfPowerRange.min}, max=${rigctldSettings.rfPowerRange.max}, step=${rigctldSettings.rfPowerRange.step}`);
+            vlog(`[HAMLIB] RF Power range for rig ${rigNumber}: min=${rigctldSettings.rfPowerRange.min}, max=${rigctldSettings.rfPowerRange.max}, step=${rigctldSettings.rfPowerRange.step}`);
           } else {
             rigctldSettings.rfPowerRange = { min: 0, max: 1, step: 0.01 };
           }
@@ -40855,8 +40872,8 @@ async function startServer(appPath, userDataPath) {
     }
     try {
       const devices = portAudio.getDevices();
-      const inputs = devices.filter((d) => d.maxInputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString() }));
-      const outputs = devices.filter((d) => d.maxOutputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString() }));
+      const inputs = devices.filter((d) => d.maxInputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "", defaultSampleRate: d.defaultSampleRate || 0 }));
+      const outputs = devices.filter((d) => d.maxOutputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "", defaultSampleRate: d.defaultSampleRate || 0 }));
       return { inputs, outputs };
     } catch (err) {
       console.error("[AUDIO] Failed to list devices:", err);
@@ -40869,6 +40886,7 @@ async function startServer(appPath, userDataPath) {
       clearInterval(outboundTimer);
       outboundTimer = null;
     }
+    outboundJitterBuffer = [];
     if (audioInputProcess) {
       try {
         await audioInputProcess.quit();
@@ -40919,26 +40937,31 @@ async function startServer(appPath, userDataPath) {
             deviceId: isNaN(deviceId) ? -1 : deviceId,
             // -1 is default
             closeOnError: true,
-            framesPerBuffer: 960,
-            // 20ms at 48kHz
-            maxQueue: 2
-            // Keep queue small to prevent latency buildup
+            framesPerBuffer: 0,
+            // Let PortAudio choose native buffer size for the host API
+            maxQueue: 10,
+            highwaterMark: 256
+            // small value to keep read() requests tiny and data events firing as frequently as possible
           }
         });
         const FRAME_SIZE_BYTES = 960 * 2;
         let pcmBuffer = Buffer.alloc(0);
         audioInputProcess.on("data", (data) => {
-          if (activeMicClientId && lastStatus.ptt) return;
-          pcmBuffer = Buffer.concat([pcmBuffer, data]);
-          while (pcmBuffer.length >= FRAME_SIZE_BYTES) {
-            const frame = pcmBuffer.subarray(0, FRAME_SIZE_BYTES);
-            pcmBuffer = pcmBuffer.subarray(FRAME_SIZE_BYTES);
-            try {
-              const encodedPacket = opusEncoder.encode(frame);
-              io2.emit("audio-inbound", encodedPacket);
-            } catch (err) {
-              console.error("[AUDIO] Opus encode error:", err);
+          try {
+            if (activeMicClientId && lastStatus.ptt) return;
+            pcmBuffer = Buffer.concat([pcmBuffer, data]);
+            while (pcmBuffer.length >= FRAME_SIZE_BYTES) {
+              const frame = pcmBuffer.subarray(0, FRAME_SIZE_BYTES);
+              pcmBuffer = pcmBuffer.subarray(FRAME_SIZE_BYTES);
+              try {
+                const encodedPacket = opusEncoder.encode(frame);
+                io2.emit("audio-inbound", encodedPacket);
+              } catch (err) {
+                console.error("[AUDIO] Opus encode error:", err);
+              }
             }
+          } catch (err) {
+            console.error("[AUDIO-IN] Unhandled exception in data handler:", err);
           }
         });
         audioInputProcess.on("error", (err) => {
@@ -40961,10 +40984,9 @@ async function startServer(appPath, userDataPath) {
             deviceId: isNaN(deviceId) ? -1 : deviceId,
             closeOnError: false,
             // Do not close on underflow — underflow is expected before first write
-            framesPerBuffer: 960,
-            // 20ms at 48kHz
+            framesPerBuffer: 0,
+            // Let PortAudio choose native buffer size for the host API
             maxQueue: 20
-            // large queue absorbs bursty socket arrivals; real audio written directly
           }
         });
         audioOutputProcess.on("error", (err) => {
@@ -40975,8 +40997,15 @@ async function startServer(appPath, userDataPath) {
           audioOutputProcess.write(OUTBOUND_SILENCE);
         }
         outboundTimer = setInterval(() => {
-          if (!audioOutputProcess || lastStatus.ptt) return;
-          audioOutputProcess.write(OUTBOUND_SILENCE);
+          if (!audioOutputProcess) return;
+          let frame;
+          if (lastStatus.ptt && outboundJitterBuffer.length > 0) {
+            frame = outboundJitterBuffer.shift();
+          } else {
+            outboundJitterBuffer = [];
+            frame = OUTBOUND_SILENCE;
+          }
+          audioOutputProcess.write(frame);
         }, 20);
         console.log(`[AUDIO-OUT] Started playback to device ${audioSettings.outputDevice}`);
       } catch (err) {
@@ -41042,7 +41071,7 @@ async function startServer(appPath, userDataPath) {
     addLog("rigctld started");
     rigctldProcess.stdout?.on("data", (data) => {
       const str = data.toString();
-      console.log(`rigctld stdout: ${str}`);
+      vlog(`rigctld stdout: ${str}`);
       addLog(str);
     });
     rigctldProcess.stderr?.on("data", (data) => {
@@ -41395,6 +41424,7 @@ async function startServer(appPath, userDataPath) {
       isReady: isAudioEngineReady,
       error: audioEngineError
     });
+    socket.emit("verbose-mode", VERBOSE);
     socket.on("connect-rig", ({ host, port }) => {
       resetRigState();
       connectToRig(host, port, socket);
@@ -41542,11 +41572,12 @@ async function startServer(appPath, userDataPath) {
         autoconnectEligible,
         clientHost,
         clientPort,
-        isConnected
+        isConnected,
+        potaSettings
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
-      console.log(`[VIDEO] New client ${socket.id} connected. videoStatus=${videoStatus} hasKeyframe=${!!lastKeyframe}`);
+      vlog(`[VIDEO] New client ${socket.id} connected. videoStatus=${videoStatus} hasKeyframe=${!!lastKeyframe}`);
       socket.emit("video-source-status", {
         status: videoStatus,
         videoWidth: videoSettings.videoWidth,
@@ -41555,7 +41586,7 @@ async function startServer(appPath, userDataPath) {
       });
       socket.emit("video-devices-list", videoDeviceList);
       if (videoStatus === "streaming" && lastKeyframe) {
-        console.log(`[VIDEO] Sending buffered keyframe to ${socket.id}: type=${lastKeyframe.type} dataBytes=${lastKeyframe.data.byteLength} hasDescription=${!!lastKeyframe.description}`);
+        vlog(`[VIDEO] Sending buffered keyframe to ${socket.id}: type=${lastKeyframe.type} dataBytes=${lastKeyframe.data.byteLength} hasDescription=${!!lastKeyframe.description}`);
         socket.emit("video-frame", lastKeyframe);
       }
       socket.emit("audio-status", audioStatus);
@@ -41570,7 +41601,7 @@ async function startServer(appPath, userDataPath) {
       }
     });
     socket.on("get-audio-devices", async () => {
-      console.log("[AUDIO] Client requested audio devices list");
+      vlog("[AUDIO] Client requested audio devices list");
       const { inputs, outputs, error } = await listAudioDevices();
       if (error) {
         socket.emit("audio-error", error);
@@ -41578,7 +41609,7 @@ async function startServer(appPath, userDataPath) {
       socket.emit("audio-devices-list", { inputs, outputs });
     });
     socket.on("update-audio-settings", async (settings) => {
-      console.log("[AUDIO] Updating audio settings:", settings);
+      vlog("[AUDIO] Updating audio settings:", settings);
       const wasPlaying = audioStatus === "playing";
       audioSettings = { ...audioSettings, ...settings };
       saveSettings();
@@ -41588,7 +41619,7 @@ async function startServer(appPath, userDataPath) {
       }
     });
     socket.on("control-audio", async (action) => {
-      console.log(`[AUDIO] Control action received: ${action}`);
+      vlog(`[AUDIO] Control action received: ${action}`);
       if (action === "start") {
         await startAudio();
       } else if (action === "stop") {
@@ -41612,7 +41643,7 @@ async function startServer(appPath, userDataPath) {
     socket.on("audio-outbound", (data) => {
       outboundRecvCount++;
       if (outboundRecvCount <= 5 || outboundRecvCount % 50 === 0) {
-        console.log(`[AUDIO-DIAG] audio-outbound received #${outboundRecvCount} from clientId=${clientId}, bytes=${data.length}, activeMic=${activeMicClientId}, ptt=${lastStatus.ptt}`);
+        vlog(`[AUDIO-DIAG] audio-outbound received #${outboundRecvCount} from clientId=${clientId}, bytes=${data.length}, activeMic=${activeMicClientId}, ptt=${lastStatus.ptt}`);
       }
       if (activeMicClientId !== clientId) return;
       if (!audioOutputProcess || !opusDecoder) return;
@@ -41620,42 +41651,45 @@ async function startServer(appPath, userDataPath) {
       try {
         const pcmData = opusDecoder.decode(data);
         if (outboundDiagCount < 5) {
-          console.log(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
+          vlog(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
           outboundDiagCount++;
         }
-        audioOutputProcess.write(pcmData);
+        outboundJitterBuffer.push(pcmData);
+        while (outboundJitterBuffer.length > OUTBOUND_JITTER_MAX) {
+          outboundJitterBuffer.shift();
+        }
       } catch (err) {
-        console.error("[AUDIO-OUT] Opus decode or write error:", err);
+        console.error("[AUDIO-OUT] Opus decode error:", err);
       }
     });
     socket.on("get-video-devices", () => {
       socket.emit("video-devices-list", videoDeviceList);
     });
     socket.on("video-devices-update", (devices) => {
-      console.log(`[VIDEO] Device list updated by source (${devices.length} devices):`, devices.map((d) => d.label));
+      vlog(`[VIDEO] Device list updated by source (${devices.length} devices):`, devices.map((d) => d.label));
       videoDeviceList = devices;
       io2.emit("video-devices-list", videoDeviceList);
     });
     socket.on("update-video-settings", (settings) => {
-      console.log("[VIDEO] Updating video settings:", settings);
+      vlog("[VIDEO] Updating video settings:", settings);
       videoSettings = { ...videoSettings, ...settings };
       saveSettings();
       io2.emit("video-settings-updated", videoSettings);
     });
     socket.on("request-video-start", () => {
-      console.log(`[VIDEO] Start requested by socket=${socket.id}`);
+      vlog(`[VIDEO] Start requested by socket=${socket.id}`);
       videoAutoStart = true;
       saveSettings();
       io2.emit("video-start-requested");
     });
     socket.on("request-video-stop", () => {
-      console.log(`[VIDEO] Stop requested by socket=${socket.id}`);
+      vlog(`[VIDEO] Stop requested by socket=${socket.id}`);
       videoAutoStart = false;
       saveSettings();
       io2.emit("video-stop-requested");
     });
     socket.on("video-source-start", (config) => {
-      console.log(`[VIDEO] Source started: socket=${socket.id}`, config);
+      vlog(`[VIDEO] Source started: socket=${socket.id}`, config);
       videoSourceSocketId = socket.id;
       lastKeyframe = null;
       videoSettings = { ...videoSettings, ...config };
@@ -41677,13 +41711,13 @@ async function startServer(appPath, userDataPath) {
       }
       videoFrameRelayCount++;
       if (chunk.type === "key" || videoFrameRelayCount <= 5) {
-        console.log(`[VIDEO] Relaying frame #${videoFrameRelayCount} type=${chunk.type} dataBytes=${chunk.data.byteLength} connectedClients=${io2.engine.clientsCount}`);
+        vlog(`[VIDEO] Relaying frame #${videoFrameRelayCount} type=${chunk.type} dataBytes=${chunk.data.byteLength} connectedClients=${io2.engine.clientsCount}`);
       }
       socket.broadcast.emit("video-frame", chunk);
     });
     socket.on("video-source-stop", () => {
       if (socket.id !== videoSourceSocketId) return;
-      console.log("[VIDEO] Source stopped.");
+      vlog("[VIDEO] Source stopped.");
       videoSourceSocketId = null;
       lastKeyframe = null;
       videoStatus = "stopped";
@@ -41705,6 +41739,7 @@ async function startServer(appPath, userDataPath) {
       }
       if (data.clientHost !== void 0) clientHost = data.clientHost;
       if (data.clientPort !== void 0) clientPort = Number(data.clientPort);
+      if (data.potaSettings !== void 0) potaSettings = { ...potaSettings, ...data.potaSettings };
       saveSettings();
       if (oldRigNumber !== rigctldSettings.rigNumber) {
         fetchRadioCapabilities(rigctldSettings.rigNumber);
@@ -41807,7 +41842,7 @@ async function startServer(appPath, userDataPath) {
     socket.on("disconnect", () => {
       console.log(`Client disconnected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
       if (socket.id === videoSourceSocketId) {
-        console.log("[VIDEO] Source client disconnected \u2014 stopping stream.");
+        vlog("[VIDEO] Source client disconnected \u2014 stopping stream.");
         videoSourceSocketId = null;
         lastKeyframe = null;
         videoStatus = "stopped";
@@ -41824,7 +41859,7 @@ async function startServer(appPath, userDataPath) {
             }
           });
           if (!hasActiveSocket && activeMicClientId === clientId) {
-            console.log(`[AUDIO] Releasing mic for disconnected client: ${clientId}`);
+            vlog(`[AUDIO] Releasing mic for disconnected client: ${clientId}`);
             activeMicClientId = null;
             io2.emit("mic-active-client", null);
           }

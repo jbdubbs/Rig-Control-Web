@@ -28,7 +28,8 @@ import {
   Check,
   AlertCircle,
   AlertTriangle,
-  Headphones
+  Headphones,
+  MapPin
 } from "lucide-react";
 import { 
   LineChart, 
@@ -44,6 +45,20 @@ import { twMerge } from "tailwind-merge";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+interface PotaSpot {
+  spotId: number;
+  spotTime: string;
+  activator: string;
+  frequency: number;
+  mode: string;
+  reference: string;
+  name: string;
+  locationDesc: string;
+  spotter: string;
+  source: string;
+  comments: string;
 }
 
 interface RigStatus {
@@ -72,6 +87,23 @@ interface RigStatus {
   vdd: number;
   timestamp: number;
 }
+
+const POTA_BANDS: { label: string; min: number; max: number }[] = [
+  { label: '6M',   min:  50000, max:  52000 },
+  { label: '10M',  min:  29000, max:  30000 },
+  { label: '12M',  min:  24000, max:  25000 },
+  { label: '15M',  min:  21000, max:  22000 },
+  { label: '17M',  min:  18000, max:  19000 },
+  { label: '20M',  min:  14000, max:  15000 },
+  { label: '30M',  min:  10000, max:  11000 },
+  { label: '40M',  min:   7000, max:   8000 },
+  { label: '60M',  min:   5000, max:   6000 },
+  { label: '80M',  min:   3000, max:   4000 },
+  { label: '160M', min:   1000, max:   2000 },
+  { label: '144',  min: 144000, max: 148000 },
+  { label: '220',  min: 219000, max: 225000 },
+  { label: '440',  min: 430000, max: 450000 },
+];
 
 const MODES_FALLBACK = [
   "USB", "LSB", "CW", "AM", "FM", "RTTY"
@@ -204,6 +236,18 @@ export default function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'spots'>('rigctld');
+  const [potaEnabled, setPotaEnabled] = useState(false);
+  const [potaPollRate, setPotaPollRate] = useState(5);
+  const [potaMaxAge, setPotaMaxAge] = useState(15);
+  const [potaModeFilter, setPotaModeFilter] = useState<'ALL' | 'SSB' | 'CW' | 'FT8' | 'FT4'>('ALL');
+  const [potaBandFilter, setPotaBandFilter] = useState<string[]>([]);
+  const [potaSpots, setPotaSpots] = useState<PotaSpot[]>([]);
+  const [potaSortCol, setPotaSortCol] = useState<string | null>('spotTime');
+  const [potaSortDir, setPotaSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
+  const [potaDrawerOpen, setPotaDrawerOpen] = useState(false);
+  const [potaSpotsVisible, setPotaSpotsVisible] = useState(false);
+  const [potaSpotsCollapsed, setPotaSpotsCollapsed] = useState(() => localStorage.getItem("pota-spots-collapsed") === "true");
   const [radios, setRadios] = useState<{id: string, mfg: string, model: string}[]>([]);
   const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");
   const [videoStatus, setVideoStatus] = useState<"streaming" | "stopped">("stopped");
@@ -251,6 +295,7 @@ export default function App() {
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const [rigctldVersionInfo, setRigctldVersionInfo] = useState<{ version: string | null, isSupported: boolean }>({ version: null, isSupported: true });
   const logEndRef = useRef<HTMLDivElement>(null);
+  const potaSpotsBoxRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
   const [isVideoCollapsed, setIsVideoCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [pendingVfoOp, setPendingVfoOp] = useState<string | null>(null);
@@ -438,6 +483,13 @@ export default function App() {
         }
         if (data.clientPort) {
           setPort(data.clientPort);
+        }
+        if (data.potaSettings) {
+          if (data.potaSettings.enabled !== undefined) setPotaEnabled(data.potaSettings.enabled);
+          if (data.potaSettings.pollRate !== undefined) setPotaPollRate(data.potaSettings.pollRate);
+          if (data.potaSettings.maxAge !== undefined) setPotaMaxAge(data.potaSettings.maxAge);
+          if (data.potaSettings.modeFilter !== undefined) setPotaModeFilter(data.potaSettings.modeFilter);
+          if (Array.isArray(data.potaSettings.bandFilter)) setPotaBandFilter(data.potaSettings.bandFilter);
         }
 
         // Handle autoconnect
@@ -649,14 +701,47 @@ export default function App() {
         settings: rigctldSettings,
         pollRate,
         clientHost: host,
-        clientPort: port
+        clientPort: port,
+        potaSettings: { enabled: potaEnabled, pollRate: potaPollRate, maxAge: potaMaxAge, modeFilter: potaModeFilter, bandFilter: potaBandFilter }
       });
       localStorage.setItem("last-poll-rate", pollRate.toString());
       localStorage.setItem("last-host", host);
       localStorage.setItem("last-port", port.toString());
     }, 1000);
     return () => clearTimeout(timer);
-  }, [rigctldSettings, host, port, pollRate, socket]);
+  }, [rigctldSettings, host, port, pollRate, socket, potaEnabled, potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter]);
+
+  useEffect(() => {
+    if (!potaEnabled) {
+      setPotaSpots([]);
+      return;
+    }
+    const fetchSpots = async () => {
+      try {
+        const res = await fetch("https://api.pota.app/spot/");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) setPotaSpots(data);
+        }
+      } catch {
+        // network error — silently ignore
+      }
+    };
+    fetchSpots();
+    const interval = setInterval(fetchSpots, potaPollRate * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [potaEnabled, potaPollRate]);
+
+  useEffect(() => {
+    const el = potaSpotsBoxRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setPotaSpotsVisible(entry.isIntersecting),
+      { threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [potaEnabled]);
 
   const isDraggingRF = useRef(false);
   const isChangingMode = useRef(false);
@@ -743,7 +828,8 @@ export default function App() {
     localStorage.setItem("is-compact-controls-collapsed", isCompactControlsCollapsed.toString());
     localStorage.setItem("is-compact-rfpower-collapsed", isCompactRFPowerCollapsed.toString());
     localStorage.setItem("is-desktop-controls-collapsed", isDesktopControlsCollapsed.toString());
-  }, [isCompact, isCompactSMeterCollapsed, isCompactOtherMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed, isDesktopControlsCollapsed]);
+    localStorage.setItem("pota-spots-collapsed", potaSpotsCollapsed.toString());
+  }, [isCompact, isCompactSMeterCollapsed, isCompactOtherMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed, isDesktopControlsCollapsed, potaSpotsCollapsed]);
 
   useEffect(() => {
     if (!socket) return;
@@ -1708,16 +1794,163 @@ export default function App() {
     return `${s * 1000000} Hz`;
   };
 
+  const filteredSpots = useMemo(() => {
+    // Keep only the latest spot per activator (ISO strings compare lexicographically)
+    const latestByActivator = new Map<string, PotaSpot>();
+    for (const spot of potaSpots) {
+      const existing = latestByActivator.get(spot.activator);
+      if (!existing || spot.spotTime > existing.spotTime) {
+        latestByActivator.set(spot.activator, spot);
+      }
+    }
+    // Filter by max age, mode, and band
+    const cutoff = Date.now() - potaMaxAge * 60 * 1000;
+    return [...latestByActivator.values()].filter(s => {
+      if (new Date(s.spotTime + 'Z').getTime() < cutoff) return false;
+      if (potaModeFilter !== 'ALL' && s.mode !== potaModeFilter) return false;
+      if (potaBandFilter.length > 0) {
+        const inBand = potaBandFilter.some(label => {
+          const band = POTA_BANDS.find(b => b.label === label);
+          return band && s.frequency >= band.min && s.frequency < band.max;
+        });
+        if (!inBand) return false;
+      }
+      return true;
+    });
+  }, [potaSpots, potaMaxAge, potaModeFilter, potaBandFilter]);
+
+  const sortedSpots = useMemo(() => {
+    if (!potaSortCol || potaSortDir === 'api') return filteredSpots;
+    return [...filteredSpots].sort((a, b) => {
+      const aVal = (a as any)[potaSortCol];
+      const bVal = (b as any)[potaSortCol];
+      const cmp = typeof aVal === 'number' && typeof bVal === 'number'
+        ? aVal - bVal
+        : String(aVal).localeCompare(String(bVal));
+      return potaSortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredSpots, potaSortCol, potaSortDir]);
+
+  const matchedSpotIds = useMemo(() => {
+    const vfoAHz = Math.round(parseFloat(inputVfoA) * 1_000_000);
+    const vfoBHz = Math.round(parseFloat(inputVfoB) * 1_000_000);
+    const ids = new Set<number>();
+    for (const spot of filteredSpots) {
+      const spotHz = Math.round(spot.frequency * 1000);
+      if (spotHz === vfoAHz || spotHz === vfoBHz) ids.add(spot.spotId);
+    }
+    return ids;
+  }, [filteredSpots, inputVfoA, inputVfoB]);
+
+  const displayedSpots = useMemo(() => {
+    if (matchedSpotIds.size === 0) return sortedSpots;
+    const matched = sortedSpots.filter(s => matchedSpotIds.has(s.spotId));
+    const unmatched = sortedSpots.filter(s => !matchedSpotIds.has(s.spotId));
+    return [...matched, ...unmatched];
+  }, [sortedSpots, matchedSpotIds]);
+
+  const formatSpotAge = (spotTime: string): string => {
+    const diff = Math.floor((Date.now() - new Date(spotTime + 'Z').getTime()) / 60000);
+    return diff <= 0 ? '<1m ago' : `${diff}m ago`;
+  };
+
+  const handleTuneToSpot = (spot: PotaSpot) => {
+    if (!connected) return;
+    const freqHz = String(Math.round(spot.frequency * 1000));
+    let mode = spot.mode;
+    if (mode === 'SSB') mode = (spot.frequency / 1000) >= 10 ? 'USB' : 'LSB';
+    skipPollsCount.current = 1;
+    setStatus(prev => ({ ...prev, frequency: freqHz, mode }));
+    socket?.emit('set-frequency', freqHz);
+    socket?.emit('set-mode', { mode, bandwidth: '-1' });
+  };
+
+  const handlePotaSort = (col: string) => {
+    if (potaSortCol !== col) {
+      setPotaSortCol(col);
+      setPotaSortDir('asc');
+    } else if (potaSortDir === 'asc') {
+      setPotaSortDir('desc');
+    } else {
+      setPotaSortCol(null);
+      setPotaSortDir('api');
+    }
+  };
+
+  const renderSpotsTable = (showFullLocation: boolean) => (
+    <table className="w-full text-[0.625rem] font-mono border-collapse">
+      <thead>
+        <tr className="bg-[#0a0a0a]">
+          {([
+            { key: 'activator', label: 'Activator' },
+            { key: 'frequency', label: 'Frequency' },
+            { key: 'mode', label: 'Mode' },
+            { key: 'locationDesc', label: 'Location' },
+            { key: 'spotTime', label: 'Age' },
+          ] as const).map(({ key, label }) => (
+            <th
+              key={key}
+              onClick={() => handlePotaSort(key)}
+              className="px-2 py-1.5 text-left text-[0.5625rem] uppercase text-[#8e9299] cursor-pointer hover:text-white select-none whitespace-nowrap border-b border-[#2a2b2e]"
+            >
+              {label}
+              {potaSortCol === key && potaSortDir !== 'api' && (
+                <span className="ml-1 text-emerald-500">{potaSortDir === 'asc' ? '▲' : '▼'}</span>
+              )}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {displayedSpots.length === 0 ? (
+          <tr>
+            <td colSpan={5} className="px-2 py-4 text-center text-[#4a4b4e] italic">
+              No POTA spots in the last {potaMaxAge} min...
+            </td>
+          </tr>
+        ) : (
+          displayedSpots.map((spot) => (
+            <tr key={spot.spotId} className={cn(
+              "border-b border-[#2a2b2e]/40 transition-colors",
+              matchedSpotIds.has(spot.spotId)
+                ? "bg-red-500/10 hover:bg-red-500/20"
+                : "hover:bg-white/5"
+            )}>
+              <td className="px-2 py-1 text-emerald-400 whitespace-nowrap">{spot.activator}</td>
+              <td className="px-2 py-1 whitespace-nowrap">
+                <button
+                  onClick={() => handleTuneToSpot(spot)}
+                  disabled={!connected}
+                  className="text-blue-400 hover:text-blue-300 hover:underline disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title={connected ? 'Tune VFO to this frequency' : 'Connect to rig first'}
+                >
+                  {(spot.frequency / 1000).toFixed(6)}
+                </button>
+              </td>
+              <td className="px-2 py-1 text-[#e0e0e0] whitespace-nowrap">{spot.mode}</td>
+              <td className="px-2 py-1 text-[#8e9299]">
+                {showFullLocation
+                  ? `${spot.locationDesc} · ${spot.reference} · ${spot.name}`
+                  : `${spot.locationDesc} · ${spot.reference}`}
+              </td>
+              <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(spot.spotTime)}</td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  );
+
   return (
     <div className={cn(
       "bg-[#0a0a0a] text-[#e0e0e0] font-mono",
-      isCompact ? (isPhone ? "p-2 overflow-y-auto max-h-screen h-fit" : "p-2 overflow-hidden h-fit") : "min-h-screen p-4 md:p-8"
+      isPhone ? "h-[100dvh] flex flex-col overflow-hidden" : isCompact ? "p-2 overflow-hidden h-fit" : "min-h-screen p-4 md:p-8"
     )}>
-      <div 
+      <div
         ref={containerRef}
         className={cn(
-          "mx-auto space-y-4",
-          isCompact ? "w-full" : "max-w-6xl space-y-6"
+          isPhone ? "flex-1 overflow-y-auto p-2 w-full space-y-4" : "mx-auto space-y-4",
+          !isPhone && (isCompact ? "w-full" : "max-w-6xl space-y-6")
         )}
       >
         {/* Header / Connection */}
@@ -1755,6 +1988,15 @@ export default function App() {
             >
               <Settings size={18} />
             </button>
+            {isCompact && !isPhone && potaEnabled && (
+              <button
+                onClick={() => setPotaDrawerOpen(true)}
+                className="p-1.5 sm:p-2 bg-[#0a0a0a] border border-emerald-500/50 text-emerald-500 rounded-lg transition-all flex-shrink-0 hover:bg-emerald-500/10"
+                title="Open POTA Spots"
+              >
+                <MapPin size={18} />
+              </button>
+            )}
           </div>
         </header>
 
@@ -1788,6 +2030,17 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Phone SPOTS scroll pill */}
+        {isPhone && potaEnabled && !potaSpotsVisible && (
+          <button
+            onClick={() => potaSpotsBoxRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-[#151619] border border-emerald-500/50 text-emerald-400 rounded-full text-[0.625rem] font-bold uppercase tracking-wider shadow-lg backdrop-blur-sm"
+          >
+            <MapPin size={10} />
+            Spots ↓
+          </button>
         )}
 
         {/* Main Interface */}
@@ -1920,15 +2173,25 @@ export default function App() {
                       <button
                         onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', -1)}
                         disabled={!connected}
-                        className="p-1.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                        className="flex items-center gap-1 px-2 py-1 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
                         title="Frequency Down"
-                      ><ChevronLeft size={16} /></button>
+                      >
+                        <ChevronLeft size={14} />
+                        <span className="text-[0.625rem] font-bold">
+                          {vfoStep >= 1 ? `${vfoStep}M` : vfoStep >= 0.001 ? `${Math.round(vfoStep * 1000)}k` : `${Math.round(vfoStep * 1000000)}Hz`}
+                        </span>
+                      </button>
                       <button
                         onClick={() => adjustVfoFrequency(status.vfo === 'VFOA' ? 'A' : 'B', 1)}
                         disabled={!connected}
-                        className="p-1.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                        className="flex items-center gap-1 px-2 py-1 bg-[#1a1b1e] border border-[#2a2b2e] rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
                         title="Frequency Up"
-                      ><ChevronRight size={16} /></button>
+                      >
+                        <span className="text-[0.625rem] font-bold">
+                          {vfoStep >= 1 ? `${vfoStep}M` : vfoStep >= 0.001 ? `${Math.round(vfoStep * 1000)}k` : `${Math.round(vfoStep * 1000000)}Hz`}
+                        </span>
+                        <ChevronRight size={14} />
+                      </button>
                     </div>
                   </div>
 
@@ -2226,33 +2489,6 @@ export default function App() {
               )}
             </div>
 
-            {/* PTT — standalone, always visible, no surrounding box */}
-            <button
-              onPointerDown={(e) => {
-                if (!connected) return;
-                e.currentTarget.setPointerCapture(e.pointerId);
-                handleSetPTT(true);
-              }}
-              onPointerUp={(e) => {
-                if (!connected) return;
-                e.currentTarget.releasePointerCapture(e.pointerId);
-                handleSetPTT(false);
-              }}
-              onPointerCancel={(e) => {
-                if (!connected) return;
-                handleSetPTT(false);
-              }}
-              disabled={!connected}
-              className={cn(
-                "flex flex-col items-center justify-center w-full h-16 rounded-xl border transition-all gap-1 touch-none select-none",
-                !connected && "opacity-50 cursor-not-allowed",
-                status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-              )}
-            >
-              <Mic size={24} />
-              <span className="text-xs uppercase font-bold leading-none">PTT</span>
-            </button>
-
             {/* Consolidated Quick Controls box */}
             <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
               <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
@@ -2476,6 +2712,32 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {potaEnabled && (
+              <div ref={potaSpotsBoxRef} className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
+                <div className={cn("p-3 flex items-center justify-between bg-[#1a1b1e]", !potaSpotsCollapsed && "border-b border-[#2a2b2e]")}>
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <MapPin size={12} />
+                    <span className="text-[0.5625rem] uppercase tracking-widest font-bold">POTA Spots</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[0.5rem] text-[#8e9299]">{filteredSpots.length} spot{filteredSpots.length !== 1 ? 's' : ''}</span>
+                    <button
+                      onClick={() => setPotaSpotsCollapsed(!potaSpotsCollapsed)}
+                      className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                      title={potaSpotsCollapsed ? "Expand Spots" : "Collapse Spots"}
+                    >
+                      {potaSpotsCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                    </button>
+                  </div>
+                </div>
+                {!potaSpotsCollapsed && (
+                  <div className="overflow-x-auto max-h-64 overflow-y-auto custom-scrollbar">
+                    {renderSpotsTable(false)}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : isCompact ? (
           <div className="space-y-2 animate-in fade-in duration-300">
@@ -3681,11 +3943,37 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {potaEnabled && (
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
+                <div className={cn("p-4 flex items-center justify-between bg-[#1a1b1e]", !potaSpotsCollapsed && "border-b border-[#2a2b2e]")}>
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <MapPin size={14} />
+                    <span className="text-[0.625rem] uppercase tracking-widest font-bold">POTA Spots</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[0.5625rem] text-[#8e9299]">{filteredSpots.length} spot{filteredSpots.length !== 1 ? 's' : ''}</span>
+                    <button
+                      onClick={() => setPotaSpotsCollapsed(!potaSpotsCollapsed)}
+                      className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                      title={potaSpotsCollapsed ? "Expand Spots" : "Collapse Spots"}
+                    >
+                      {potaSpotsCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                    </button>
+                  </div>
+                </div>
+                {!potaSpotsCollapsed && (
+                  <div className="overflow-x-auto max-h-72 overflow-y-auto custom-scrollbar">
+                    {renderSpotsTable(true)}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Right Column: Meters & Graphs */}
           <div className="space-y-6">
-            
+
             {/* RF Power & DNR Slider */}
             <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
               <div className="p-4 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
@@ -4675,9 +4963,9 @@ export default function App() {
                   <div className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg">
                     <Settings size={16} />
                   </div>
-                  <h2 className="text-sm font-bold uppercase tracking-tight">Rigctld Auto-Start Settings</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-tight">General Settings</h2>
                 </div>
-                <button 
+                <button
                   onClick={() => setIsSettingsOpen(false)}
                   className="p-1.5 hover:bg-white/5 rounded-full transition-colors text-[#8e9299] hover:text-white"
                 >
@@ -4685,6 +4973,25 @@ export default function App() {
                 </button>
               </div>
 
+              {/* Tab Bar */}
+              <div className="flex border-b border-[#2a2b2e] bg-[#1a1b1e]">
+                {(['rigctld', 'spots'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveSettingsTab(tab)}
+                    className={cn(
+                      "px-5 py-2.5 text-[0.625rem] font-bold uppercase tracking-wider transition-colors border-b-2 -mb-px",
+                      activeSettingsTab === tab
+                        ? "border-emerald-500 text-emerald-400"
+                        : "border-transparent text-[#8e9299] hover:text-white"
+                    )}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              {activeSettingsTab === 'rigctld' && (
               <div className="p-6 space-y-6">
                 {/* Client Side Settings */}
                 <div className="space-y-4">
@@ -4912,10 +5219,187 @@ export default function App() {
                   </div>
                 </div>
               </div>
+              )}
+
+              {activeSettingsTab === 'spots' && (
+              <div className="p-6 space-y-6">
+                <div className="space-y-4">
+                  <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Spot Sources</h3>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="pota-enabled"
+                      checked={potaEnabled}
+                      onChange={(e) => setPotaEnabled(e.target.checked)}
+                      className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                    />
+                    <label htmlFor="pota-enabled" className="text-sm font-bold cursor-pointer select-none">POTA</label>
+                    <span className="text-[0.5625rem] text-[#8e9299]">Parks on the Air</span>
+                  </div>
+                </div>
+
+                {potaEnabled && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold border-b border-blue-500/20 pb-1">POTA Options</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299]">Poll Frequency</label>
+                        <select
+                          value={potaPollRate}
+                          onChange={(e) => setPotaPollRate(Number(e.target.value))}
+                          className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white appearance-none cursor-pointer"
+                        >
+                          {[1, 2, 3, 4, 5].map(m => (
+                            <option key={m} value={m}>{m} min</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299]">Max Spot Age</label>
+                        <select
+                          value={potaMaxAge}
+                          onChange={(e) => setPotaMaxAge(Number(e.target.value))}
+                          className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white appearance-none cursor-pointer"
+                        >
+                          {[1, 3, 5, 10, 15].map(m => (
+                            <option key={m} value={m}>{m} min</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299]">Band Filter</label>
+                        {potaBandFilter.length > 0 && (
+                          <button
+                            onClick={() => setPotaBandFilter([])}
+                            className="text-[0.5rem] uppercase font-bold text-[#8e9299] hover:text-white transition-colors"
+                          >
+                            Clear (ALL)
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {POTA_BANDS.map(({ label }) => {
+                          const active = potaBandFilter.includes(label);
+                          return (
+                            <label
+                              key={label}
+                              className={cn(
+                                "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
+                                active
+                                  ? "bg-emerald-500/10 border-emerald-500/60 text-emerald-400"
+                                  : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500/40 hover:text-white"
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={active}
+                                onChange={() =>
+                                  setPotaBandFilter(prev =>
+                                    active ? prev.filter(b => b !== label) : [...prev, label]
+                                  )
+                                }
+                                className="w-3 h-3 accent-emerald-500 cursor-pointer flex-shrink-0"
+                              />
+                              <span className="text-[0.5625rem] font-bold uppercase">{label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {potaBandFilter.length === 0 && (
+                        <p className="text-[0.5rem] text-[#4a4b4e] italic">No bands selected — showing all bands</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299]">Mode Filter</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {(['ALL', 'SSB', 'CW', 'FT8', 'FT4'] as const).map(m => (
+                          <button
+                            key={m}
+                            onClick={() => setPotaModeFilter(m)}
+                            className={cn(
+                              "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all border",
+                              potaModeFilter === m
+                                ? "bg-emerald-500/20 border-emerald-500 text-emerald-400"
+                                : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500/50 hover:text-white"
+                            )}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              )}
+
             </div>
           </div>
         )}
+      {/* Compact POTA Spots Drawer */}
+      {isCompact && !isPhone && potaDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setPotaDrawerOpen(false)}
+          />
+          <div className="relative w-[90vw] max-w-2xl bg-[#151619] border-l border-[#2a2b2e] shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+            <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e] flex-shrink-0">
+              <div className="flex items-center gap-2 text-[#8e9299]">
+                <MapPin size={14} />
+                <span className="text-[0.625rem] uppercase tracking-widest font-bold">POTA Spots</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[0.5rem] text-[#8e9299]">{filteredSpots.length} spot{filteredSpots.length !== 1 ? 's' : ''}</span>
+                <button
+                  onClick={() => setPotaDrawerOpen(false)}
+                  className="p-1.5 hover:bg-white/5 rounded-full transition-colors text-[#8e9299] hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-auto flex-1 custom-scrollbar">
+              {renderSpotsTable(false)}
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
+
+      {/* Phone sticky PTT bar — sits outside the scroll container */}
+      {isPhone && (
+        <div className="flex-shrink-0 px-3 py-3 bg-[#151619] border-t border-[#2a2b2e]">
+          <button
+            onPointerDown={(e) => {
+              if (!connected) return;
+              e.currentTarget.setPointerCapture(e.pointerId);
+              handleSetPTT(true);
+            }}
+            onPointerUp={(e) => {
+              if (!connected) return;
+              e.currentTarget.releasePointerCapture(e.pointerId);
+              handleSetPTT(false);
+            }}
+            onPointerCancel={(e) => {
+              if (!connected) return;
+              handleSetPTT(false);
+            }}
+            disabled={!connected}
+            className={cn(
+              "flex flex-col items-center justify-center w-full h-16 rounded-xl border transition-all gap-1 touch-none select-none",
+              !connected && "opacity-50 cursor-not-allowed",
+              status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+            )}
+          >
+            <Mic size={24} />
+            <span className="text-xs uppercase font-bold leading-none">PTT</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
