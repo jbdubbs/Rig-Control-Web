@@ -245,8 +245,8 @@ export default function App() {
   const [potaSpots, setPotaSpots] = useState<PotaSpot[]>([]);
   const [potaSortCol, setPotaSortCol] = useState<string | null>('spotTime');
   const [potaSortDir, setPotaSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
-  const [potaDrawerOpen, setPotaDrawerOpen] = useState(false);
   const [potaSpotsVisible, setPotaSpotsVisible] = useState(false);
+  const [activeCompactPowerTab, setActiveCompactPowerTab] = useState<'levels' | 'pota'>('levels');
   const [potaSpotsCollapsed, setPotaSpotsCollapsed] = useState(() => localStorage.getItem("pota-spots-collapsed") === "true");
   const [radios, setRadios] = useState<{id: string, mfg: string, model: string}[]>([]);
   const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");
@@ -343,7 +343,7 @@ export default function App() {
   }, [connected]);
 
   useEffect(() => {
-    if (!isCompact || !(window as any).electron) return;
+    if (!isCompact || isPhone || !(window as any).electron) return;
 
     const snap = () => {
       if (containerRef.current) {
@@ -710,6 +710,10 @@ export default function App() {
     }, 1000);
     return () => clearTimeout(timer);
   }, [rigctldSettings, host, port, pollRate, socket, potaEnabled, potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter]);
+
+  useEffect(() => {
+    if (!potaEnabled) setActiveCompactPowerTab('levels');
+  }, [potaEnabled]);
 
   useEffect(() => {
     if (!potaEnabled) {
@@ -1843,10 +1847,12 @@ export default function App() {
   }, [filteredSpots, inputVfoA, inputVfoB]);
 
   const displayedSpots = useMemo(() => {
-    if (matchedSpotIds.size === 0) return sortedSpots;
-    const matched = sortedSpots.filter(s => matchedSpotIds.has(s.spotId));
-    const unmatched = sortedSpots.filter(s => !matchedSpotIds.has(s.spotId));
-    return [...matched, ...unmatched];
+    if (matchedSpotIds.size === 0) return sortedSpots.map(s => ({ spot: s, isPinned: false }));
+    const pinned = sortedSpots
+      .filter(s => matchedSpotIds.has(s.spotId))
+      .map(s => ({ spot: s, isPinned: true }));
+    const all = sortedSpots.map(s => ({ spot: s, isPinned: false }));
+    return [...pinned, ...all];
   }, [sortedSpots, matchedSpotIds]);
 
   const formatSpotAge = (spotTime: string): string => {
@@ -1857,12 +1863,15 @@ export default function App() {
   const handleTuneToSpot = (spot: PotaSpot) => {
     if (!connected) return;
     const freqHz = String(Math.round(spot.frequency * 1000));
-    let mode = spot.mode;
+    const originalMode = spot.mode;
+    let mode = originalMode;
     if (mode === 'SSB') mode = (spot.frequency / 1000) >= 10 ? 'USB' : 'LSB';
+    if (mode === 'CW')  mode = (spot.frequency / 1000) >= 10 ? 'CW'  : 'CWR';
+    if (mode === 'FT8' || mode === 'FT4') mode = availableModes.includes('PKTUSB') ? 'PKTUSB' : 'USB';
+    const modeChanged = mode !== originalMode;
     skipPollsCount.current = 1;
     setStatus(prev => ({ ...prev, frequency: freqHz, mode }));
-    socket?.emit('set-frequency', freqHz);
-    socket?.emit('set-mode', { mode, bandwidth: '-1' });
+    socket?.emit('tune-to-spot', { freqHz, mode, modeChanged });
   };
 
   const handlePotaSort = (col: string) => {
@@ -1909,32 +1918,41 @@ export default function App() {
             </td>
           </tr>
         ) : (
-          displayedSpots.map((spot) => (
-            <tr key={spot.spotId} className={cn(
-              "border-b border-[#2a2b2e]/40 transition-colors",
-              matchedSpotIds.has(spot.spotId)
-                ? "bg-red-500/10 hover:bg-red-500/20"
-                : "hover:bg-white/5"
-            )}>
-              <td className="px-2 py-1 text-emerald-400 whitespace-nowrap">{spot.activator}</td>
-              <td className="px-2 py-1 whitespace-nowrap">
-                <button
-                  onClick={() => handleTuneToSpot(spot)}
-                  disabled={!connected}
-                  className="text-blue-400 hover:text-blue-300 hover:underline disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  title={connected ? 'Tune VFO to this frequency' : 'Connect to rig first'}
-                >
-                  {(spot.frequency / 1000).toFixed(6)}
-                </button>
-              </td>
-              <td className="px-2 py-1 text-[#e0e0e0] whitespace-nowrap">{spot.mode}</td>
-              <td className="px-2 py-1 text-[#8e9299]">
-                {showFullLocation
-                  ? `${spot.locationDesc} · ${spot.reference} · ${spot.name}`
-                  : `${spot.locationDesc} · ${spot.reference}`}
-              </td>
-              <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(spot.spotTime)}</td>
-            </tr>
+          displayedSpots.map(({ spot, isPinned }, index) => (
+            <React.Fragment key={isPinned ? `pinned-${spot.spotId}` : String(spot.spotId)}>
+              {!isPinned && index > 0 && displayedSpots[index - 1].isPinned && (
+                <tr>
+                  <td colSpan={5} className="px-2 py-1 text-center text-[0.5rem] uppercase tracking-widest text-[#4a4b4e] border-t-2 border-[#2a2b2e]">
+                    — on frequency —
+                  </td>
+                </tr>
+              )}
+              <tr className={cn(
+                "border-b border-[#2a2b2e]/40 transition-colors",
+                matchedSpotIds.has(spot.spotId)
+                  ? "bg-red-500/10 hover:bg-red-500/20"
+                  : "hover:bg-white/5"
+              )}>
+                <td className="px-2 py-1 text-emerald-400 whitespace-nowrap">{spot.activator}</td>
+                <td className="px-2 py-1 whitespace-nowrap">
+                  <button
+                    onClick={() => handleTuneToSpot(spot)}
+                    disabled={!connected}
+                    className="text-blue-400 hover:text-blue-300 hover:underline disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title={connected ? 'Tune VFO to this frequency' : 'Connect to rig first'}
+                  >
+                    {(spot.frequency / 1000).toFixed(6)}
+                  </button>
+                </td>
+                <td className="px-2 py-1 text-[#e0e0e0] whitespace-nowrap">{spot.mode}</td>
+                <td className="px-2 py-1 text-[#8e9299]">
+                  {showFullLocation
+                    ? `${spot.locationDesc} · ${spot.reference} · ${spot.name}`
+                    : `${spot.locationDesc} · ${spot.reference}`}
+                </td>
+                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(spot.spotTime)}</td>
+              </tr>
+            </React.Fragment>
           ))
         )}
       </tbody>
@@ -1988,15 +2006,6 @@ export default function App() {
             >
               <Settings size={18} />
             </button>
-            {isCompact && !isPhone && potaEnabled && (
-              <button
-                onClick={() => setPotaDrawerOpen(true)}
-                className="p-1.5 sm:p-2 bg-[#0a0a0a] border border-emerald-500/50 text-emerald-500 rounded-lg transition-all flex-shrink-0 hover:bg-emerald-500/10"
-                title="Open POTA Spots"
-              >
-                <MapPin size={18} />
-              </button>
-            )}
           </div>
         </header>
 
@@ -2220,7 +2229,7 @@ export default function App() {
                   </div>
 
                   {/* Row 3: Step chips — one-tap step selection replacing the dropdown */}
-                  <div className="flex gap-1 overflow-x-auto pb-0.5">
+                  <div className="flex gap-1 overflow-x-auto pb-0.5 justify-center">
                     {VFO_STEPS.map(s => (
                       <button
                         key={s}
@@ -2732,7 +2741,7 @@ export default function App() {
                   </div>
                 </div>
                 {!potaSpotsCollapsed && (
-                  <div className="overflow-x-auto max-h-64 overflow-y-auto custom-scrollbar">
+                  <div className="overflow-x-auto">
                     {renderSpotsTable(false)}
                   </div>
                 )}
@@ -3253,8 +3262,23 @@ export default function App() {
 
               <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
                 <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
-                  <span className="text-xs uppercase text-[#8e9299] font-bold">Power & Levels</span>
-                  <button 
+                  <div className="flex items-center gap-1">
+                    {(['levels', ...(potaEnabled ? ['pota'] : [])] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveCompactPowerTab(tab)}
+                        className={cn(
+                          "px-2 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                          activeCompactPowerTab === tab
+                            ? "bg-emerald-500 text-white"
+                            : "text-[#8e9299] hover:bg-white/5"
+                        )}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                  <button
                     onClick={() => setIsCompactRFPowerCollapsed(!isCompactRFPowerCollapsed)}
                     className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
                   >
@@ -3262,92 +3286,104 @@ export default function App() {
                   </button>
                 </div>
                 {!isCompactRFPowerCollapsed && (
-                  <div className="p-2 flex flex-col justify-center gap-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
-                      <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min={rfPowerCapabilities.range.min * 100} 
-                      max={rfPowerCapabilities.range.max * 100} 
-                      step={rfPowerCapabilities.range.step * 100}
-                      value={localRFPower * 100}
-                      disabled={!connected}
-                      onChange={(e) => {
-                        isDraggingRF.current = true;
-                        setLocalRFPower(parseFloat(e.target.value) / 100);
-                      }}
-                      className={cn(
-                        "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                        !connected && "opacity-50 cursor-not-allowed"
+                  <div className="relative overflow-hidden">
+                    {/* LEVELS — always rendered to establish the box height; invisible when POTA tab is active */}
+                    <div className={cn(
+                      "p-2 flex flex-col justify-center gap-1",
+                      activeCompactPowerTab === 'pota' && "invisible"
+                    )}>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
+                        <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFPower * 100)}W</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={rfPowerCapabilities.range.min * 100}
+                        max={rfPowerCapabilities.range.max * 100}
+                        step={rfPowerCapabilities.range.step * 100}
+                        value={localRFPower * 100}
+                        disabled={!connected}
+                        onChange={(e) => {
+                          isDraggingRF.current = true;
+                          setLocalRFPower(parseFloat(e.target.value) / 100);
+                        }}
+                        className={cn(
+                          "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                      <div className="flex justify-between items-center mt-3">
+                        <span className="text-xs uppercase text-[#8e9299]">RF Level</span>
+                        <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={localRFLevel}
+                        disabled={!connected}
+                        onChange={(e) => {
+                          isDraggingRFLevel.current = true;
+                          setLocalRFLevel(parseFloat(e.target.value));
+                        }}
+                        className={cn(
+                          "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                      <div className="flex justify-between items-center mt-3">
+                        <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
+                        <span className="text-sm text-emerald-500 font-bold">Lvl {Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)}
+                        step="1"
+                        value={Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}
+                        disabled={!connected || !nrCapabilities.supported}
+                        onChange={(e) => {
+                          isDraggingNR.current = true;
+                          const stepIdx = parseInt(e.target.value);
+                          const calculated = nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step);
+                          setLocalNRLevel(Math.min(nrCapabilities.range.max, calculated));
+                        }}
+                        className={cn(
+                          "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                          (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                      {nbCapabilities.supported && (
+                        <>
+                          <div className="flex justify-between items-center mt-3">
+                            <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
+                            <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round(localNBLevel)}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={nbCapabilities.range.min}
+                            max={nbCapabilities.range.max}
+                            step={nbCapabilities.range.step}
+                            value={localNBLevel}
+                            disabled={!connected}
+                            onChange={(e) => {
+                              isDraggingNB.current = true;
+                              setLocalNBLevel(parseFloat(e.target.value));
+                            }}
+                            className={cn(
+                              "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
+                              !connected && "opacity-50 cursor-not-allowed"
+                            )}
+                          />
+                        </>
                       )}
-                    />
-                    <div className="flex justify-between items-center mt-3">
-                      <span className="text-xs uppercase text-[#8e9299]">RF Level</span>
-                      <span className="text-sm text-emerald-500 font-bold">{Math.round(localRFLevel * 100)}%</span>
                     </div>
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="1" 
-                      step="0.1"
-                      value={localRFLevel}
-                      disabled={!connected}
-                      onChange={(e) => {
-                        isDraggingRFLevel.current = true;
-                        setLocalRFLevel(parseFloat(e.target.value));
-                      }}
-                      className={cn(
-                        "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                        !connected && "opacity-50 cursor-not-allowed"
-                      )}
-                    />
-                    <div className="flex justify-between items-center mt-3">
-                      <span className="text-xs uppercase text-[#8e9299]">DNR Level</span>
-                      <span className="text-sm text-emerald-500 font-bold">Lvl {Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="1" 
-                      max={Math.round((nrCapabilities.range.max - nrCapabilities.range.min) / nrCapabilities.range.step)} 
-                      step="1"
-                      value={Math.max(1, Math.round((localNRLevel - nrCapabilities.range.min) / nrCapabilities.range.step))}
-                      disabled={!connected || !nrCapabilities.supported}
-                      onChange={(e) => {
-                        isDraggingNR.current = true;
-                        const stepIdx = parseInt(e.target.value);
-                        const calculated = nrCapabilities.range.min + (stepIdx * nrCapabilities.range.step);
-                        setLocalNRLevel(Math.min(nrCapabilities.range.max, calculated));
-                      }}
-                      className={cn(
-                        "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                        (!connected || !nrCapabilities.supported) && "opacity-50 cursor-not-allowed"
-                      )}
-                    />
-                    {nbCapabilities.supported && (
-                      <>
-                        <div className="flex justify-between items-center mt-3">
-                          <span className="text-xs uppercase text-[#8e9299]">NB Level</span>
-                          <span className="text-sm text-emerald-500 font-bold">Lvl {Math.round(localNBLevel)}</span>
-                        </div>
-                        <input 
-                          type="range" 
-                          min={nbCapabilities.range.min}
-                          max={nbCapabilities.range.max}
-                          step={nbCapabilities.range.step}
-                          value={localNBLevel}
-                          disabled={!connected}
-                          onChange={(e) => {
-                            isDraggingNB.current = true;
-                            setLocalNBLevel(parseFloat(e.target.value));
-                          }}
-                          className={cn(
-                            "w-full accent-emerald-500 h-1 bg-[#0a0a0a] rounded-lg appearance-none cursor-pointer",
-                            !connected && "opacity-50 cursor-not-allowed"
-                          )}
-                        />
-                      </>
+                    {/* POTA — absolutely positioned so it never influences the box height */}
+                    {potaEnabled && activeCompactPowerTab === 'pota' && (
+                      <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
+                        {renderSpotsTable(false)}
+                      </div>
                     )}
                   </div>
                 )}
@@ -5338,35 +5374,6 @@ export default function App() {
             </div>
           </div>
         )}
-      {/* Compact POTA Spots Drawer */}
-      {isCompact && !isPhone && potaDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setPotaDrawerOpen(false)}
-          />
-          <div className="relative w-[90vw] max-w-2xl bg-[#151619] border-l border-[#2a2b2e] shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
-            <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e] flex-shrink-0">
-              <div className="flex items-center gap-2 text-[#8e9299]">
-                <MapPin size={14} />
-                <span className="text-[0.625rem] uppercase tracking-widest font-bold">POTA Spots</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-[0.5rem] text-[#8e9299]">{filteredSpots.length} spot{filteredSpots.length !== 1 ? 's' : ''}</span>
-                <button
-                  onClick={() => setPotaDrawerOpen(false)}
-                  className="p-1.5 hover:bg-white/5 rounded-full transition-colors text-[#8e9299] hover:text-white"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-            <div className="overflow-auto flex-1 custom-scrollbar">
-              {renderSpotsTable(false)}
-            </div>
-          </div>
-        </div>
-      )}
 
       </div>
 

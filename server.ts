@@ -18,9 +18,9 @@ export function setElectronWindow(win: any) {
 }
 
 // Populated by startServer(); called from electron/main.ts on will-quit
-let _shutdownAudio: (() => Promise<void>) | null = null;
+let _shutdown: (() => Promise<void>) | null = null;
 export async function shutdown(): Promise<void> {
-  if (_shutdownAudio) await _shutdownAudio();
+  if (_shutdown) await _shutdown();
 }
 
 export async function startServer(appPath?: string, userDataPath?: string) {
@@ -475,8 +475,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     audioStatus = "stopped";
     io.emit("audio-status", audioStatus);
   };
-
-  _shutdownAudio = stopAudio;
 
   const startAudio = async () => {
     console.log("[AUDIO] Starting audio streaming...");
@@ -1130,6 +1128,25 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
     });
 
+    socket.on("tune-to-spot", async ({ freqHz, mode, modeChanged }: { freqHz: string; mode: string; modeChanged: boolean }) => {
+      try {
+        await sendToRig(`F ${freqHz}`, false, true);
+        if (modeChanged) {
+          await sendToRig(`M ${mode} -1`, false, true);
+          const modeBw = await sendToRig("m", true, true);
+          const [confirmedMode, confirmedBw] = modeBw.split("\n");
+          lastStatus = { ...lastStatus, mode: confirmedMode, bandwidth: confirmedBw };
+          await new Promise(resolve => setTimeout(resolve, 200));
+          await sendToRig(`F ${freqHz}`, false, true);
+        }
+        const confirmedFreq = await sendToRig("f", true, true);
+        lastStatus = { ...lastStatus, frequency: confirmedFreq };
+        io.emit("rig-status", lastStatus);
+      } catch (err) {
+        socket.emit("rig-error", "Failed to tune to spot");
+      }
+    });
+
     socket.on("set-frequency", async (freq) => {
       try {
         await sendToRig(`F ${freq}`, false, true);
@@ -1651,6 +1668,17 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       });
     }
   }
+
+  // Register full shutdown for Electron will-quit (and any other caller).
+  // Order matters: audio hardware first, then rigctld, then network/IPC.
+  _shutdown = async () => {
+    await stopAudio();
+    stopRigctld();
+    if (pollingTimeout) { clearTimeout(pollingTimeout); pollingTimeout = null; }
+    if (rigSocket) { rigSocket.destroy(); rigSocket = null; }
+    io.disconnectSockets(true);
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  };
 
   return new Promise<void>((resolve) => {
     httpServer.listen(PORT, "0.0.0.0", () => {

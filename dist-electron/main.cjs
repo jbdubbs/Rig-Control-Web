@@ -40513,9 +40513,9 @@ var electronWin = null;
 function setElectronWindow(win) {
   electronWin = win;
 }
-var _shutdownAudio = null;
+var _shutdown = null;
 async function shutdown() {
-  if (_shutdownAudio) await _shutdownAudio();
+  if (_shutdown) await _shutdown();
 }
 async function startServer(appPath, userDataPath) {
   const app2 = (0, import_express.default)();
@@ -40906,7 +40906,6 @@ async function startServer(appPath, userDataPath) {
     audioStatus = "stopped";
     io2.emit("audio-status", audioStatus);
   };
-  _shutdownAudio = stopAudio;
   const startAudio = async () => {
     console.log("[AUDIO] Starting audio streaming...");
     await stopAudio();
@@ -41464,6 +41463,24 @@ async function startServer(appPath, userDataPath) {
         socket.emit("rig-error", `Failed to set ${level}`);
       }
     });
+    socket.on("tune-to-spot", async ({ freqHz, mode, modeChanged }) => {
+      try {
+        await sendToRig(`F ${freqHz}`, false, true);
+        if (modeChanged) {
+          await sendToRig(`M ${mode} -1`, false, true);
+          const modeBw = await sendToRig("m", true, true);
+          const [confirmedMode, confirmedBw] = modeBw.split("\n");
+          lastStatus = { ...lastStatus, mode: confirmedMode, bandwidth: confirmedBw };
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          await sendToRig(`F ${freqHz}`, false, true);
+        }
+        const confirmedFreq = await sendToRig("f", true, true);
+        lastStatus = { ...lastStatus, frequency: confirmedFreq };
+        io2.emit("rig-status", lastStatus);
+      } catch (err) {
+        socket.emit("rig-error", "Failed to tune to spot");
+      }
+    });
     socket.on("set-frequency", async (freq) => {
       try {
         await sendToRig(`F ${freq}`, false, true);
@@ -41906,6 +41923,20 @@ async function startServer(appPath, userDataPath) {
       });
     }
   }
+  _shutdown = async () => {
+    await stopAudio();
+    stopRigctld();
+    if (pollingTimeout) {
+      clearTimeout(pollingTimeout);
+      pollingTimeout = null;
+    }
+    if (rigSocket) {
+      rigSocket.destroy();
+      rigSocket = null;
+    }
+    io2.disconnectSockets(true);
+    await new Promise((resolve) => httpServer.close(() => resolve()));
+  };
   return new Promise((resolve) => {
     httpServer.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
