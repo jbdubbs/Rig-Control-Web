@@ -61,6 +61,16 @@ interface PotaSpot {
   comments: string;
 }
 
+interface SotaSpot {
+  id: number;
+  activatorCallsign: string;
+  frequency: string;
+  mode: string;
+  associationCode: string;
+  summitCode: string;
+  timeStamp: string;
+}
+
 interface RigStatus {
   frequency: string;
   mode: string;
@@ -152,6 +162,7 @@ const vlog = (...args: any[]) => { if (clientVerbose) console.log(...args); };
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
+  const [vfoSupported, setVfoSupported] = useState(true);
   const [host, setHost] = useState(() => localStorage.getItem("last-host") || "127.0.0.1");
   const [port, setPort] = useState(() => parseInt(localStorage.getItem("last-port") || "4532"));
   const [status, setStatus] = useState<RigStatus>(() => {
@@ -246,8 +257,18 @@ export default function App() {
   const [potaSortCol, setPotaSortCol] = useState<string | null>('spotTime');
   const [potaSortDir, setPotaSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
   const [potaSpotsVisible, setPotaSpotsVisible] = useState(false);
-  const [activeCompactPowerTab, setActiveCompactPowerTab] = useState<'levels' | 'pota'>('levels');
+  const [activeCompactPowerTab, setActiveCompactPowerTab] = useState<'levels' | 'pota' | 'sota'>('levels');
   const [potaSpotsCollapsed, setPotaSpotsCollapsed] = useState(() => localStorage.getItem("pota-spots-collapsed") === "true");
+  const [sotaEnabled, setSotaEnabled] = useState(false);
+  const [sotaPollRate, setSotaPollRate] = useState(5);
+  const [sotaMaxAge, setSotaMaxAge] = useState(15);
+  const [sotaModeFilter, setSotaModeFilter] = useState<'ALL' | 'SSB' | 'CW' | 'FT8' | 'FT4'>('ALL');
+  const [sotaBandFilter, setSotaBandFilter] = useState<string[]>([]);
+  const [sotaSpots, setSotaSpots] = useState<SotaSpot[]>([]);
+  const [sotaSortCol, setSotaSortCol] = useState<string | null>('timeStamp');
+  const [sotaSortDir, setSotaSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
+  const [sotaSpotsVisible, setSotaSpotsVisible] = useState(false);
+  const [sotaSpotsCollapsed, setSotaSpotsCollapsed] = useState(() => localStorage.getItem("sota-spots-collapsed") === "true");
   const [radios, setRadios] = useState<{id: string, mfg: string, model: string}[]>([]);
   const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");
   const [videoStatus, setVideoStatus] = useState<"streaming" | "stopped">("stopped");
@@ -296,6 +317,7 @@ export default function App() {
   const [rigctldVersionInfo, setRigctldVersionInfo] = useState<{ version: string | null, isSupported: boolean }>({ version: null, isSupported: true });
   const logEndRef = useRef<HTMLDivElement>(null);
   const potaSpotsBoxRef = useRef<HTMLDivElement>(null);
+  const sotaSpotsBoxRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
   const [isVideoCollapsed, setIsVideoCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [pendingVfoOp, setPendingVfoOp] = useState<string | null>(null);
@@ -490,6 +512,13 @@ export default function App() {
           if (data.potaSettings.maxAge !== undefined) setPotaMaxAge(data.potaSettings.maxAge);
           if (data.potaSettings.modeFilter !== undefined) setPotaModeFilter(data.potaSettings.modeFilter);
           if (Array.isArray(data.potaSettings.bandFilter)) setPotaBandFilter(data.potaSettings.bandFilter);
+        }
+        if (data.sotaSettings) {
+          if (data.sotaSettings.enabled !== undefined) setSotaEnabled(data.sotaSettings.enabled);
+          if (data.sotaSettings.pollRate !== undefined) setSotaPollRate(data.sotaSettings.pollRate);
+          if (data.sotaSettings.maxAge !== undefined) setSotaMaxAge(data.sotaSettings.maxAge);
+          if (data.sotaSettings.modeFilter !== undefined) setSotaModeFilter(data.sotaSettings.modeFilter);
+          if (Array.isArray(data.sotaSettings.bandFilter)) setSotaBandFilter(data.sotaSettings.bandFilter);
         }
 
         // Handle autoconnect
@@ -702,14 +731,15 @@ export default function App() {
         pollRate,
         clientHost: host,
         clientPort: port,
-        potaSettings: { enabled: potaEnabled, pollRate: potaPollRate, maxAge: potaMaxAge, modeFilter: potaModeFilter, bandFilter: potaBandFilter }
+        potaSettings: { enabled: potaEnabled, pollRate: potaPollRate, maxAge: potaMaxAge, modeFilter: potaModeFilter, bandFilter: potaBandFilter },
+        sotaSettings: { enabled: sotaEnabled, pollRate: sotaPollRate, maxAge: sotaMaxAge, modeFilter: sotaModeFilter, bandFilter: sotaBandFilter }
       });
       localStorage.setItem("last-poll-rate", pollRate.toString());
       localStorage.setItem("last-host", host);
       localStorage.setItem("last-port", port.toString());
     }, 1000);
     return () => clearTimeout(timer);
-  }, [rigctldSettings, host, port, pollRate, socket, potaEnabled, potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter]);
+  }, [rigctldSettings, host, port, pollRate, socket, potaEnabled, potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter, sotaEnabled, sotaPollRate, sotaMaxAge, sotaModeFilter, sotaBandFilter]);
 
   useEffect(() => {
     if (!potaEnabled) setActiveCompactPowerTab('levels');
@@ -746,6 +776,42 @@ export default function App() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [potaEnabled]);
+
+  useEffect(() => {
+    if (!sotaEnabled) setActiveCompactPowerTab(prev => prev === 'sota' ? 'levels' : prev);
+  }, [sotaEnabled]);
+
+  useEffect(() => {
+    if (!sotaEnabled) {
+      setSotaSpots([]);
+      return;
+    }
+    const fetchSotaSpots = async () => {
+      try {
+        const res = await fetch("https://api2.sota.org.uk/api/spots/-1/all");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) setSotaSpots(data);
+        }
+      } catch {
+        // network error — silently ignore
+      }
+    };
+    fetchSotaSpots();
+    const interval = setInterval(fetchSotaSpots, sotaPollRate * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [sotaEnabled, sotaPollRate]);
+
+  useEffect(() => {
+    const el = sotaSpotsBoxRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setSotaSpotsVisible(entry.isIntersecting),
+      { threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [sotaEnabled]);
 
   const isDraggingRF = useRef(false);
   const isChangingMode = useRef(false);
@@ -833,7 +899,8 @@ export default function App() {
     localStorage.setItem("is-compact-rfpower-collapsed", isCompactRFPowerCollapsed.toString());
     localStorage.setItem("is-desktop-controls-collapsed", isDesktopControlsCollapsed.toString());
     localStorage.setItem("pota-spots-collapsed", potaSpotsCollapsed.toString());
-  }, [isCompact, isCompactSMeterCollapsed, isCompactOtherMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed, isDesktopControlsCollapsed, potaSpotsCollapsed]);
+    localStorage.setItem("sota-spots-collapsed", sotaSpotsCollapsed.toString());
+  }, [isCompact, isCompactSMeterCollapsed, isCompactOtherMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed, isDesktopControlsCollapsed, potaSpotsCollapsed, sotaSpotsCollapsed]);
 
   useEffect(() => {
     if (!socket) return;
@@ -874,9 +941,10 @@ export default function App() {
     });
     setSocket(newSocket);
 
-    newSocket.on("rig-connected", () => {
-      console.log("[RIG] Connected successfully");
+    newSocket.on("rig-connected", ({ vfoSupported: vfoSup }: { vfoSupported?: boolean } = {}) => {
+      console.log("[RIG] Connected successfully, vfoSupported:", vfoSup !== false);
       setConnected(true);
+      setVfoSupported(vfoSup !== false);
       setError(null);
       newSocket.emit("set-autoconnect-eligible", true);
       isAutoconnectAttempt.current = false;
@@ -888,6 +956,7 @@ export default function App() {
     newSocket.on("rig-disconnected", () => {
       console.log("[RIG] Disconnected");
       setConnected(false);
+      setVfoSupported(true);
       if (isAutoconnectAttempt.current) {
         newSocket.emit("set-autoconnect-eligible", false);
         isAutoconnectAttempt.current = false;
@@ -1836,15 +1905,14 @@ export default function App() {
   }, [filteredSpots, potaSortCol, potaSortDir]);
 
   const matchedSpotIds = useMemo(() => {
-    const vfoAHz = Math.round(parseFloat(inputVfoA) * 1_000_000);
-    const vfoBHz = Math.round(parseFloat(inputVfoB) * 1_000_000);
+    const activeHz = Math.round(parseFloat(status.vfo === 'VFOA' ? inputVfoA : inputVfoB) * 1_000_000);
     const ids = new Set<number>();
     for (const spot of filteredSpots) {
       const spotHz = Math.round(spot.frequency * 1000);
-      if (spotHz === vfoAHz || spotHz === vfoBHz) ids.add(spot.spotId);
+      if (spotHz === activeHz) ids.add(spot.spotId);
     }
     return ids;
-  }, [filteredSpots, inputVfoA, inputVfoB]);
+  }, [filteredSpots, inputVfoA, inputVfoB, status.vfo]);
 
   const displayedSpots = useMemo(() => {
     if (matchedSpotIds.size === 0) return sortedSpots.map(s => ({ spot: s, isPinned: false }));
@@ -1855,6 +1923,61 @@ export default function App() {
     return [...pinned, ...all];
   }, [sortedSpots, matchedSpotIds]);
 
+  const filteredSotaSpots = useMemo(() => {
+    const latestByActivator = new Map<string, SotaSpot>();
+    for (const spot of sotaSpots) {
+      const existing = latestByActivator.get(spot.activatorCallsign);
+      if (!existing || spot.timeStamp > existing.timeStamp) {
+        latestByActivator.set(spot.activatorCallsign, spot);
+      }
+    }
+    const cutoff = Date.now() - sotaMaxAge * 60 * 1000;
+    return [...latestByActivator.values()].filter(s => {
+      if (new Date(s.timeStamp + 'Z').getTime() < cutoff) return false;
+      if (sotaModeFilter !== 'ALL' && s.mode !== sotaModeFilter) return false;
+      if (sotaBandFilter.length > 0) {
+        const freqKhz = parseFloat(s.frequency) * 1000;
+        const inBand = sotaBandFilter.some(label => {
+          const band = POTA_BANDS.find(b => b.label === label);
+          return band && freqKhz >= band.min && freqKhz < band.max;
+        });
+        if (!inBand) return false;
+      }
+      return true;
+    });
+  }, [sotaSpots, sotaMaxAge, sotaModeFilter, sotaBandFilter]);
+
+  const sortedSotaSpots = useMemo(() => {
+    if (!sotaSortCol || sotaSortDir === 'api') return filteredSotaSpots;
+    return [...filteredSotaSpots].sort((a, b) => {
+      const aVal = (a as any)[sotaSortCol];
+      const bVal = (b as any)[sotaSortCol];
+      const cmp = typeof aVal === 'number' && typeof bVal === 'number'
+        ? aVal - bVal
+        : String(aVal).localeCompare(String(bVal));
+      return sotaSortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredSotaSpots, sotaSortCol, sotaSortDir]);
+
+  const matchedSotaSpotIds = useMemo(() => {
+    const activeHz = Math.round(parseFloat(status.vfo === 'VFOA' ? inputVfoA : inputVfoB) * 1_000_000);
+    const ids = new Set<number>();
+    for (const spot of filteredSotaSpots) {
+      const spotHz = Math.round(parseFloat(spot.frequency) * 1_000_000);
+      if (spotHz === activeHz) ids.add(spot.id);
+    }
+    return ids;
+  }, [filteredSotaSpots, inputVfoA, inputVfoB, status.vfo]);
+
+  const displayedSotaSpots = useMemo(() => {
+    if (matchedSotaSpotIds.size === 0) return sortedSotaSpots.map(s => ({ spot: s, isPinned: false }));
+    const pinned = sortedSotaSpots
+      .filter(s => matchedSotaSpotIds.has(s.id))
+      .map(s => ({ spot: s, isPinned: true }));
+    const all = sortedSotaSpots.map(s => ({ spot: s, isPinned: false }));
+    return [...pinned, ...all];
+  }, [sortedSotaSpots, matchedSotaSpotIds]);
+
   const formatSpotAge = (spotTime: string): string => {
     const diff = Math.floor((Date.now() - new Date(spotTime + 'Z').getTime()) / 60000);
     return diff <= 0 ? '<1m ago' : `${diff}m ago`;
@@ -1863,12 +1986,11 @@ export default function App() {
   const handleTuneToSpot = (spot: PotaSpot) => {
     if (!connected) return;
     const freqHz = String(Math.round(spot.frequency * 1000));
-    const originalMode = spot.mode;
-    let mode = originalMode;
+    let mode = spot.mode;
     if (mode === 'SSB') mode = (spot.frequency / 1000) >= 10 ? 'USB' : 'LSB';
     if (mode === 'CW')  mode = (spot.frequency / 1000) >= 10 ? 'CW'  : 'CWR';
     if (mode === 'FT8' || mode === 'FT4') mode = availableModes.includes('PKTUSB') ? 'PKTUSB' : 'USB';
-    const modeChanged = mode !== originalMode;
+    const modeChanged = mode !== status.mode;
     skipPollsCount.current = 1;
     setStatus(prev => ({ ...prev, frequency: freqHz, mode }));
     socket?.emit('tune-to-spot', { freqHz, mode, modeChanged });
@@ -1883,6 +2005,32 @@ export default function App() {
     } else {
       setPotaSortCol(null);
       setPotaSortDir('api');
+    }
+  };
+
+  const handleTuneToSotaSpot = (spot: SotaSpot) => {
+    if (!connected) return;
+    const freqMhz = parseFloat(spot.frequency);
+    const freqHz = String(Math.round(freqMhz * 1_000_000));
+    let mode = spot.mode;
+    if (mode === 'SSB') mode = freqMhz >= 10 ? 'USB' : 'LSB';
+    if (mode === 'CW')  mode = freqMhz >= 10 ? 'CW'  : 'CWR';
+    if (mode === 'FT8' || mode === 'FT4') mode = availableModes.includes('PKTUSB') ? 'PKTUSB' : 'USB';
+    const modeChanged = mode !== status.mode;
+    skipPollsCount.current = 1;
+    setStatus(prev => ({ ...prev, frequency: freqHz, mode }));
+    socket?.emit('tune-to-spot', { freqHz, mode, modeChanged });
+  };
+
+  const handleSotaSort = (col: string) => {
+    if (sotaSortCol !== col) {
+      setSotaSortCol(col);
+      setSotaSortDir('asc');
+    } else if (sotaSortDir === 'asc') {
+      setSotaSortDir('desc');
+    } else {
+      setSotaSortCol(null);
+      setSotaSortDir('api');
     }
   };
 
@@ -1951,6 +2099,75 @@ export default function App() {
                     : `${spot.locationDesc} · ${spot.reference}`}
                 </td>
                 <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(spot.spotTime)}</td>
+              </tr>
+            </React.Fragment>
+          ))
+        )}
+      </tbody>
+    </table>
+  );
+
+  const renderSotaSpotsTable = () => (
+    <table className="w-full text-[0.625rem] font-mono border-collapse">
+      <thead>
+        <tr className="bg-[#0a0a0a]">
+          {([
+            { key: 'activatorCallsign', label: 'Activator' },
+            { key: 'frequency', label: 'Frequency' },
+            { key: 'mode', label: 'Mode' },
+            { key: 'summitCode', label: 'Location' },
+            { key: 'timeStamp', label: 'Age' },
+          ] as const).map(({ key, label }) => (
+            <th
+              key={key}
+              onClick={() => handleSotaSort(key)}
+              className="px-2 py-1.5 text-left text-[0.5625rem] uppercase text-[#8e9299] cursor-pointer hover:text-white select-none whitespace-nowrap border-b border-[#2a2b2e]"
+            >
+              {label}
+              {sotaSortCol === key && sotaSortDir !== 'api' && (
+                <span className="ml-1 text-amber-500">{sotaSortDir === 'asc' ? '▲' : '▼'}</span>
+              )}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {displayedSotaSpots.length === 0 ? (
+          <tr>
+            <td colSpan={5} className="px-2 py-4 text-center text-[#4a4b4e] italic">
+              No SOTA spots in the last {sotaMaxAge} min...
+            </td>
+          </tr>
+        ) : (
+          displayedSotaSpots.map(({ spot, isPinned }, index) => (
+            <React.Fragment key={isPinned ? `pinned-${spot.id}` : String(spot.id)}>
+              {!isPinned && index > 0 && displayedSotaSpots[index - 1].isPinned && (
+                <tr>
+                  <td colSpan={5} className="px-2 py-1 text-center text-[0.5rem] uppercase tracking-widest text-[#4a4b4e] border-t-2 border-[#2a2b2e]">
+                    — on frequency —
+                  </td>
+                </tr>
+              )}
+              <tr className={cn(
+                "border-b border-[#2a2b2e]/40 transition-colors",
+                matchedSotaSpotIds.has(spot.id)
+                  ? "bg-red-500/10 hover:bg-red-500/20"
+                  : "hover:bg-white/5"
+              )}>
+                <td className="px-2 py-1 text-amber-400 whitespace-nowrap">{spot.activatorCallsign}</td>
+                <td className="px-2 py-1 whitespace-nowrap">
+                  <button
+                    onClick={() => handleTuneToSotaSpot(spot)}
+                    disabled={!connected}
+                    className="text-blue-400 hover:text-blue-300 hover:underline disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title={connected ? 'Tune VFO to this frequency' : 'Connect to rig first'}
+                  >
+                    {parseFloat(spot.frequency).toFixed(3)}
+                  </button>
+                </td>
+                <td className="px-2 py-1 text-[#e0e0e0] whitespace-nowrap">{spot.mode}</td>
+                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{spot.associationCode}/{spot.summitCode}</td>
+                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(spot.timeStamp)}</td>
               </tr>
             </React.Fragment>
           ))
@@ -2048,7 +2265,19 @@ export default function App() {
             className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-[#151619] border border-emerald-500/50 text-emerald-400 rounded-full text-[0.625rem] font-bold uppercase tracking-wider shadow-lg backdrop-blur-sm"
           >
             <MapPin size={10} />
-            Spots ↓
+            POTA ↓
+          </button>
+        )}
+        {isPhone && sotaEnabled && !sotaSpotsVisible && (
+          <button
+            onClick={() => sotaSpotsBoxRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            className={cn(
+              "fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-[#151619] border border-amber-500/50 text-amber-400 rounded-full text-[0.625rem] font-bold uppercase tracking-wider shadow-lg backdrop-blur-sm",
+              potaEnabled && !potaSpotsVisible ? "bottom-36" : "bottom-24"
+            )}
+          >
+            <MapPin size={10} />
+            SOTA ↓
           </button>
         )}
 
@@ -2747,6 +2976,31 @@ export default function App() {
                 )}
               </div>
             )}
+            {sotaEnabled && (
+              <div ref={sotaSpotsBoxRef} className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
+                <div className={cn("p-3 flex items-center justify-between bg-[#1a1b1e]", !sotaSpotsCollapsed && "border-b border-[#2a2b2e]")}>
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <MapPin size={12} />
+                    <span className="text-[0.5625rem] uppercase tracking-widest font-bold">SOTA Spots</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[0.5rem] text-[#8e9299]">{filteredSotaSpots.length} spot{filteredSotaSpots.length !== 1 ? 's' : ''}</span>
+                    <button
+                      onClick={() => setSotaSpotsCollapsed(!sotaSpotsCollapsed)}
+                      className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                      title={sotaSpotsCollapsed ? "Expand Spots" : "Collapse Spots"}
+                    >
+                      {sotaSpotsCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                    </button>
+                  </div>
+                </div>
+                {!sotaSpotsCollapsed && (
+                  <div className="overflow-x-auto">
+                    {renderSotaSpotsTable()}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : isCompact ? (
           <div className="space-y-2 animate-in fade-in duration-300">
@@ -2774,10 +3028,10 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => handleSetVFO("VFOB")}
-                    disabled={!connected}
+                    disabled={!connected || !vfoSupported}
                     className={cn(
                       "px-3 py-1 rounded text-xs font-bold uppercase transition-all",
-                      !connected && "opacity-50 cursor-not-allowed",
+                      (!connected || !vfoSupported) && "opacity-50 cursor-not-allowed",
                       status.isSplit
                         ? (status.txVFO === "VFOB" ? "bg-red-500 text-white border border-red-500" : "bg-amber-500 text-white border border-amber-500")
                         : (status.vfo === "VFOB"
@@ -2789,10 +3043,10 @@ export default function App() {
                   </button>
                   <button
                     onClick={handleToggleSplit}
-                    disabled={!connected}
+                    disabled={!connected || !vfoSupported}
                     className={cn(
                       "px-3 py-1 rounded text-xs font-bold uppercase transition-all",
-                      !connected && "opacity-50 cursor-not-allowed",
+                      (!connected || !vfoSupported) && "opacity-50 cursor-not-allowed",
                       status.isSplit
                         ? "bg-red-500 text-white border border-red-500"
                         : "bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20"
@@ -3263,7 +3517,7 @@ export default function App() {
               <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
                 <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
                   <div className="flex items-center gap-1">
-                    {(['levels', ...(potaEnabled ? ['pota'] : [])] as const).map((tab) => (
+                    {(['levels', ...(potaEnabled ? ['pota'] : []), ...(sotaEnabled ? ['sota'] : [])] as const).map((tab) => (
                       <button
                         key={tab}
                         onClick={() => setActiveCompactPowerTab(tab)}
@@ -3287,10 +3541,10 @@ export default function App() {
                 </div>
                 {!isCompactRFPowerCollapsed && (
                   <div className="relative overflow-hidden">
-                    {/* LEVELS — always rendered to establish the box height; invisible when POTA tab is active */}
+                    {/* LEVELS — always rendered to establish the box height; invisible when POTA or SOTA tab is active */}
                     <div className={cn(
                       "p-2 flex flex-col justify-center gap-1",
-                      activeCompactPowerTab === 'pota' && "invisible"
+                      (activeCompactPowerTab === 'pota' || activeCompactPowerTab === 'sota') && "invisible"
                     )}>
                       <div className="flex justify-between items-center">
                         <span className="text-xs uppercase text-[#8e9299]">RF Power</span>
@@ -3383,6 +3637,12 @@ export default function App() {
                     {potaEnabled && activeCompactPowerTab === 'pota' && (
                       <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
                         {renderSpotsTable(false)}
+                      </div>
+                    )}
+                    {/* SOTA — absolutely positioned so it never influences the box height */}
+                    {sotaEnabled && activeCompactPowerTab === 'sota' && (
+                      <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
+                        {renderSotaSpotsTable()}
                       </div>
                     )}
                   </div>
@@ -3494,7 +3754,7 @@ export default function App() {
                       : "text-emerald-500/30"
                   )} />
                 </div>
-                <button 
+                <button
                   onClick={() => handleSetVFO("VFOA")}
                   disabled={!connected}
                   className={cn(
@@ -3520,14 +3780,14 @@ export default function App() {
                         ? (status.txVFO === "VFOB" ? "text-red-500" : "text-amber-500")
                         : "text-[#8e9299]"
                     )}>VFO B</span>
-                    <button 
+                    <button
                       onClick={handleToggleSplit}
-                      disabled={!connected}
+                      disabled={!connected || !vfoSupported}
                       className={cn(
                         "px-2 py-0.5 rounded text-[0.5rem] font-bold uppercase transition-all border",
-                        !connected && "opacity-50 cursor-not-allowed",
-                        status.isSplit 
-                          ? "bg-red-500 text-white border-red-500" 
+                        (!connected || !vfoSupported) && "opacity-50 cursor-not-allowed",
+                        status.isSplit
+                          ? "bg-red-500 text-white border-red-500"
                           : "bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/20"
                       )}
                     >
@@ -3615,12 +3875,12 @@ export default function App() {
                       : "text-emerald-500/30"
                   )} />
                 </div>
-                <button 
+                <button
                   onClick={() => handleSetVFO("VFOB")}
-                  disabled={!connected}
+                  disabled={!connected || !vfoSupported}
                   className={cn(
                     "mt-4 w-full py-1 text-[0.625rem] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors",
-                    !connected && "opacity-50 cursor-not-allowed"
+                    (!connected || !vfoSupported) && "opacity-50 cursor-not-allowed"
                   )}
                 >
                   Select VFO B
@@ -4001,6 +4261,31 @@ export default function App() {
                 {!potaSpotsCollapsed && (
                   <div className="overflow-x-auto max-h-72 overflow-y-auto custom-scrollbar">
                     {renderSpotsTable(true)}
+                  </div>
+                )}
+              </div>
+            )}
+            {sotaEnabled && (
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden">
+                <div className={cn("p-4 flex items-center justify-between bg-[#1a1b1e]", !sotaSpotsCollapsed && "border-b border-[#2a2b2e]")}>
+                  <div className="flex items-center gap-2 text-[#8e9299]">
+                    <MapPin size={14} />
+                    <span className="text-[0.625rem] uppercase tracking-widest font-bold">SOTA Spots</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[0.5625rem] text-[#8e9299]">{filteredSotaSpots.length} spot{filteredSotaSpots.length !== 1 ? 's' : ''}</span>
+                    <button
+                      onClick={() => setSotaSpotsCollapsed(!sotaSpotsCollapsed)}
+                      className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
+                      title={sotaSpotsCollapsed ? "Expand Spots" : "Collapse Spots"}
+                    >
+                      {sotaSpotsCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                    </button>
+                  </div>
+                </div>
+                {!sotaSpotsCollapsed && (
+                  <div className="overflow-x-auto max-h-72 overflow-y-auto custom-scrollbar">
+                    {renderSotaSpotsTable()}
                   </div>
                 )}
               </div>
@@ -5272,6 +5557,17 @@ export default function App() {
                     <label htmlFor="pota-enabled" className="text-sm font-bold cursor-pointer select-none">POTA</label>
                     <span className="text-[0.5625rem] text-[#8e9299]">Parks on the Air</span>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="sota-enabled"
+                      checked={sotaEnabled}
+                      onChange={(e) => setSotaEnabled(e.target.checked)}
+                      className="w-4 h-4 accent-amber-500 cursor-pointer"
+                    />
+                    <label htmlFor="sota-enabled" className="text-sm font-bold cursor-pointer select-none">SOTA</label>
+                    <span className="text-[0.5625rem] text-[#8e9299]">Summits on the Air</span>
+                  </div>
                 </div>
 
                 {potaEnabled && (
@@ -5359,6 +5655,101 @@ export default function App() {
                               potaModeFilter === m
                                 ? "bg-emerald-500/20 border-emerald-500 text-emerald-400"
                                 : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500/50 hover:text-white"
+                            )}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {sotaEnabled && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <h3 className="text-[0.625rem] uppercase text-amber-500 font-bold border-b border-amber-500/20 pb-1">SOTA Options</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299]">Poll Frequency</label>
+                        <select
+                          value={sotaPollRate}
+                          onChange={(e) => setSotaPollRate(Number(e.target.value))}
+                          className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-amber-500 text-white appearance-none cursor-pointer"
+                        >
+                          {[1, 2, 3, 4, 5].map(m => (
+                            <option key={m} value={m}>{m} min</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299]">Max Spot Age</label>
+                        <select
+                          value={sotaMaxAge}
+                          onChange={(e) => setSotaMaxAge(Number(e.target.value))}
+                          className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-amber-500 text-white appearance-none cursor-pointer"
+                        >
+                          {[1, 3, 5, 10, 15].map(m => (
+                            <option key={m} value={m}>{m} min</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299]">Band Filter</label>
+                        {sotaBandFilter.length > 0 && (
+                          <button
+                            onClick={() => setSotaBandFilter([])}
+                            className="text-[0.5rem] uppercase font-bold text-[#8e9299] hover:text-white transition-colors"
+                          >
+                            Clear (ALL)
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {POTA_BANDS.map(({ label }) => {
+                          const active = sotaBandFilter.includes(label);
+                          return (
+                            <label
+                              key={label}
+                              className={cn(
+                                "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
+                                active
+                                  ? "bg-amber-500/10 border-amber-500/60 text-amber-400"
+                                  : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-amber-500/40 hover:text-white"
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={active}
+                                onChange={() =>
+                                  setSotaBandFilter(prev =>
+                                    active ? prev.filter(b => b !== label) : [...prev, label]
+                                  )
+                                }
+                                className="w-3 h-3 accent-amber-500 cursor-pointer flex-shrink-0"
+                              />
+                              <span className="text-[0.5625rem] font-bold uppercase">{label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {sotaBandFilter.length === 0 && (
+                        <p className="text-[0.5rem] text-[#4a4b4e] italic">No bands selected — showing all bands</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299]">Mode Filter</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {(['ALL', 'SSB', 'CW', 'FT8', 'FT4'] as const).map(m => (
+                          <button
+                            key={m}
+                            onClick={() => setSotaModeFilter(m)}
+                            className={cn(
+                              "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all border",
+                              sotaModeFilter === m
+                                ? "bg-amber-500/20 border-amber-500 text-amber-400"
+                                : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-amber-500/50 hover:text-white"
                             )}
                           >
                             {m}

@@ -40545,6 +40545,7 @@ async function startServer(appPath, userDataPath) {
   let clientHost = "127.0.0.1";
   let clientPort = 4532;
   let potaSettings = { enabled: false, pollRate: 5, maxAge: 15 };
+  let sotaSettings = { enabled: false, pollRate: 5, maxAge: 15 };
   const getRigctldPath = () => {
     let platformDir = "";
     if (process.platform === "win32") platformDir = "windows";
@@ -40664,6 +40665,9 @@ async function startServer(appPath, userDataPath) {
       if (data.potaSettings) {
         potaSettings = { ...potaSettings, ...data.potaSettings };
       }
+      if (data.sotaSettings) {
+        sotaSettings = { ...sotaSettings, ...data.sotaSettings };
+      }
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
@@ -40681,7 +40685,8 @@ async function startServer(appPath, userDataPath) {
         autoconnectEligible,
         clientHost,
         clientPort: Number(clientPort),
-        potaSettings
+        potaSettings,
+        sotaSettings
       }, null, 2));
     } catch (e) {
       console.error("[SETTINGS] Failed to save settings:", e);
@@ -41109,6 +41114,26 @@ async function startServer(appPath, userDataPath) {
   let pollingTimeout = null;
   let rigConfig = { host: "", port: 0 };
   let isConnected = false;
+  let vfoSupported = true;
+  const probeVfoCapability = async () => {
+    try {
+      const result = await sendToRig("v", false);
+      if (result.includes("RPRT -11")) {
+        vfoSupported = false;
+        console.log("VFO not supported by this radio (RPRT -11); disabling VFO B and split");
+        const freq = await sendToRig("f", false);
+        if (!freq || freq.includes("RPRT")) {
+          console.warn("get_freq also failed after VFO probe \u2014 rig may not be responding");
+        }
+      } else {
+        vfoSupported = true;
+        console.log(`VFO supported (reported: ${result})`);
+      }
+    } catch (err) {
+      vfoSupported = false;
+      console.log("VFO probe failed; disabling VFO B and split:", err);
+    }
+  };
   const connectToRig = (host, port, socket) => {
     if (isConnected && rigConfig.host === host && rigConfig.port === port) {
       console.log(`Already connected to rigctld at ${host}:${port}. Informing client.`);
@@ -41125,10 +41150,11 @@ async function startServer(appPath, userDataPath) {
     }
     rigConfig = { host, port };
     rigSocket = new import_net.default.Socket();
-    rigSocket.connect(port, host, () => {
+    rigSocket.connect(port, host, async () => {
       console.log(`Connected to rigctld at ${host}:${port}`);
       isConnected = true;
-      io2.emit("rig-connected", { host, port });
+      await probeVfoCapability();
+      io2.emit("rig-connected", { host, port, vfoSupported });
       startPolling();
     });
     rigSocket.on("error", (err) => {
@@ -41189,6 +41215,7 @@ async function startServer(appPath, userDataPath) {
     tuner: false
   };
   const resetRigState = () => {
+    vfoSupported = true;
     lastStatus = {
       frequency: "14074000",
       mode: "USB",
@@ -41271,44 +41298,56 @@ async function startServer(appPath, userDataPath) {
     const finalCmd = useExtended ? formatExtendedCommand(cmd) : cmd;
     return new Promise((resolve, reject) => {
       if (!rigSocket || rigSocket.destroyed) {
+        console.error(`[RIG] Command rejected (not connected): "${cmd}"`);
         return reject("Not connected to rig");
       }
       let responseBuffer = "";
       const timeout = setTimeout(() => {
         rigSocket?.removeListener("data", onData);
         rigSocket?.removeListener("error", onError);
-        console.warn("Rig command timeout - reconnecting to reset state");
+        console.warn(`[RIG] Command timed out: "${cmd}" (extended=${useExtended}) \u2014 destroying socket to reset state`);
         if (rigSocket) {
           rigSocket.destroy();
           isConnected = false;
         }
-        reject("Rig command timeout");
+        reject(`Rig command timeout: "${cmd}"`);
       }, 1e4);
       const onData = (data) => {
         responseBuffer += data.toString();
         if (useExtended) {
-          if (responseBuffer.includes("RPRT 0") || responseBuffer.includes("RPRT 1")) {
+          const rprtMatch = responseBuffer.match(/RPRT (-?\d+)/);
+          if (rprtMatch) {
             clearTimeout(timeout);
             rigSocket?.removeListener("data", onData);
             rigSocket?.removeListener("error", onError);
-            try {
-              resolve(parseExtendedResponse(responseBuffer));
-            } catch (e) {
-              reject(e);
+            vlog(`[RIG] Response for "${cmd}": ${responseBuffer.trim()}`);
+            const rprtCode = parseInt(rprtMatch[1], 10);
+            if (rprtCode === 0 || rprtCode === 1) {
+              try {
+                resolve(parseExtendedResponse(responseBuffer));
+              } catch (e) {
+                console.error(`[RIG] Parse error for "${cmd}":`, e);
+                reject(e);
+              }
+            } else {
+              reject(`RPRT ${rprtCode}: "${cmd}"`);
             }
           }
         } else {
           clearTimeout(timeout);
           rigSocket?.removeListener("data", onData);
           rigSocket?.removeListener("error", onError);
+          vlog(`[RIG] Response for "${cmd}": ${responseBuffer.trim()}`);
           resolve(responseBuffer.trim());
         }
       };
       const onError = (err) => {
         clearTimeout(timeout);
         rigSocket?.removeListener("data", onData);
+        console.error(`[RIG] Socket error during command "${cmd}":`, err.message);
         reject(err);
       };
+      vlog(`[RIG] Sending command: "${cmd}"`);
       rigSocket.on("data", onData);
       rigSocket.once("error", onError);
       rigSocket.write(finalCmd + "\n");
@@ -41371,11 +41410,13 @@ async function startServer(appPath, userDataPath) {
         rfpower = parseFloat(await sendToRig("l RFPOWER", true));
         rflevel = parseFloat(await sendToRig("l RF", true).catch(() => "0"));
         agc = parseInt(await sendToRig("l AGC", true).catch(() => "6"));
-        vfo = await sendToRig("v", true);
-        const splitInfo = await sendToRig("s", true);
-        const [isSplitStr, txVFOStr] = splitInfo.split("\n");
-        isSplit = isSplitStr === "1";
-        txVFO = txVFOStr || "VFOB";
+        if (vfoSupported) {
+          vfo = await sendToRig("v", true);
+          const splitInfo = await sendToRig("s", true);
+          const [isSplitStr, txVFOStr] = splitInfo.split("\n");
+          isSplit = isSplitStr === "1";
+          txVFO = txVFOStr || "VFOB";
+        }
         att = parseInt(await sendToRig("l ATT", true)) || 0;
         preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
         nb = await sendToRig("u NB", true).catch(() => "0") === "1";
@@ -41413,7 +41454,7 @@ async function startServer(appPath, userDataPath) {
       };
       io2.emit("rig-status", lastStatus);
     } catch (err) {
-      console.error("Polling error:", err);
+      console.error(`[RIG] Poll cycle ${pollCycleCount} failed:`, err);
     }
   };
   io2.on("connection", (socket) => {
@@ -41522,6 +41563,7 @@ async function startServer(appPath, userDataPath) {
       }
     });
     socket.on("set-vfo", async (vfo) => {
+      if (!vfoSupported) return;
       try {
         await sendToRig(`V ${vfo}`, false, true);
         const confirmedVfo = await sendToRig("v", true, true);
@@ -41532,6 +41574,7 @@ async function startServer(appPath, userDataPath) {
       }
     });
     socket.on("set-split-vfo", async ({ split, txVFO }) => {
+      if (!vfoSupported) return;
       try {
         await sendToRig(`S ${split} ${txVFO}`, false, true);
         const splitInfo = await sendToRig("s", true, true);
@@ -41548,8 +41591,12 @@ async function startServer(appPath, userDataPath) {
         const frequency = await sendToRig("f", true, true);
         const modeBw = await sendToRig("m", true, true);
         const [mode, bandwidth] = modeBw.split("\n");
-        const vfo = await sendToRig("v", true, true);
-        lastStatus = { ...lastStatus, frequency, mode, bandwidth, vfo };
+        if (vfoSupported) {
+          const vfo = await sendToRig("v", true, true);
+          lastStatus = { ...lastStatus, frequency, mode, bandwidth, vfo };
+        } else {
+          lastStatus = { ...lastStatus, frequency, mode, bandwidth };
+        }
         io2.emit("rig-status", lastStatus);
       } catch (err) {
         socket.emit("rig-error", `Failed to execute VFO operation: ${op}`);
@@ -41590,7 +41637,8 @@ async function startServer(appPath, userDataPath) {
         clientHost,
         clientPort,
         isConnected,
-        potaSettings
+        potaSettings,
+        sotaSettings
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
@@ -41757,6 +41805,7 @@ async function startServer(appPath, userDataPath) {
       if (data.clientHost !== void 0) clientHost = data.clientHost;
       if (data.clientPort !== void 0) clientPort = Number(data.clientPort);
       if (data.potaSettings !== void 0) potaSettings = { ...potaSettings, ...data.potaSettings };
+      if (data.sotaSettings !== void 0) sotaSettings = { ...sotaSettings, ...data.sotaSettings };
       saveSettings();
       if (oldRigNumber !== rigctldSettings.rigNumber) {
         fetchRadioCapabilities(rigctldSettings.rigNumber);
