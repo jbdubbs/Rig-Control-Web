@@ -30,7 +30,10 @@ A web-first Electron app for controlling your radio via a Hamlib rigctld network
   - WSJT-X, WSJT-X Improved, FLDigi, VarAC, JS8Call, and more.
   - This means not having to split serial ports to use multiple apps.
 - **Remote Access**: Access your shack from anywhere over your own VPN by pointing a browser to your rig computer's IP on port 3000.
-  - IMPORTANT: A REVERSE PROXY IS REQUIRED TO ACCESS AUDIO FUNCTIONS REMOTELY!!!
+  - The server runs over **HTTPS** using an auto-generated self-signed certificate (EC P-256, 1-year validity). The certificate is regenerated automatically if it expires within 30 days or if the machine's LAN IP changes.
+  - On first launch, your browser will show a certificate warning. Accept the exception once — all browsers remember it per origin.
+  - Audio (WebRTC `getUserMedia`, `setSinkId`) requires a secure context (HTTPS or localhost). The built-in HTTPS server satisfies this requirement without needing a reverse proxy for LAN use.
+  - IMPORTANT: For access outside your LAN (internet/VPN), a reverse proxy with a trusted certificate is still recommended.
 
 ## TODO
 
