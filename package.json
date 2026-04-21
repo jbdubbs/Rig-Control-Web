@@ -1,7 +1,7 @@
 {
   "name": "rigcontrol-web",
   "private": true,
-  "version": "04.17.2026-Beta3",
+  "version": "04.21.2026-Beta4",
   "license": "Apache-2.0",
   "author": "Jason Weisberger NT0Y",
   "description": "A web-based frontend for hamlib rigctld for local installation and portable backend capabilities.",
@@ -71,6 +71,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^3.8.0",
+    "selfsigned": "^5.5.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.5.0"

@@ -771,16 +771,17 @@ export default function App() {
     if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => setPotaSpotsVisible(entry.isIntersecting),
-      { threshold: 0 }
+      { threshold: 0, root: containerRef.current }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [potaEnabled]);
+  }, [potaEnabled, isPhone]);
 
   useEffect(() => {
     if (!sotaEnabled) setActiveCompactPowerTab(prev => prev === 'sota' ? 'levels' : prev);
   }, [sotaEnabled]);
 
+  // SOTA spotting is fully functional. Polls api2.sota.org.uk/api/spots/-1/all (public, no auth).
   useEffect(() => {
     if (!sotaEnabled) {
       setSotaSpots([]);
@@ -807,11 +808,11 @@ export default function App() {
     if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => setSotaSpotsVisible(entry.isIntersecting),
-      { threshold: 0 }
+      { threshold: 0, root: containerRef.current }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [sotaEnabled]);
+  }, [sotaEnabled, isPhone]);
 
   const isDraggingRF = useRef(false);
   const isChangingMode = useRef(false);
@@ -2258,26 +2259,17 @@ export default function App() {
           </div>
         )}
 
-        {/* Phone SPOTS scroll pill */}
-        {isPhone && potaEnabled && !potaSpotsVisible && (
+        {/* Phone SPOTS scroll pill — visible when any spots section is enabled but none are in view */}
+        {isPhone && (potaEnabled || sotaEnabled) && !potaSpotsVisible && !sotaSpotsVisible && (
           <button
-            onClick={() => potaSpotsBoxRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            onClick={() => {
+              const target = potaEnabled ? potaSpotsBoxRef.current : sotaSpotsBoxRef.current;
+              target?.scrollIntoView({ behavior: 'smooth' });
+            }}
             className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-[#151619] border border-emerald-500/50 text-emerald-400 rounded-full text-[0.625rem] font-bold uppercase tracking-wider shadow-lg backdrop-blur-sm"
           >
             <MapPin size={10} />
-            POTA ↓
-          </button>
-        )}
-        {isPhone && sotaEnabled && !sotaSpotsVisible && (
-          <button
-            onClick={() => sotaSpotsBoxRef.current?.scrollIntoView({ behavior: 'smooth' })}
-            className={cn(
-              "fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-[#151619] border border-amber-500/50 text-amber-400 rounded-full text-[0.625rem] font-bold uppercase tracking-wider shadow-lg backdrop-blur-sm",
-              potaEnabled && !potaSpotsVisible ? "bottom-36" : "bottom-24"
-            )}
-          >
-            <MapPin size={10} />
-            SOTA ↓
+            SPOTS ↓
           </button>
         )}
 
@@ -4813,7 +4805,7 @@ export default function App() {
                   </div>
                   <div className="space-y-4">
                     <p className="text-xs text-[#8e9299] leading-relaxed">
-                      Once your local backend is running, point this app to it. If running on the same machine, use <code className="text-white">http://localhost:3000</code>.
+                      Once your local backend is running, point this app to it. If running on the same machine, use <code className="text-white">https://localhost:3000</code>.
                     </p>
                     <div className="flex flex-col gap-2">
                       <label className="text-[0.625rem] uppercase text-[#8e9299]">Local Backend URL</label>
@@ -4823,7 +4815,7 @@ export default function App() {
                           value={backendUrl}
                           onChange={(e) => setBackendUrl(e.target.value)}
                           className="flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded px-4 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors"
-                          placeholder="http://localhost:3000"
+                          placeholder="https://localhost:3000"
                         />
                         <button 
                           onClick={() => window.location.reload()}

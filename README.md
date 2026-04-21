@@ -25,13 +25,10 @@ Developers who want to run from source will find build instructions in the [Deve
   - Multi-client support.
   - Audio device lists show the host API (MME, DirectSound, WASAPI, ALSA, Pipewire/PulseAudio) and native sample rate so you can pick the right entry for your hardware.
   - **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel remotely. Example: FT-710 DVI out → USB HDMI capture card.
-- **POTA Spots**: Live Parks on the Air spot display, pulled directly from the POTA API at a configurable poll interval.
-  - Deduplicated per activator — only the latest spot per callsign is shown.
-  - Filterable by mode (SSB, CW, FT8, FT4) and band (160M through 440, multi-select).
-  - Configurable maximum spot age (1–15 minutes).
-  - Sortable columns (activator, frequency, mode, location, age) with ascending/descending/API-order cycle.
-  - Click any frequency to instantly tune the VFO and set the mode. SSB spots auto-resolve to USB or LSB based on the 10 MHz boundary.
-  - Layout-aware: inline box below Quick Controls (phone), slide-in drawer via header button (compact), inline box below Video & Audio (desktop).
+- **Live Spots (POTA & SOTA)**: Real-time spot displays for Parks on the Air and Summits on the Air, each independently enable/disable with configurable poll intervals.
+  - Filterable by mode (SSB, CW, FT8, FT4) and band (multi-select). Configurable maximum spot age.
+  - Sortable columns. Click any spot to instantly tune the VFO and set the mode. SSB spots auto-resolve to USB or LSB based on the 10 MHz boundary.
+  - Layout-aware: inline below Quick Controls (phone), slide-in drawer via header button (compact), inline below Video & Audio (desktop).
 - **Phone View**: Dedicated portrait-optimized layout for operating from a phone or tablet.
 - **Split VFO Support**: Full control over split operations with visual feedback.
 - **Works With All Hamlib-Compatible Software**: Configure your logging app or other Hamlib enabled application to use "Hamlib NET rigctl" at `127.0.0.1:4532`.
@@ -144,11 +141,11 @@ Open the **General Settings** panel (gear icon) to configure. Settings are organ
 - **Audio Settings**: Backend input/output device (server-side, for the radio), local input/output device (browser-side, for the operator), and enable/disable inbound and outbound audio independently.
 
 ### SPOTS Tab
-- **POTA**: Enable/disable live Parks on the Air spot display.
-  - **Poll Frequency**: How often to fetch from the POTA API (1–5 minutes).
-  - **Max Spot Age**: Discard spots older than this threshold (1, 3, 5, 10, or 15 minutes).
-  - **Band Filter**: Multi-select checkbox grid to limit spots to specific bands (6M through 440). No selection = all bands shown.
-  - **Mode Filter**: Limit spots to a single mode — SSB, CW, FT8, FT4, or ALL.
+Enable POTA and/or SOTA spot displays independently. Each has identical controls:
+- **Poll Frequency**: How often to fetch new spots (1–5 minutes).
+- **Max Spot Age**: Discard spots older than this threshold.
+- **Band Filter**: Multi-select checkbox grid. No selection = all bands shown.
+- **Mode Filter**: Limit spots to SSB, CW, FT8, FT4, or ALL.
 
 ## License
 

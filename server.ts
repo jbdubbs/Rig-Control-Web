@@ -1,16 +1,92 @@
 import express from "express";
-import { createServer } from "http";
+import https from "https";
 import { Server } from "socket.io";
 import net from "net";
+import os from "os";
 import path from "path";
 import { spawn, ChildProcess, exec } from "child_process";
 import fs from "fs";
+import { X509Certificate } from "crypto";
 
 
 // Verbose logging — enabled with the -v / --verbose command-line flag.
 // Errors and critical status always print; diagnostics only print in verbose mode.
 const VERBOSE = process.argv.includes('-v') || process.argv.includes('--verbose');
 const vlog = (...args: any[]) => { if (VERBOSE) console.log(...args); };
+
+function getLanIPs(): string[] {
+  const ips: string[] = [];
+  for (const iface of Object.values(os.networkInterfaces())) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (addr.family === "IPv4" && !addr.internal) ips.push(addr.address);
+    }
+  }
+  return ips;
+}
+
+async function loadOrGenerateCert(dataDir: string): Promise<{ key: string; cert: string }> {
+  const keyPath = path.join(dataDir, "server.key.pem");
+  const certPath = path.join(dataDir, "server.cert.pem");
+
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    try {
+      const certPem = fs.readFileSync(certPath, "utf8");
+      const x509 = new X509Certificate(certPem);
+      const expiry = new Date(x509.validTo);
+      const renewThreshold = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      if (expiry > renewThreshold) {
+        const san = x509.subjectAltName ?? "";
+        const lanIPs = getLanIPs();
+        const allCovered = lanIPs.every(ip => san.includes(ip));
+        if (allCovered) {
+          console.log(`[TLS] Using existing certificate, valid until ${expiry.toDateString()}`);
+          return { key: fs.readFileSync(keyPath, "utf8"), cert: certPem };
+        }
+        console.log("[TLS] LAN IP changed, regenerating certificate...");
+      } else {
+        console.log("[TLS] Certificate expires soon, regenerating...");
+      }
+    } catch {
+      console.log("[TLS] Could not parse existing certificate, regenerating...");
+    }
+  }
+
+  const { generate } = await import("selfsigned");
+  const lanIPs = getLanIPs();
+  const altNames = [
+    { type: 2 as const, value: "localhost" },
+    { type: 7 as const, ip: "127.0.0.1" },
+    ...lanIPs.map(ip => ({ type: 7 as const, ip })),
+  ];
+
+  const notAfterDate = new Date();
+  notAfterDate.setFullYear(notAfterDate.getFullYear() + 1);
+
+  console.log(`[TLS] Generating certificate for: localhost, 127.0.0.1${lanIPs.length ? ", " + lanIPs.join(", ") : ""}`);
+
+  const pems = await generate(
+    [{ name: "commonName", value: "localhost" }],
+    {
+      algorithm: "sha256",
+      keyType: "ec",
+      curve: "P-256",
+      notAfterDate,
+      extensions: [
+        { name: "subjectAltName", altNames },
+        { name: "basicConstraints", cA: false },
+        { name: "keyUsage", digitalSignature: true },
+        { name: "extKeyUsage", serverAuth: true },
+      ],
+    }
+  );
+
+  fs.writeFileSync(keyPath, pems.private, { mode: 0o600 });
+  fs.writeFileSync(certPath, pems.cert);
+  console.log(`[TLS] Certificate saved to ${dataDir}`);
+
+  return { key: pems.private, cert: pems.cert };
+}
 
 let electronWin: any = null;
 export function setElectronWindow(win: any) {
@@ -25,10 +101,6 @@ export async function shutdown(): Promise<void> {
 
 export async function startServer(appPath?: string, userDataPath?: string) {
   const app = express();
-  const httpServer = createServer(app);
-  const io = new Server(httpServer, {
-    perMessageDeflate: false
-  });
   const PORT = 3000;
 
   // appPath is for read-only bundled assets (like radios.json and dist/)
@@ -36,13 +108,19 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   const baseDir = appPath || process.cwd();
   // In Cloud Run, the root is read-only, so use /tmp for settings
   const dataDir = userDataPath || (process.env.NODE_ENV === "production" ? "/tmp" : process.cwd());
-  
+
   const SETTINGS_FILE = path.join(dataDir, "settings.json");
   const RADIOS_FILE = path.join(baseDir, "radios.json");
-  
+
   vlog(`Server initializing. Base directory (assets): ${baseDir}`);
   vlog(`Data directory (settings): ${dataDir}`);
   vlog(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
+
+  const { key: tlsKey, cert: tlsCert } = await loadOrGenerateCert(dataDir);
+  const httpServer = https.createServer({ key: tlsKey, cert: tlsCert }, app);
+  const io = new Server(httpServer, {
+    perMessageDeflate: false
+  });
 
   let rigctldProcess: ChildProcess | null = null;
   let rigctldStatus: "running" | "stopped" | "error" | "already_running" = "stopped";
@@ -1727,7 +1805,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
   return new Promise<void>((resolve) => {
     httpServer.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`Server running on https://localhost:${PORT}`);
       resolve();
     });
   });

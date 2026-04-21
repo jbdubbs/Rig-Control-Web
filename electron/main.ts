@@ -115,11 +115,20 @@ async function createWindow() {
     }
   });
 
+  // Trust the locally-generated self-signed certificate for localhost only
+  win.webContents.session.setCertificateVerifyProc((request, callback) => {
+    if (request.hostname === 'localhost') {
+      callback(0); // 0 = trust
+    } else {
+      callback(-3); // -3 = use default Chromium verification
+    }
+  });
+
   if (isDev) {
-    win.loadURL('http://localhost:3000');
+    win.loadURL('https://localhost:3000');
     // win.webContents.openDevTools();
   } else {
-    win.loadURL(`http://localhost:3000`);
+    win.loadURL('https://localhost:3000');
   }
 }
 
