@@ -2,13 +2,21 @@
 
 A web-first Electron app for controlling your radio via a Hamlib rigctld network which also includes bidirectional audio for making SSB contacts, and video support so you can see the front panel of your radio.  Audio via your radio's virtual USB Audio Device, Digirig or similar.  Video feeding your radio's video output back into your computer with a USB to HDMI adapter (or any old webcam pointed at it).
 
+## Getting Started
+
+**Most users should download the latest pre-built installer from the [Releases page](https://github.com/jbdubbs/Rig-Control-Web/releases).** Pick the installer for your operating system (Windows `.exe` or Linux `.AppImage`), run it, and you are ready to go — no Node.js, no build tools required.
+
+For full usage instructions, see the **[Wiki](https://github.com/jbdubbs/Rig-Control-Web/wiki)**.
+
+Developers who want to run from source will find build instructions in the [Development](#development) and [Desktop App (Electron)](#desktop-app-electron) sections below.
+
 ## Screenshots
 
 ### Compact View (Desktop)
-![RigControl Web — Compact View](assets/RigControlWeb-Compact.png)
+![RigControl Web — Compact View](assets/rigcontrolweb.manual.compactview.main.png)
 
 ### Phone View (Mobile)
-![RigControl Web — Phone View](assets/RigControlWeb-Phone.png)
+![RigControl Web — Phone View](assets/rigcontrolweb.manual.phoneview.main.jpg)
 
 ## Features
 
