@@ -247,7 +247,7 @@ export default function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'spots' | 'display'>('rigctld');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'spots' | 'display' | 'keyer'>('rigctld');
   const [potaEnabled, setPotaEnabled] = useState(false);
   const [potaPollRate, setPotaPollRate] = useState(5);
   const [potaMaxAge, setPotaMaxAge] = useState(15);
@@ -342,6 +342,45 @@ export default function App() {
   const [isDesktopALCCollapsed, setIsDesktopALCCollapsed] = useState(false);
   const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(false);
   const [showCommandConsole, setShowCommandConsole] = useState(() => localStorage.getItem("show-command-console") === "true");
+
+  // CW Keyer state
+  const CW_SETTINGS_DEFAULTS = {
+    enabled: false,
+    keyerPort: "",
+    keyingMethod: "dtr" as "dtr" | "rts" | "rigctld-ptt",
+    serialKeyPolarity: "high" as "high" | "low",
+    mode: "iambic-a" as "iambic-a" | "iambic-b" | "straight",
+    wpm: 18,
+    sidetoneHz: 700,
+    sidetoneVolume: 0.5,
+    sidetoneEnabled: true,
+    ditKey: "ControlLeft",
+    dahKey: "ControlRight",
+    straightKey: "Space"
+  };
+  const [cwSettings, setCwSettings] = useState(CW_SETTINGS_DEFAULTS);
+  const cwSettingsRef = useRef(CW_SETTINGS_DEFAULTS);
+  const [cwPortStatus, setCwPortStatus] = useState<{ open: boolean; port: string; error?: string }>({ open: false, port: "" });
+  const [cwKeyActive, setCwKeyActive] = useState(false);
+  const [cwStuckAlert, setCwStuckAlert] = useState(false);
+  const cwStuckAlertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ditPressedRef = useRef(false);
+  const dahPressedRef = useRef(false);
+  const cwStateRef = useRef({
+    machine: 'IDLE' as 'IDLE' | 'SENDING_DIT' | 'SENDING_DAH' | 'INTER_ELEMENT',
+    pendingElement: null as 'dit' | 'dah' | null,
+    elementEndTime: 0,
+    keyIsDown: false
+  });
+  const cwTickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cwConnectTimeRef = useRef<number>(performance.now());
+  // Sidetone Web Audio
+  const sidetoneCtxRef = useRef<AudioContext | null>(null);
+  const sidetoneOscRef = useRef<OscillatorNode | null>(null);
+  const sidetoneGainRef = useRef<GainNode | null>(null);
+  // Key rebind capture mode
+  const [rebindTarget, setRebindTarget] = useState<'ditKey' | 'dahKey' | 'straightKey' | null>(null);
+
   const videoEncoderRef = useRef<any>(null);
   const videoDecoderRef = useRef<any>(null);
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
@@ -408,6 +447,98 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // CW keyer: keyboard listener and sidetone lifecycle
+  useEffect(() => {
+    const settings = cwSettingsRef.current;
+    if (!settings.enabled || !connected) {
+      stopKeyerTick();
+      emitCwKey(false);
+      ditPressedRef.current = false;
+      dahPressedRef.current = false;
+      return;
+    }
+    initSidetone();
+    if (settings.mode !== 'straight') {
+      startKeyerTick();
+    }
+
+    const isTypingTarget = (el: Element | null) => {
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el as HTMLElement).isContentEditable;
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(document.activeElement as Element)) return;
+      // Rebind capture mode
+      if (rebindTarget) {
+        e.preventDefault();
+        const next = { ...cwSettingsRef.current, [rebindTarget]: e.code };
+        setCwSettings(next);
+        cwSettingsRef.current = next;
+        socket?.emit("update-cw-settings", { [rebindTarget]: e.code });
+        setRebindTarget(null);
+        return;
+      }
+      const s = cwSettingsRef.current;
+      if (s.mode === 'straight') {
+        if (e.code === s.straightKey && !e.repeat) {
+          e.preventDefault();
+          emitCwPaddle(false, false, true);
+          emitCwKey(true);
+        }
+      } else {
+        if (e.code === s.ditKey && e.key === 'Control' && !e.repeat) {
+          e.preventDefault();
+          ditPressedRef.current = true;
+          emitCwPaddle(true, dahPressedRef.current, false);
+        } else if (e.code === s.dahKey && e.key === 'Control' && !e.repeat) {
+          e.preventDefault();
+          dahPressedRef.current = true;
+          emitCwPaddle(ditPressedRef.current, true, false);
+        }
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (isTypingTarget(document.activeElement as Element)) return;
+      const s = cwSettingsRef.current;
+      if (s.mode === 'straight') {
+        if (e.code === s.straightKey) {
+          e.preventDefault();
+          emitCwPaddle(false, false, false);
+          emitCwKey(false);
+        }
+      } else {
+        if (e.code === s.ditKey) {
+          ditPressedRef.current = false;
+          emitCwPaddle(false, dahPressedRef.current, false);
+        } else if (e.code === s.dahKey) {
+          dahPressedRef.current = false;
+          emitCwPaddle(ditPressedRef.current, false, false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    window.addEventListener('keyup', onKeyUp, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, { capture: true });
+      window.removeEventListener('keyup', onKeyUp, { capture: true });
+      stopKeyerTick();
+      emitCwPaddle(false, false, false);
+      emitCwKey(false);
+      ditPressedRef.current = false;
+      dahPressedRef.current = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget]);
+
+  // Keep cwSettingsRef in sync with state
+  useEffect(() => {
+    cwSettingsRef.current = cwSettings;
+  }, [cwSettings]);
+
   useEffect(() => {
     if (socket) {
       socket.on("settings-data", (data: any) => {
@@ -472,6 +603,16 @@ export default function App() {
           if (data.sotaSettings.maxAge !== undefined) setSotaMaxAge(data.sotaSettings.maxAge);
           if (data.sotaSettings.modeFilter !== undefined) setSotaModeFilter(data.sotaSettings.modeFilter);
           if (Array.isArray(data.sotaSettings.bandFilter)) setSotaBandFilter(data.sotaSettings.bandFilter);
+        }
+        if (data.cwSettings) {
+          setCwSettings(prev => {
+            const next = { ...prev, ...data.cwSettings };
+            cwSettingsRef.current = next;
+            return next;
+          });
+        }
+        if (data.cwPortStatus) {
+          setCwPortStatus(data.cwPortStatus);
         }
 
         // Handle autoconnect
@@ -595,6 +736,21 @@ export default function App() {
       });
       socket.on("mic-mute-forced", () => {
         setOutboundMuted(true);
+      });
+      socket.on("cw-port-status", (status: { open: boolean; port: string; error?: string }) => {
+        setCwPortStatus(status);
+      });
+      socket.on("cw-stuck-key-alert", () => {
+        // Force keyer state to idle; sidetone off; show alert; release server lockout
+        cwStateRef.current = { machine: 'IDLE', pendingElement: null, elementEndTime: 0, keyIsDown: false };
+        ditPressedRef.current = false;
+        dahPressedRef.current = false;
+        emitCwPaddle(false, false, false);
+        setCwKeyActive(false);
+        sidetoneOff();
+        setCwStuckAlert(true);
+        if (cwStuckAlertTimerRef.current) clearTimeout(cwStuckAlertTimerRef.current);
+        cwStuckAlertTimerRef.current = setTimeout(() => setCwStuckAlert(false), 8000);
       });
       socket.on("verbose-mode", (v: boolean) => { clientVerbose = v; });
       socket.on("audio-devices-list", (devices: { inputs: { name: string, altName: string, hostAPIName: string, defaultSampleRate: number }[], outputs: { name: string, altName: string, hostAPIName: string, defaultSampleRate: number }[] }) => {
@@ -900,6 +1056,10 @@ export default function App() {
     });
     setSocket(newSocket);
 
+    newSocket.on("connect", () => {
+      cwConnectTimeRef.current = performance.now();
+    });
+
     newSocket.on("rig-connected", ({ vfoSupported: vfoSup }: { vfoSupported?: boolean } = {}) => {
       console.log("[RIG] Connected successfully, vfoSupported:", vfoSup !== false);
       setConnected(true);
@@ -1159,6 +1319,139 @@ export default function App() {
     setStatus(prev => ({ ...(prev || DEFAULT_STATUS), ptt: state }));
     socket?.emit("set-ptt", state);
   };
+
+  // ── CW Sidetone ──────────────────────────────────────────────────────────
+  const initSidetone = () => {
+    if (sidetoneCtxRef.current) return;
+    const ctx = new AudioContext({ latencyHint: 'interactive' });
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = cwSettingsRef.current.sidetoneHz;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    sidetoneCtxRef.current = ctx;
+    sidetoneOscRef.current = osc;
+    sidetoneGainRef.current = gain;
+  };
+
+  const sidetoneOn = () => {
+    const ctx = sidetoneCtxRef.current;
+    const gain = sidetoneGainRef.current;
+    const osc = sidetoneOscRef.current;
+    if (!ctx || !gain || !osc || !cwSettingsRef.current.sidetoneEnabled) return;
+    osc.frequency.value = cwSettingsRef.current.sidetoneHz;
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(cwSettingsRef.current.sidetoneVolume, ctx.currentTime + 0.004);
+  };
+
+  const sidetoneOff = () => {
+    const ctx = sidetoneCtxRef.current;
+    const gain = sidetoneGainRef.current;
+    if (!ctx || !gain) return;
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.004);
+  };
+
+  // ── CW Keyer State Machine ────────────────────────────────────────────────
+  // Sidetone only — actual key timing is driven by the server state machine.
+  const emitCwKey = (state: boolean) => {
+    const s = cwStateRef.current;
+    if (s.keyIsDown === state) return;
+    s.keyIsDown = state;
+    setCwKeyActive(state);
+    if (state) sidetoneOn(); else sidetoneOff();
+  };
+
+  // Send physical paddle state to server with connection-relative timestamp.
+  const emitCwPaddle = (dit: boolean, dah: boolean, straight: boolean) => {
+    const t = performance.now() - cwConnectTimeRef.current;
+    socket?.emit("cw-paddle", { dit, dah, straight, t });
+  };
+
+  const startKeyerTick = () => {
+    if (cwTickTimerRef.current) return;
+    const tick = () => {
+      const settings = cwSettingsRef.current;
+      if (!settings.enabled) { cwTickTimerRef.current = null; return; }
+      const ctx = sidetoneCtxRef.current;
+      const now = ctx ? ctx.currentTime : performance.now() / 1000;
+      const ditSec = 1.2 / settings.wpm;
+      const s = cwStateRef.current;
+
+      if (s.machine === 'IDLE') {
+        if (ditPressedRef.current && !dahPressedRef.current) {
+          s.machine = 'SENDING_DIT';
+          s.elementEndTime = now + ditSec;
+          s.pendingElement = null;
+          emitCwKey(true);
+        } else if (dahPressedRef.current && !ditPressedRef.current) {
+          s.machine = 'SENDING_DAH';
+          s.elementEndTime = now + ditSec * 3;
+          s.pendingElement = null;
+          emitCwKey(true);
+        } else if (ditPressedRef.current && dahPressedRef.current) {
+          s.machine = 'SENDING_DIT';
+          s.elementEndTime = now + ditSec;
+          s.pendingElement = 'dah';
+          emitCwKey(true);
+        }
+      } else if (s.machine === 'SENDING_DIT' || s.machine === 'SENDING_DAH') {
+        // Track iambic-B memory while element is running
+        if (settings.mode === 'iambic-b') {
+          if (s.machine === 'SENDING_DIT' && dahPressedRef.current && s.pendingElement !== 'dah') {
+            s.pendingElement = 'dah';
+          } else if (s.machine === 'SENDING_DAH' && ditPressedRef.current && s.pendingElement !== 'dit') {
+            s.pendingElement = 'dit';
+          }
+        }
+        if (now >= s.elementEndTime) {
+          emitCwKey(false);
+          s.machine = 'INTER_ELEMENT';
+          s.elementEndTime = now + ditSec; // inter-element gap
+        }
+      } else if (s.machine === 'INTER_ELEMENT') {
+        if (now >= s.elementEndTime) {
+          // Determine next element
+          let next: 'dit' | 'dah' | null = null;
+          if (settings.mode === 'iambic-b' && s.pendingElement) {
+            next = s.pendingElement;
+          } else if (ditPressedRef.current && dahPressedRef.current) {
+            next = s.pendingElement === 'dah' ? 'dah' : 'dit';
+          } else if (ditPressedRef.current) {
+            next = 'dit';
+          } else if (dahPressedRef.current) {
+            next = 'dah';
+          }
+          s.pendingElement = null;
+          if (next === 'dit') {
+            s.machine = 'SENDING_DIT';
+            s.elementEndTime = now + ditSec;
+            if (settings.mode === 'iambic-b' && dahPressedRef.current) s.pendingElement = 'dah';
+            emitCwKey(true);
+          } else if (next === 'dah') {
+            s.machine = 'SENDING_DAH';
+            s.elementEndTime = now + ditSec * 3;
+            if (settings.mode === 'iambic-b' && ditPressedRef.current) s.pendingElement = 'dit';
+            emitCwKey(true);
+          } else {
+            s.machine = 'IDLE';
+          }
+        }
+      }
+      cwTickTimerRef.current = setTimeout(tick, Math.max(4, (1.2 / settings.wpm) * 250));
+    };
+    cwTickTimerRef.current = setTimeout(tick, 4);
+  };
+
+  const stopKeyerTick = () => {
+    if (cwTickTimerRef.current) { clearTimeout(cwTickTimerRef.current); cwTickTimerRef.current = null; }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
 
   const handleSetVFO = (vfo: string) => {
     skipPollsCount.current = 1;
@@ -2140,6 +2433,20 @@ export default function App() {
       "bg-[#0a0a0a] text-[#e0e0e0] font-mono",
       isPhone ? "h-[100dvh] flex flex-col overflow-hidden" : isCompact ? "p-2 min-h-screen" : "min-h-screen p-4 md:p-8"
     )}>
+      {/* CW stuck-key safety alert */}
+      {cwStuckAlert && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-900/90 border border-red-500 text-red-200 text-xs font-bold px-4 py-2 rounded-lg shadow-xl flex items-center gap-2">
+          <span className="text-red-400">⚠</span>
+          CW stuck-key safety triggered — release key to continue
+          <button onClick={() => setCwStuckAlert(false)} className="ml-2 text-red-400 hover:text-red-200">✕</button>
+        </div>
+      )}
+      {/* CW mode warning */}
+      {cwSettings.enabled && connected && !['CW', 'CWR', 'CW-R'].includes(status?.mode || '') && (
+        <div className="fixed top-4 right-4 z-40 bg-amber-900/80 border border-amber-500 text-amber-200 text-[0.625rem] font-bold px-3 py-1.5 rounded-lg shadow-lg">
+          Radio not in CW mode
+        </div>
+      )}
       <div
         ref={containerRef}
         className={cn(
@@ -3404,7 +3711,7 @@ export default function App() {
                 </div>
                 {!isCompactControlsCollapsed && (
                   <div className="p-2 grid grid-cols-3 gap-2 h-full content-start">
-                    <button 
+                    <button
                       onClick={() => handleSetPTT(!status.ptt)}
                       disabled={!connected}
                       className={cn(
@@ -3416,6 +3723,16 @@ export default function App() {
                       <Mic size={16} />
                       <span className="text-xs uppercase font-bold leading-none">PTT</span>
                     </button>
+                    {cwSettings.enabled && (
+                      <div className={cn(
+                        "flex flex-col items-center justify-center h-12 rounded-lg border transition-all gap-0.5",
+                        cwStuckAlert ? "bg-red-900/30 border-red-500 text-red-400" : cwKeyActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299]"
+                      )}>
+                        <span className="text-[0.6rem] font-bold leading-none">CW</span>
+                        <span className="text-[0.5rem] leading-none">{cwSettings.wpm}W</span>
+                        <div className={cn("w-2 h-2 rounded-full mt-0.5", cwStuckAlert ? "bg-red-500" : cwKeyActive ? "bg-amber-400 animate-pulse" : "bg-[#2a2b2e]")} />
+                      </div>
+                    )}
                     <button
                       onClick={() => {
                         if (isTuning) return;
@@ -3973,20 +4290,31 @@ export default function App() {
               </div>
               {!isDesktopControlsCollapsed && (
                 <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <button 
+                  <button
                     onClick={() => handleSetPTT(!status.ptt)}
                     disabled={!connected}
                     className={cn(
                       "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-2",
                       !connected && "opacity-50 cursor-not-allowed",
-                      status.ptt 
-                        ? "bg-red-500/20 border-red-500 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]" 
+                      status.ptt
+                        ? "bg-red-500/20 border-red-500 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]"
                         : "bg-[#0a0a0a] border-[#2a2b2e] hover:border-emerald-500"
                     )}
                   >
                     <Mic size={20} />
                     <span className="text-[0.625rem] uppercase font-bold">PTT</span>
                   </button>
+
+                  {cwSettings.enabled && (
+                    <div className={cn(
+                      "flex flex-col items-center justify-center p-4 rounded-lg border transition-all gap-1",
+                      cwStuckAlert ? "bg-red-900/30 border-red-500 text-red-400" : cwKeyActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299]"
+                    )}>
+                      <div className={cn("w-3 h-3 rounded-full", cwStuckAlert ? "bg-red-500" : cwKeyActive ? "bg-amber-400 animate-pulse" : "bg-[#2a2b2e]")} />
+                      <span className="text-[0.625rem] uppercase font-bold">CW KEY</span>
+                      <span className="text-[0.5rem] text-[#8e9299]">{cwSettings.wpm} WPM</span>
+                    </div>
+                  )}
 
                   <button
                     onClick={() => {
@@ -5301,7 +5629,7 @@ export default function App() {
 
               {/* Tab Bar */}
               <div className="flex border-b border-[#2a2b2e] bg-[#1a1b1e]">
-                {(['rigctld', 'spots', 'display'] as const).map((tab) => (
+                {(['rigctld', 'spots', 'display', 'keyer'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveSettingsTab(tab)}
@@ -5767,6 +6095,244 @@ export default function App() {
               </div>
               )}
 
+              {activeSettingsTab === 'keyer' && (
+              <div className="p-6 space-y-6">
+
+                {/* Enable & Keying Method */}
+                <div className="space-y-4">
+                  <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">CW Keyer</h3>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm text-[#e0e0e0] font-bold">Enable CW Keyer</div>
+                      <div className="text-[0.625rem] text-[#8e9299] mt-0.5">Activates keyboard CW keying and sidetone</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const next = { ...cwSettings, enabled: !cwSettings.enabled };
+                        setCwSettings(next);
+                        cwSettingsRef.current = next;
+                        socket?.emit("update-cw-settings", { enabled: !cwSettings.enabled });
+                      }}
+                      className={cn("relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0", cwSettings.enabled ? "bg-emerald-500" : "bg-[#2a2b2e]")}
+                    >
+                      <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white transition-transform", cwSettings.enabled ? "translate-x-6" : "translate-x-1")} />
+                    </button>
+                  </div>
+
+                  {/* Keying Method */}
+                  <div className="space-y-1">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Keying Method</label>
+                    <div className="flex gap-2 flex-wrap">
+                      {([
+                        { id: 'dtr', label: 'DTR' },
+                        { id: 'rts', label: 'RTS' },
+                        { id: 'rigctld-ptt', label: 'CAT PTT' }
+                      ] as const).map(({ id, label }) => (
+                        <button
+                          key={id}
+                          onClick={() => {
+                            const next = { ...cwSettings, keyingMethod: id };
+                            setCwSettings(next);
+                            cwSettingsRef.current = next;
+                            socket?.emit("update-cw-settings", { keyingMethod: id });
+                          }}
+                          className={cn("px-3 py-1 rounded text-xs font-bold border transition-colors", cwSettings.keyingMethod === id ? "bg-emerald-500/20 border-emerald-500 text-emerald-400" : "border-[#2a2b2e] text-[#8e9299] bg-[#1a1b1e]")}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* CAT PTT note */}
+                  {cwSettings.keyingMethod === 'rigctld-ptt' && (
+                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[0.625rem] text-amber-300 space-y-1">
+                      <div className="font-bold uppercase">CAT PTT Mode</div>
+                      <div>Radio must be in CW mode with full or semi break-in (QSK) enabled. T-R switching is handled by the radio's internal QSK/break-in timing. No serial port required.</div>
+                    </div>
+                  )}
+
+                  {/* Serial port + polarity (hidden for CAT PTT) */}
+                  {cwSettings.keyingMethod !== 'rigctld-ptt' && (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Keyer Serial Port</label>
+                        <div className="text-[0.625rem] text-[#8e9299]">
+                          {cwSettings.keyingMethod === 'dtr'
+                            ? 'DTR line on this port keys the radio (e.g. /dev/ttyUSB1, COM4)'
+                            : 'RTS line on this port keys the radio (e.g. /dev/ttyUSB1, COM4)'}
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="text"
+                            value={cwSettings.keyerPort}
+                            onChange={(e) => setCwSettings(prev => ({ ...prev, keyerPort: e.target.value }))}
+                            onBlur={(e) => {
+                              const next = { ...cwSettings, keyerPort: e.target.value };
+                              cwSettingsRef.current = next;
+                              socket?.emit("update-cw-settings", { keyerPort: e.target.value });
+                            }}
+                            placeholder="/dev/ttyUSB1"
+                            className="flex-1 bg-[#1a1b1e] border border-[#2a2b2e] rounded px-2 py-1 text-sm text-[#e0e0e0] font-mono"
+                          />
+                          <div className={cn("text-[0.625rem] font-bold px-2 py-0.5 rounded", cwPortStatus.open ? "text-emerald-400 bg-emerald-400/10" : "text-[#8e9299] bg-[#2a2b2e]")}>
+                            {cwPortStatus.open ? "OPEN" : cwPortStatus.error ? "ERROR" : "CLOSED"}
+                          </div>
+                        </div>
+                        {cwPortStatus.error && <div className="text-[0.625rem] text-red-400">{cwPortStatus.error}</div>}
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Key Polarity</label>
+                        <div className="text-[0.625rem] text-[#8e9299]">Whether line high or line low activates the key. Most interfaces use Active High.</div>
+                        <div className="flex gap-2">
+                          {(['high', 'low'] as const).map(p => (
+                            <button
+                              key={p}
+                              onClick={() => {
+                                const next = { ...cwSettings, serialKeyPolarity: p };
+                                setCwSettings(next);
+                                cwSettingsRef.current = next;
+                                socket?.emit("update-cw-settings", { serialKeyPolarity: p });
+                              }}
+                              className={cn("px-3 py-1 rounded text-xs font-bold border transition-colors", cwSettings.serialKeyPolarity === p ? "bg-emerald-500/20 border-emerald-500 text-emerald-400" : "border-[#2a2b2e] text-[#8e9299] bg-[#1a1b1e]")}
+                            >
+                              Active {p.charAt(0).toUpperCase() + p.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Mode & Speed */}
+                <div className="space-y-4">
+                  <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Mode & Speed</h3>
+                  <div className="space-y-1">
+                    <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Keyer Mode</label>
+                    <div className="flex gap-2">
+                      {(['iambic-a', 'iambic-b', 'straight'] as const).map(m => (
+                        <button
+                          key={m}
+                          onClick={() => {
+                            const next = { ...cwSettings, mode: m };
+                            setCwSettings(next);
+                            cwSettingsRef.current = next;
+                            socket?.emit("update-cw-settings", { mode: m });
+                          }}
+                          className={cn("px-3 py-1 rounded text-xs font-bold border transition-colors capitalize", cwSettings.mode === m ? "bg-emerald-500/20 border-emerald-500 text-emerald-400" : "border-[#2a2b2e] text-[#8e9299] bg-[#1a1b1e]")}
+                        >
+                          {m === 'iambic-a' ? 'Iambic A' : m === 'iambic-b' ? 'Iambic B' : 'Straight'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Speed</label>
+                      <span className="text-sm text-emerald-400 font-bold">{cwSettings.wpm} WPM</span>
+                    </div>
+                    <input
+                      type="range" min={5} max={30} step={1}
+                      value={cwSettings.wpm}
+                      onChange={(e) => {
+                        const wpm = Number(e.target.value);
+                        const next = { ...cwSettings, wpm };
+                        setCwSettings(next);
+                        cwSettingsRef.current = next;
+                      }}
+                      onMouseUp={(e) => socket?.emit("update-cw-settings", { wpm: Number((e.target as HTMLInputElement).value) })}
+                      onTouchEnd={(e) => socket?.emit("update-cw-settings", { wpm: Number((e.target as HTMLInputElement).value) })}
+                      className="w-full accent-emerald-500"
+                    />
+                    <div className="flex justify-between text-[0.5rem] text-[#8e9299]"><span>5</span><span>30</span></div>
+                  </div>
+                </div>
+
+                {/* Sidetone */}
+                <div className="space-y-4">
+                  <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Sidetone</h3>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-[#e0e0e0] font-bold">Enable Sidetone</div>
+                    <button
+                      onClick={() => {
+                        const next = { ...cwSettings, sidetoneEnabled: !cwSettings.sidetoneEnabled };
+                        setCwSettings(next);
+                        cwSettingsRef.current = next;
+                        socket?.emit("update-cw-settings", { sidetoneEnabled: !cwSettings.sidetoneEnabled });
+                      }}
+                      className={cn("relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0", cwSettings.sidetoneEnabled ? "bg-emerald-500" : "bg-[#2a2b2e]")}
+                    >
+                      <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white transition-transform", cwSettings.sidetoneEnabled ? "translate-x-6" : "translate-x-1")} />
+                    </button>
+                  </div>
+                  {cwSettings.sidetoneEnabled && (<>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Frequency</label>
+                        <span className="text-sm text-emerald-400 font-bold">{cwSettings.sidetoneHz} Hz</span>
+                      </div>
+                      <input type="range" min={400} max={1200} step={10}
+                        value={cwSettings.sidetoneHz}
+                        onChange={(e) => {
+                          const hz = Number(e.target.value);
+                          const next = { ...cwSettings, sidetoneHz: hz };
+                          setCwSettings(next);
+                          cwSettingsRef.current = next;
+                          if (sidetoneOscRef.current) sidetoneOscRef.current.frequency.value = hz;
+                        }}
+                        onMouseUp={(e) => socket?.emit("update-cw-settings", { sidetoneHz: Number((e.target as HTMLInputElement).value) })}
+                        onTouchEnd={(e) => socket?.emit("update-cw-settings", { sidetoneHz: Number((e.target as HTMLInputElement).value) })}
+                        className="w-full accent-emerald-500"
+                      />
+                      <div className="flex justify-between text-[0.5rem] text-[#8e9299]"><span>400 Hz</span><span>1200 Hz</span></div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Volume</label>
+                        <span className="text-sm text-emerald-400 font-bold">{Math.round(cwSettings.sidetoneVolume * 100)}%</span>
+                      </div>
+                      <input type="range" min={0} max={1} step={0.01}
+                        value={cwSettings.sidetoneVolume}
+                        onChange={(e) => {
+                          const vol = Number(e.target.value);
+                          const next = { ...cwSettings, sidetoneVolume: vol };
+                          setCwSettings(next);
+                          cwSettingsRef.current = next;
+                        }}
+                        onMouseUp={(e) => socket?.emit("update-cw-settings", { sidetoneVolume: Number((e.target as HTMLInputElement).value) })}
+                        onTouchEnd={(e) => socket?.emit("update-cw-settings", { sidetoneVolume: Number((e.target as HTMLInputElement).value) })}
+                        className="w-full accent-emerald-500"
+                      />
+                      <div className="flex justify-between text-[0.5rem] text-[#8e9299]"><span>0%</span><span>100%</span></div>
+                    </div>
+                  </>)}
+                </div>
+
+                {/* Key Bindings */}
+                <div className="space-y-4">
+                  <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Key Bindings</h3>
+                  <div className="text-[0.625rem] text-[#8e9299]">Default L-CTRL / R-CTRL matches vband USB paddle interface. Click a binding to rebind.</div>
+                  {([
+                    { key: 'ditKey', label: cwSettings.mode === 'straight' ? 'N/A' : 'Dit (left paddle)' },
+                    { key: 'dahKey', label: cwSettings.mode === 'straight' ? 'N/A' : 'Dah (right paddle)' },
+                    { key: 'straightKey', label: 'Straight Key' }
+                  ] as const).filter(b => cwSettings.mode === 'straight' ? b.key === 'straightKey' : b.key !== 'straightKey').map(({ key, label }) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-xs text-[#e0e0e0]">{label}</span>
+                      <button
+                        onClick={() => setRebindTarget(rebindTarget === key ? null : key)}
+                        className={cn("px-3 py-1 rounded text-xs font-mono border transition-colors", rebindTarget === key ? "bg-amber-500/20 border-amber-400 text-amber-300 animate-pulse" : "bg-[#1a1b1e] border-[#2a2b2e] text-[#e0e0e0]")}
+                      >
+                        {rebindTarget === key ? 'Press a key…' : cwSettings[key]}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+              </div>
+              )}
+
               {activeSettingsTab === 'display' && (
               <div className="p-6 space-y-6">
                 <div className="space-y-4">
@@ -5827,6 +6393,16 @@ export default function App() {
             <Mic size={24} />
             <span className="text-xs uppercase font-bold leading-none">PTT</span>
           </button>
+          {cwSettings.enabled && (
+            <div className={cn(
+              "mt-2 flex items-center justify-center gap-2 py-1.5 rounded-lg border text-xs font-bold transition-all",
+              cwStuckAlert ? "bg-red-900/30 border-red-500 text-red-400" : cwKeyActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299]"
+            )}>
+              <div className={cn("w-2 h-2 rounded-full", cwStuckAlert ? "bg-red-500" : cwKeyActive ? "bg-amber-400 animate-pulse" : "bg-[#2a2b2e]")} />
+              <span>CW KEY</span>
+              <span className="text-[0.6rem]">{cwSettings.wpm} WPM</span>
+            </div>
+          )}
         </div>
       )}
     </div>

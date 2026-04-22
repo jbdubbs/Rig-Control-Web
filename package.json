@@ -31,12 +31,14 @@
       "dist-electron/**/*",
       "package.json",
       "radios.json",
+      "cw-key-helper.py",
       "assets/icons/**/*"
     ],
     "asarUnpack": [
       "bin/**/*",
       "**/*.node",
-      "**/node_modules/libopus-node/**/*.wasm"
+      "**/node_modules/libopus-node/**/*.wasm",
+      "cw-key-helper.py"
     ],
     "win": {
       "target": "nsis",

@@ -137,6 +137,20 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   let clientPort = 4532;
   let potaSettings: { enabled: boolean; pollRate: number; maxAge: number } = { enabled: false, pollRate: 5, maxAge: 15 };
   let sotaSettings: { enabled: boolean; pollRate: number; maxAge: number } = { enabled: false, pollRate: 5, maxAge: 15 };
+  let cwSettings = {
+    enabled: false,
+    keyerPort: "",
+    keyingMethod: "dtr" as "dtr" | "rts" | "rigctld-ptt",
+    serialKeyPolarity: "high" as "high" | "low",
+    mode: "iambic-a" as "iambic-a" | "iambic-b" | "straight",
+    wpm: 18,
+    sidetoneHz: 700,
+    sidetoneVolume: 0.5,
+    sidetoneEnabled: true,
+    ditKey: "ControlLeft",
+    dahKey: "ControlRight",
+    straightKey: "Space"
+  };
   
   const getRigctldPath = (): string => {
     let platformDir = "";
@@ -287,6 +301,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (data.sotaSettings) {
         sotaSettings = { ...sotaSettings, ...data.sotaSettings };
       }
+      if (data.cwSettings) {
+        cwSettings = { ...cwSettings, ...data.cwSettings };
+      }
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
@@ -306,7 +323,8 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         clientHost: clientHost,
         clientPort: Number(clientPort),
         potaSettings: potaSettings,
-        sotaSettings: sotaSettings
+        sotaSettings: sotaSettings,
+        cwSettings: cwSettings
       }, null, 2));
     } catch (e) {
       console.error("[SETTINGS] Failed to save settings:", e);
@@ -559,6 +577,308 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     io.emit("audio-status", audioStatus);
   };
 
+  // ── CW Keyer ─────────────────────────────────────────────────────────────
+  let cwKeyerProcess: ChildProcess | null = null;
+  let activeCwClientId: string | null = null;
+  let cwKeyLockedOut = false;
+  let cwStuckKeyTimer: ReturnType<typeof setTimeout> | null = null;
+  let cwIsKeying = false;
+  let cwIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Jitter buffer — mirrors audio: 60 ms startup depth, 240 ms ceiling
+  const CW_BUFFER_DEPTH_MS = 60;
+  const CW_BUFFER_MAX_MS = 240;
+  const socketConnectTimes = new Map<string, number>(); // socketId → Date.now() at connect
+
+  interface CwPaddleEvent { t: number; dit: boolean; dah: boolean; straight: boolean; }
+  let cwPaddleBuffer: CwPaddleEvent[] = [];
+  let cwPlayheadDit = false;
+  let cwPlayheadDah = false;
+  let cwPlayheadStraight = false;
+  let cwMachine: "IDLE" | "SENDING_DIT" | "SENDING_DAH" | "INTER_ELEMENT" = "IDLE";
+  let cwPendingElement: "dit" | "dah" | null = null;
+  let cwElementEndMs = 0;
+  let cwKeyIsDown = false;
+  let cwBufferReady = false;
+  let cwTickTimer: ReturnType<typeof setTimeout> | null = null;
+  let cwClaimIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Returns path to the Python helper, handling Electron asar.unpacked.
+  const getCwHelperPath = () => {
+    let base = baseDir;
+    if (base.endsWith(".asar")) base = base.replace(".asar", ".asar.unpacked");
+    return path.join(base, "cw-key-helper.py");
+  };
+
+  // Write key state to the helper process stdin. Fire-and-forget; silently
+  // ignores errors because process death is handled by the "close" listener.
+  const setSerialKey = (active: boolean): Promise<void> => {
+    if (!cwKeyerProcess || cwKeyerProcess.killed) return Promise.resolve();
+    return new Promise((resolve) => {
+      try {
+        cwKeyerProcess!.stdin!.write(active ? "1\n" : "0\n", () => resolve());
+      } catch (_) {
+        resolve();
+      }
+    });
+  };
+
+  // Send CAT PTT through the priority queue (fire-and-forget, catches errors)
+  const sendCwCatPtt = (state: boolean, clientId: string) => {
+    sendToRig(`T ${state ? 1 : 0}`, false, true).catch((err) => {
+      console.error("[CW] CAT PTT error:", err);
+      // Rig disconnected mid-key — reset state and alert client
+      if (cwStuckKeyTimer) { clearTimeout(cwStuckKeyTimer); cwStuckKeyTimer = null; }
+      cwKeyLockedOut = false;
+      activeCwClientId = null;
+      cwIsKeying = false;
+      io.to(clientId).emit("cw-stuck-key-alert");
+    });
+  };
+
+  // Suspend polling while keying; resume 500 ms after last key-up
+  const setCwKeyingActive = (active: boolean) => {
+    cwIsKeying = active;
+    if (!active) {
+      if (cwIdleTimer) clearTimeout(cwIdleTimer);
+      cwIdleTimer = setTimeout(() => {
+        cwIsKeying = false;
+        cwIdleTimer = null;
+      }, 500);
+    } else {
+      if (cwIdleTimer) { clearTimeout(cwIdleTimer); cwIdleTimer = null; }
+    }
+  };
+
+  // Drives the serial/CAT key line and manages the stuck-key watchdog.
+  const cwSetKey = (active: boolean) => {
+    if (cwKeyIsDown === active) return;
+    cwKeyIsDown = active;
+    if (active) {
+      if (cwIdleTimer) { clearTimeout(cwIdleTimer); cwIdleTimer = null; }
+      cwStuckKeyTimer = setTimeout(() => {
+        cwStuckKeyTimer = null;
+        if (cwSettings.keyingMethod === "rigctld-ptt") {
+          sendCwCatPtt(false, activeCwClientId ?? "");
+        } else {
+          setSerialKey(false).catch((err) => console.error("[CW] Watchdog key-up error:", err.message));
+        }
+        cwKeyIsDown = false;
+        cwKeyLockedOut = true;
+        const cid = activeCwClientId;
+        activeCwClientId = null;
+        stopCwTick();
+        setCwKeyingActive(false);
+        if (cid) io.to(cid).emit("cw-stuck-key-alert");
+        console.warn("[CW] Stuck-key watchdog fired — key forced inactive");
+      }, 5000);
+      setCwKeyingActive(true);
+    } else {
+      if (cwStuckKeyTimer) { clearTimeout(cwStuckKeyTimer); cwStuckKeyTimer = null; }
+      setCwKeyingActive(false);
+    }
+    if (cwSettings.keyingMethod === "rigctld-ptt") {
+      sendCwCatPtt(active, activeCwClientId ?? "");
+    } else {
+      setSerialKey(active).catch((err) => console.error("[CW] Key set error:", err.message));
+    }
+  };
+
+  const stopCwTick = () => {
+    if (cwTickTimer) { clearTimeout(cwTickTimer); cwTickTimer = null; }
+  };
+
+  const cwTick = () => {
+    cwTickTimer = null;
+    if (!activeCwClientId) return;
+
+    const connectMs = socketConnectTimes.get(activeCwClientId) ?? Date.now();
+    const nowClientMs = Date.now() - connectMs;
+    const playheadMs = nowClientMs - CW_BUFFER_DEPTH_MS;
+
+    // Drain all buffered events whose client-timestamp is at or behind the playhead
+    while (cwPaddleBuffer.length > 0 && cwPaddleBuffer[0].t <= playheadMs) {
+      const evt = cwPaddleBuffer.shift()!;
+      cwPlayheadDit = evt.dit;
+      cwPlayheadDah = evt.dah;
+      cwPlayheadStraight = evt.straight;
+    }
+
+    // Startup: wait until the playhead has advanced at least bufferDepth ms from connect
+    if (!cwBufferReady) {
+      if (nowClientMs >= CW_BUFFER_DEPTH_MS) {
+        cwBufferReady = true;
+      } else {
+        cwTickTimer = setTimeout(cwTick, 4);
+        return;
+      }
+    }
+
+    // Auto-clear lockout once operator has released all paddles
+    if (cwKeyLockedOut) {
+      if (!cwPlayheadDit && !cwPlayheadDah && !cwPlayheadStraight) cwKeyLockedOut = false;
+      else { cwTickTimer = setTimeout(cwTick, 4); return; }
+    }
+
+    const ditMs = (1.2 / cwSettings.wpm) * 1000;
+    const nowMs = Date.now();
+
+    if (cwSettings.mode === "straight") {
+      const wantDown = cwPlayheadStraight;
+      if (wantDown !== cwKeyIsDown) cwSetKey(wantDown);
+    } else {
+      // Iambic A / B state machine
+      if (cwMachine === "IDLE") {
+        if (cwPlayheadDit && !cwPlayheadDah) {
+          cwMachine = "SENDING_DIT"; cwElementEndMs = nowMs + ditMs; cwPendingElement = null; cwSetKey(true);
+        } else if (cwPlayheadDah && !cwPlayheadDit) {
+          cwMachine = "SENDING_DAH"; cwElementEndMs = nowMs + ditMs * 3; cwPendingElement = null; cwSetKey(true);
+        } else if (cwPlayheadDit && cwPlayheadDah) {
+          cwMachine = "SENDING_DIT"; cwElementEndMs = nowMs + ditMs; cwPendingElement = "dah"; cwSetKey(true);
+        }
+      } else if (cwMachine === "SENDING_DIT" || cwMachine === "SENDING_DAH") {
+        if (cwSettings.mode === "iambic-b") {
+          if (cwMachine === "SENDING_DIT" && cwPlayheadDah && cwPendingElement !== "dah") cwPendingElement = "dah";
+          else if (cwMachine === "SENDING_DAH" && cwPlayheadDit && cwPendingElement !== "dit") cwPendingElement = "dit";
+        }
+        if (nowMs >= cwElementEndMs) {
+          cwSetKey(false);
+          cwMachine = "INTER_ELEMENT";
+          cwElementEndMs = nowMs + ditMs;
+        }
+        // else: element still running — natural stretch while buffer refills
+      } else if (cwMachine === "INTER_ELEMENT") {
+        if (nowMs >= cwElementEndMs) {
+          let next: "dit" | "dah" | null = null;
+          if (cwSettings.mode === "iambic-b" && cwPendingElement) {
+            next = cwPendingElement;
+          } else if (cwPlayheadDit && cwPlayheadDah) {
+            next = cwPendingElement === "dah" ? "dah" : "dit";
+          } else if (cwPlayheadDit) {
+            next = "dit";
+          } else if (cwPlayheadDah) {
+            next = "dah";
+          }
+          cwPendingElement = null;
+          if (next === "dit") {
+            cwMachine = "SENDING_DIT"; cwElementEndMs = nowMs + ditMs;
+            if (cwSettings.mode === "iambic-b" && cwPlayheadDah) cwPendingElement = "dah";
+            cwSetKey(true);
+          } else if (next === "dah") {
+            cwMachine = "SENDING_DAH"; cwElementEndMs = nowMs + ditMs * 3;
+            if (cwSettings.mode === "iambic-b" && cwPlayheadDit) cwPendingElement = "dit";
+            cwSetKey(true);
+          } else {
+            cwMachine = "IDLE";
+          }
+        }
+      }
+    }
+
+    cwTickTimer = setTimeout(cwTick, Math.max(4, ditMs / 4));
+  };
+
+  const openKeyerPort = async (portPath: string) => {
+    await closeKeyerPort();
+    if (!portPath) return;
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const settle = () => { if (!settled) { settled = true; resolve(); } };
+
+      const proc = spawn("python3", [
+        getCwHelperPath(),
+        portPath,
+        cwSettings.keyingMethod === "rts" ? "rts" : "dtr",
+        cwSettings.serialKeyPolarity
+      ]);
+
+      let buf = "";
+      proc.stdout!.on("data", (chunk: Buffer) => {
+        buf += chunk.toString();
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (line.startsWith("OPEN_OK")) {
+            cwKeyerProcess = proc;
+            proc.on("close", (code) => {
+              if (cwKeyerProcess === proc) {
+                cwKeyerProcess = null;
+                console.warn(`[CW] Keyer helper exited (code ${code})`);
+                io.emit("cw-port-status", { open: false, port: portPath, error: "Helper process exited unexpectedly" });
+              }
+            });
+            console.log(`[CW] Keyer port opened: ${portPath}`);
+            io.emit("cw-port-status", { open: true, port: portPath });
+            settle();
+          } else if (line.startsWith("OPEN_ERROR:")) {
+            const msg = line.slice("OPEN_ERROR:".length).trim();
+            console.error(`[CW] Failed to open keyer port ${portPath}: ${msg}`);
+            proc.kill();
+            io.emit("cw-port-status", { open: false, port: portPath, error: msg });
+            settle();
+          }
+        }
+      });
+
+      proc.stderr!.on("data", (chunk: Buffer) => {
+        console.error("[CW] Helper stderr:", chunk.toString().trim());
+      });
+
+      proc.on("error", (err: NodeJS.ErrnoException) => {
+        const msg = err.code === "ENOENT"
+          ? "python3 not found — install Python 3 with pyserial"
+          : err.message;
+        console.error(`[CW] Failed to spawn helper:`, msg);
+        io.emit("cw-port-status", { open: false, port: portPath, error: msg });
+        settle();
+      });
+
+      setTimeout(() => {
+        if (!settled) {
+          proc.kill();
+          io.emit("cw-port-status", { open: false, port: portPath, error: "Helper did not respond — check python3 and pyserial" });
+          settle();
+        }
+      }, 5000);
+    });
+  };
+
+  const closeKeyerPort = async () => {
+    stopCwTick();
+    if (cwStuckKeyTimer) { clearTimeout(cwStuckKeyTimer); cwStuckKeyTimer = null; }
+    if (cwIdleTimer) { clearTimeout(cwIdleTimer); cwIdleTimer = null; }
+    if (cwClaimIdleTimer) { clearTimeout(cwClaimIdleTimer); cwClaimIdleTimer = null; }
+    if (cwKeyerProcess && !cwKeyerProcess.killed) {
+      await setSerialKey(false);
+      cwKeyerProcess.kill();
+    }
+    cwKeyerProcess = null;
+    cwKeyLockedOut = false;
+    activeCwClientId = null;
+    cwIsKeying = false;
+    cwKeyIsDown = false;
+    cwMachine = "IDLE";
+    cwPaddleBuffer = [];
+  };
+
+  // Single source of truth for whether the helper process should be running.
+  // forceReopen=true closes and reopens (used on polarity / method changes).
+  const syncKeyerPort = async (forceReopen = false) => {
+    const needsPort = cwSettings.enabled
+                   && cwSettings.keyingMethod !== "rigctld-ptt"
+                   && !!cwSettings.keyerPort;
+    if (needsPort) {
+      if (!cwKeyerProcess || cwKeyerProcess.killed || forceReopen) {
+        await openKeyerPort(cwSettings.keyerPort);
+      }
+    } else if (cwKeyerProcess && !cwKeyerProcess.killed) {
+      await closeKeyerPort();
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   const startAudio = async () => {
     console.log("[AUDIO] Starting audio streaming...");
     await stopAudio();
@@ -785,12 +1105,17 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     startRigctld();
   }
 
+  // Open CW keyer port on startup if enabled and method requires serial
+  await syncKeyerPort();
+
   process.on("exit", stopRigctld);
   process.on("SIGINT", () => {
+    closeKeyerPort();
     stopRigctld();
     process.exit();
   });
   process.on("SIGTERM", () => {
+    closeKeyerPort();
     stopRigctld();
     process.exit();
   });
@@ -866,6 +1191,11 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     stopPolling();
     const runPoll = async () => {
       if (!isConnected) return;
+      if (cwIsKeying) {
+        // Skip this cycle; reschedule without running pollRig
+        pollingTimeout = setTimeout(runPoll, 200);
+        return;
+      }
       const startTime = Date.now();
       await pollRig();
       const duration = Date.now() - startTime;
@@ -1187,6 +1517,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   io.on("connection", (socket) => {
     const clientId = socket.handshake.auth.clientId || socket.id;
     console.log(`Client connected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
+    socketConnectTimes.set(socket.id, Date.now());
     
     socket.emit("audio-engine-state", {
       isReady: isAudioEngineReady,
@@ -1392,7 +1723,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         clientPort: clientPort,
         isConnected: isConnected,
         potaSettings: potaSettings,
-        sotaSettings: sotaSettings
+        sotaSettings: sotaSettings,
+        cwSettings: cwSettings,
+        cwPortStatus: (cwKeyerProcess && !cwKeyerProcess.killed) ? { open: true, port: cwSettings.keyerPort } : { open: false, port: cwSettings.keyerPort }
       });
       emitRigctldStatus();
       socket.emit("rigctld-log", rigctldLogs);
@@ -1601,6 +1934,12 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       if (data.clientPort !== undefined) clientPort = Number(data.clientPort);
       if (data.potaSettings !== undefined) potaSettings = { ...potaSettings, ...data.potaSettings };
       if (data.sotaSettings !== undefined) sotaSettings = { ...sotaSettings, ...data.sotaSettings };
+      if (data.cwSettings !== undefined) {
+        const oldPolarity = cwSettings.serialKeyPolarity;
+        cwSettings = { ...cwSettings, ...data.cwSettings };
+        const polarityChanged = data.cwSettings.serialKeyPolarity !== undefined && data.cwSettings.serialKeyPolarity !== oldPolarity;
+        syncKeyerPort(polarityChanged);
+      }
 
       saveSettings();
       if (oldRigNumber !== rigctldSettings.rigNumber) {
@@ -1706,6 +2045,61 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       }
     });
 
+    socket.on("cw-paddle", ({ dit, dah, straight, t }: { dit: boolean; dah: boolean; straight: boolean; t: number }) => {
+      const anyActive = dit || dah || straight;
+
+      if (anyActive) {
+        if (cwKeyLockedOut) return;
+        if (activeCwClientId && activeCwClientId !== socket.id) return;
+        if (!activeCwClientId) {
+          // Claim the keyer and reset session state
+          activeCwClientId = socket.id;
+          cwPaddleBuffer = [];
+          cwPlayheadDit = false; cwPlayheadDah = false; cwPlayheadStraight = false;
+          cwMachine = "IDLE"; cwPendingElement = null; cwElementEndMs = 0;
+          cwKeyIsDown = false; cwBufferReady = false;
+          cwTickTimer = setTimeout(cwTick, 4);
+        }
+      }
+
+      if (activeCwClientId !== socket.id) return;
+
+      // Reset 3-second claim-release idle timer on every event
+      if (cwClaimIdleTimer) clearTimeout(cwClaimIdleTimer);
+      cwClaimIdleTimer = setTimeout(() => {
+        cwClaimIdleTimer = null;
+        if (!cwKeyIsDown) {
+          activeCwClientId = null;
+          stopCwTick();
+          cwMachine = "IDLE";
+          cwPaddleBuffer = [];
+        }
+      }, 3000);
+
+      // Insert in timestamp order (nearly always appended)
+      const evt: CwPaddleEvent = { t, dit, dah, straight };
+      let i = cwPaddleBuffer.length;
+      while (i > 0 && cwPaddleBuffer[i - 1].t > t) i--;
+      cwPaddleBuffer.splice(i, 0, evt);
+
+      // Overflow: drop events older than the ceiling window
+      const connectMs = socketConnectTimes.get(socket.id) ?? Date.now();
+      const ceilingT = (Date.now() - connectMs) - CW_BUFFER_MAX_MS;
+      while (cwPaddleBuffer.length > 0 && cwPaddleBuffer[0].t < ceilingT) cwPaddleBuffer.shift();
+    });
+
+    socket.on("update-cw-settings", async (partial: Partial<typeof cwSettings>) => {
+      const oldPolarity = cwSettings.serialKeyPolarity;
+      cwSettings = { ...cwSettings, ...partial };
+      const polarityChanged = partial.serialKeyPolarity !== undefined && partial.serialKeyPolarity !== oldPolarity;
+      await syncKeyerPort(polarityChanged);
+      saveSettings();
+      io.emit("settings-data", {
+        cwSettings: cwSettings,
+        cwPortStatus: (cwKeyerProcess && !cwKeyerProcess.killed) ? { open: true, port: cwSettings.keyerPort } : { open: false, port: cwSettings.keyerPort }
+      });
+    });
+
     socket.on("send-raw", async (cmd) => {
       try {
         const resp = await sendToRig(cmd, false, true);
@@ -1717,6 +2111,18 @@ export async function startServer(appPath?: string, userDataPath?: string) {
 
     socket.on("disconnect", () => {
       console.log(`Client disconnected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
+      socketConnectTimes.delete(socket.id);
+      // If this client held the CW key, immediately release the key line
+      if (activeCwClientId === socket.id) {
+        stopCwTick();
+        if (cwClaimIdleTimer) { clearTimeout(cwClaimIdleTimer); cwClaimIdleTimer = null; }
+        cwSetKey(false);
+        cwKeyLockedOut = false;
+        cwMachine = "IDLE";
+        cwPaddleBuffer = [];
+        activeCwClientId = null;
+        setCwKeyingActive(false);
+      }
       // If the video source disconnects, clear its state and notify all other clients
       if (socket.id === videoSourceSocketId) {
         vlog("[VIDEO] Source client disconnected — stopping stream.");
@@ -1795,6 +2201,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   // Register full shutdown for Electron will-quit (and any other caller).
   // Order matters: audio hardware first, then rigctld, then network/IPC.
   _shutdown = async () => {
+    await closeKeyerPort();
     await stopAudio();
     stopRigctld();
     if (pollingTimeout) { clearTimeout(pollingTimeout); pollingTimeout = null; }
