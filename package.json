@@ -30,7 +30,8 @@
       "dist/**/*",
       "dist-electron/**/*",
       "package.json",
-      "radios.json"
+      "radios.json",
+      "assets/icons/**/*"
     ],
     "asarUnpack": [
       "bin/**/*",
@@ -39,18 +40,22 @@
     ],
     "win": {
       "target": "nsis",
+      "icon": "assets/icons/rcw.ico",
       "files": [
         "bin/windows/**/*"
       ]
     },
     "linux": {
       "target": "AppImage",
+      "executableName": "rigcontrol-web",
+      "icon": "assets/icons/rcw_512x512.png",
       "files": [
         "bin/linux/**/*"
       ]
     },
     "mac": {
       "target": "dmg",
+      "icon": "assets/icons/rcw.icns",
       "files": [
         "bin/mac/**/*"
       ]

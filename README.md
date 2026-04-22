@@ -106,6 +106,22 @@ npm run electron:build -- --mac
 
 Built installers are placed in the `build/` directory.
 
+### Linux GNOME Desktop Integration (AppImage)
+
+The AppImage is portable and does not register with your desktop environment by default. To add RigControl Web to your GNOME application menu with the correct icon and taskbar association, run the AppImage once with `--install`:
+
+```bash
+./RigControl-Web-<version>.AppImage --install
+```
+
+This copies the app icon to `~/.local/share/icons/` and writes a `.desktop` entry to `~/.local/share/applications/`. The AppImage itself is not moved — keep it wherever you like.
+
+To remove the desktop integration:
+
+```bash
+./RigControl-Web-<version>.AppImage --uninstall
+```
+
 ### Launching the Installed App
 Once installed, launch "RigControl Web" from your applications menu or desktop shortcut. The application will:
 1. Start the background Express server.

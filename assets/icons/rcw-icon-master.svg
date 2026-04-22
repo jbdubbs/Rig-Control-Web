@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RCW — Rig Control Web  |  Application Icon  |  Master Vector Source
+  Colour space : sRGB
+  Artboard     : 500 × 500 px  (scale freely — all geometry is normalised)
+
+  Usage:
+    • Export to PNG at any size with Inkscape, rsvg-convert, or a browser.
+    • To generate .ico: export 16/24/32/48/64/128/256 PNGs → combine with
+      ImageMagick:  convert 16.png 32.png … 256.png rcw.ico
+    • To generate .icns on macOS:  iconutil -c icns rcw.iconset
+    • The <defs> section contains named colours for easy recolouring.
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 500 500" width="500" height="500"
+     shape-rendering="crispEdges">
+
+  <defs>
+    <!-- ── Brand colours ── -->
+    <style>
+      :root {
+        --col-bg:       #050c18;
+        --col-border:   #1a4a88;
+        --col-grid:     #0c1e34;
+        --col-wfall1:   #040f1c;
+        --col-wfall2:   #030b15;
+        --col-wfall3:   #02080e;
+      }
+    </style>
+    <clipPath id="iconShape">
+      <rect x="0" y="0" width="500" height="500" rx="88" ry="88"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="500" height="500" rx="88" ry="88" fill="#050c18"/>
+
+  <!-- Border -->
+  <rect x="1.5" y="1.5" width="497" height="497" rx="87" ry="87"
+        fill="none" stroke="#1a4a88" stroke-width="3"/>
+
+  <g clip-path="url(#iconShape)">
+
+    <!-- Waterfall bands -->
+    <rect x="0" y="440" width="500" height="20" fill="#040f1c"/>
+    <rect x="0" y="460" width="500" height="20" fill="#030b15"/>
+    <rect x="0" y="480" width="500" height="20" fill="#02080e"/>
+
+    <!-- Graticule -->
+    <g stroke="#0c1e34" stroke-width="1" fill="none">
+      <line x1="0" y1="125" x2="500" y2="125" stroke-dasharray="4 6"/>
+      <line x1="0" y1="250" x2="500" y2="250" stroke-dasharray="4 6"/>
+      <line x1="0" y1="375" x2="500" y2="375" stroke-dasharray="4 6"/>
+      <line x1="125" y1="0" x2="125" y2="500" stroke-dasharray="4 6"/>
+      <line x1="250" y1="0" x2="250" y2="500" stroke-dasharray="4 6"/>
+      <line x1="375" y1="0" x2="375" y2="500" stroke-dasharray="4 6"/>
+    </g>
+
+    <!-- ════════════════════════════════════════════════════
+         LSB SIGNAL SPIKES
+         Each rect: x=centre of spike, y=peak, height reaches floor (y=485)
+         Colour ramp: dark blue (noise) → bright light-blue (carrier)
+    ════════════════════════════════════════════════════ -->
+
+    <!-- Noise floor — far left -->
+    <rect x="9"   y="482" width="3" height="8"   fill="#0c2e4a"/>
+    <rect x="15"  y="480" width="3" height="10"  fill="#0e3252"/>
+    <rect x="21"  y="483" width="3" height="7"   fill="#0c2e4a"/>
+    <rect x="27"  y="479" width="3" height="11"  fill="#103658"/>
+    <rect x="33"  y="481" width="3" height="9"   fill="#0c2e4a"/>
+    <rect x="39"  y="478" width="3" height="12"  fill="#123a60"/>
+    <rect x="45"  y="482" width="3" height="8"   fill="#0c2e4a"/>
+    <rect x="51"  y="477" width="3" height="13"  fill="#103658"/>
+    <rect x="57"  y="480" width="3" height="10"  fill="#0e3252"/>
+    <rect x="63"  y="476" width="3" height="14"  fill="#123a60"/>
+    <rect x="69"  y="479" width="3" height="11"  fill="#103658"/>
+    <rect x="75"  y="475" width="3" height="15"  fill="#123a60"/>
+    <rect x="81"  y="478" width="3" height="12"  fill="#103658"/>
+
+    <!-- Rising shoulder -->
+    <rect x="87"  y="472" width="3" height="18"  fill="#163c68"/>
+    <rect x="93"  y="466" width="3" height="24"  fill="#1a4470"/>
+    <rect x="99"  y="459" width="3" height="31"  fill="#1e4c78"/>
+    <rect x="105" y="451" width="3" height="39"  fill="#225480"/>
+    <rect x="111" y="442" width="3" height="48"  fill="#265c90"/>
+    <rect x="117" y="432" width="3" height="58"  fill="#2c64a0"/>
+    <rect x="123" y="421" width="3" height="69"  fill="#306caa"/>
+    <rect x="129" y="411" width="3" height="79"  fill="#3274b2"/>
+    <rect x="135" y="402" width="3" height="88"  fill="#3274b2"/>
+
+    <!-- Mid lobe — voice irregularity -->
+    <rect x="141" y="414" width="3" height="76"  fill="#2c6caa"/>
+    <rect x="147" y="394" width="3" height="96"  fill="#3a7cb8"/>
+    <rect x="153" y="407" width="3" height="83"  fill="#3274b2"/>
+    <rect x="159" y="379" width="3" height="111" fill="#3a7cb8"/>
+    <rect x="165" y="395" width="3" height="95"  fill="#3274b2"/>
+    <rect x="171" y="364" width="3" height="126" fill="#4284c2"/>
+    <rect x="177" y="382" width="3" height="108" fill="#3a7cb8"/>
+    <rect x="183" y="347" width="3" height="143" fill="#4284c2"/>
+    <rect x="189" y="366" width="3" height="124" fill="#3a7cb8"/>
+    <rect x="195" y="330" width="3" height="160" fill="#4a8cc8"/>
+
+    <!-- Upper mid -->
+    <rect x="201" y="350" width="3" height="140" fill="#4284c2"/>
+    <rect x="207" y="312" width="3" height="178" fill="#5294d0"/>
+    <rect x="213" y="334" width="3" height="156" fill="#4a8cc8"/>
+    <rect x="219" y="294" width="3" height="196" fill="#5294d0"/>
+    <rect x="225" y="318" width="3" height="172" fill="#4a8cc8"/>
+    <rect x="231" y="275" width="3" height="215" fill="#5a9cd8"/>
+    <rect x="237" y="300" width="3" height="190" fill="#5294d0"/>
+    <rect x="243" y="256" width="3" height="234" fill="#5a9cd8"/>
+    <rect x="249" y="282" width="3" height="208" fill="#5294d0"/>
+    <rect x="255" y="237" width="3" height="253" fill="#62a4e0"/>
+    <rect x="261" y="264" width="3" height="226" fill="#5a9cd8"/>
+
+    <!-- Tall pre-carrier -->
+    <rect x="267" y="217" width="3" height="273" fill="#6aaae8"/>
+    <rect x="273" y="246" width="3" height="244" fill="#62a4e0"/>
+    <rect x="279" y="197" width="3" height="293" fill="#72b4f0"/>
+    <rect x="285" y="228" width="3" height="262" fill="#6aaae8"/>
+    <rect x="291" y="176" width="3" height="314" fill="#7abcf8"/>
+    <rect x="297" y="210" width="3" height="280" fill="#72b4f0"/>
+    <rect x="303" y="155" width="3" height="335" fill="#82c4ff"/>
+    <rect x="309" y="192" width="3" height="298" fill="#7abcf8"/>
+
+    <!-- Carrier spike cluster — tallest, brightest -->
+    <rect x="315" y="136" width="4" height="354" fill="#8accff"/>
+    <rect x="321" y="114" width="4" height="376" fill="#92d4ff"/>
+    <rect x="327" y="090" width="4" height="400" fill="#a2deff"/>
+    <rect x="333" y="064" width="5" height="426" fill="#baeaff"/>
+    <rect x="340" y="044" width="5" height="446" fill="#caf2ff"/>
+    <rect x="347" y="028" width="5" height="462" fill="#dafaff"/>
+    <rect x="354" y="036" width="5" height="454" fill="#caf2ff"/>
+    <rect x="361" y="056" width="4" height="434" fill="#b2e6ff"/>
+    <rect x="367" y="078" width="4" height="412" fill="#9ad6ff"/>
+    <rect x="373" y="102" width="4" height="388" fill="#8accff"/>
+    <rect x="379" y="128" width="3" height="362" fill="#7abeff"/>
+
+    <!-- Right shoulder — rapid dropoff -->
+    <rect x="384" y="158" width="3" height="332" fill="#62aaee"/>
+    <rect x="389" y="192" width="3" height="298" fill="#5292d8"/>
+    <rect x="394" y="228" width="3" height="262" fill="#4282c0"/>
+    <rect x="399" y="264" width="3" height="226" fill="#3272a8"/>
+    <rect x="404" y="298" width="3" height="192" fill="#2a6290"/>
+    <rect x="409" y="330" width="3" height="160" fill="#225278"/>
+    <rect x="414" y="358" width="3" height="132" fill="#1a4260"/>
+    <rect x="419" y="384" width="3" height="106" fill="#123248"/>
+    <rect x="424" y="406" width="3" height="84"  fill="#0e2838"/>
+    <rect x="429" y="424" width="3" height="66"  fill="#0a2028"/>
+    <rect x="434" y="440" width="3" height="50"  fill="#081618"/>
+    <rect x="439" y="453" width="3" height="37"  fill="#061010"/>
+    <rect x="444" y="463" width="3" height="27"  fill="#040c0c"/>
+    <rect x="449" y="471" width="3" height="19"  fill="#030808"/>
+    <rect x="454" y="477" width="3" height="13"  fill="#020404"/>
+    <rect x="459" y="482" width="3" height="8"   fill="#010202"/>
+    <rect x="464" y="486" width="3" height="4"   fill="#010101"/>
+    <rect x="469" y="488" width="3" height="2"   fill="#010101"/>
+
+  </g>
+  <!-- End clip -->
+
+</svg>

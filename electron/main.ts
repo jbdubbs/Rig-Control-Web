@@ -1,7 +1,11 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+import { execSync } from 'child_process';
 import isDev from 'electron-is-dev';
+
+app.setName('RigControl Web');
 
 if (!isDev) {
   process.env.NODE_ENV = 'production';
@@ -31,6 +35,73 @@ function saveWindowState(state: any) {
   }
 }
 
+function installDesktopIntegration(): void {
+  const appImagePath = process.env.APPIMAGE;
+  const appDir = process.env.APPDIR;
+
+  if (!appImagePath || !appDir) {
+    console.error('Error: --install can only be used when running as an AppImage.');
+    process.exit(1);
+  }
+
+  const home = os.homedir();
+  const hicolorDir = path.join(home, '.local', 'share', 'icons', 'hicolor');
+  const iconDir = path.join(hicolorDir, '512x512', 'apps');
+  const desktopDir = path.join(home, '.local', 'share', 'applications');
+  const iconDest = path.join(iconDir, 'rigcontrol-web.png');
+  const desktopDest = path.join(desktopDir, 'rigcontrol-web.desktop');
+
+  fs.mkdirSync(iconDir, { recursive: true });
+  fs.mkdirSync(desktopDir, { recursive: true });
+
+  const iconSrc = path.join(appDir, 'resources', 'app.asar', 'assets', 'icons', 'rcw_512x512.png');
+  fs.writeFileSync(iconDest, fs.readFileSync(iconSrc));
+
+  const desktop = [
+    '[Desktop Entry]',
+    'Type=Application',
+    'Name=RigControl Web',
+    'Comment=Amateur radio rig control via Hamlib rigctld',
+    `Exec=${appImagePath} %U`,
+    'Icon=rigcontrol-web',
+    'StartupWMClass=RigControl Web',
+    'Categories=HamRadio;Utility;',
+    'Terminal=false',
+  ].join('\n') + '\n';
+
+  fs.writeFileSync(desktopDest, desktop);
+
+  try { execSync(`update-desktop-database "${desktopDir}"`); } catch {}
+  try { execSync(`gtk-update-icon-cache -f -t "${hicolorDir}"`); } catch {}
+
+  console.log('RigControl Web has been integrated into your desktop.');
+  console.log(`  Icon:    ${iconDest}`);
+  console.log(`  Desktop: ${desktopDest}`);
+  console.log('You can now launch it from your application menu.');
+}
+
+function uninstallDesktopIntegration(): void {
+  const home = os.homedir();
+  const hicolorDir = path.join(home, '.local', 'share', 'icons', 'hicolor');
+  const iconDest = path.join(hicolorDir, '512x512', 'apps', 'rigcontrol-web.png');
+  const desktopDest = path.join(home, '.local', 'share', 'applications', 'rigcontrol-web.desktop');
+
+  let removed = false;
+
+  if (fs.existsSync(iconDest)) { fs.rmSync(iconDest); removed = true; }
+  if (fs.existsSync(desktopDest)) { fs.rmSync(desktopDest); removed = true; }
+
+  if (!removed) {
+    console.log('RigControl Web does not appear to be integrated (nothing to remove).');
+    return;
+  }
+
+  try { execSync(`update-desktop-database "${path.dirname(desktopDest)}"`); } catch {}
+  try { execSync(`gtk-update-icon-cache -f -t "${hicolorDir}"`); } catch {}
+
+  console.log('RigControl Web desktop integration has been removed.');
+}
+
 async function createWindow() {
   // Start the backend server with the correct app path for static files
   const appPath = isDev ? process.cwd() : app.getAppPath();
@@ -43,6 +114,10 @@ async function createWindow() {
   const defaultWidth = 768;
   const defaultHeight = 600;
 
+  const iconPath = isDev
+    ? path.join(process.cwd(), 'assets/icons/rcw_512x512.png')
+    : path.join(app.getAppPath(), 'assets/icons/rcw_512x512.png');
+
   const win = new BrowserWindow({
     width: savedState?.width || defaultWidth,
     height: savedState?.height || defaultHeight,
@@ -51,12 +126,13 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: isDev 
+      preload: isDev
         ? path.join(process.cwd(), 'dist-electron/preload.cjs')
         : path.join(app.getAppPath(), 'dist-electron/preload.cjs')
     },
     title: "RigControl Web",
     autoHideMenuBar: true,
+    icon: iconPath,
   });
 
   // Pass the window reference to the server for device enumeration
@@ -132,7 +208,15 @@ async function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+if (process.argv.includes('--install')) {
+  installDesktopIntegration();
+  process.exit(0);
+} else if (process.argv.includes('--uninstall')) {
+  uninstallDesktopIntegration();
+  process.exit(0);
+} else {
+  app.whenReady().then(createWindow);
+}
 
 let isShuttingDown = false;
 app.on('will-quit', (event) => {

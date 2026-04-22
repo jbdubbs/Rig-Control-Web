@@ -25022,7 +25022,7 @@ var require_has_flag = __commonJS({
 var require_supports_color = __commonJS({
   "node_modules/supports-color/index.js"(exports2, module2) {
     "use strict";
-    var os2 = require("os");
+    var os3 = require("os");
     var tty = require("tty");
     var hasFlag = require_has_flag();
     var { env: env2 } = process;
@@ -25079,7 +25079,7 @@ var require_supports_color = __commonJS({
         return min;
       }
       if (process.platform === "win32") {
-        const osRelease = os2.release().split(".");
+        const osRelease = os3.release().split(".");
         if (Number(osRelease[0]) >= 10 && Number(osRelease[2]) >= 10586) {
           return Number(osRelease[2]) >= 14931 ? 3 : 2;
         }
@@ -57102,6 +57102,8 @@ var require_selfsigned = __commonJS({
 var import_electron2 = require("electron");
 var import_path2 = __toESM(require("path"), 1);
 var import_fs2 = __toESM(require("fs"), 1);
+var import_os2 = __toESM(require("os"), 1);
+var import_child_process2 = require("child_process");
 
 // node_modules/electron-is-dev/index.js
 var import_electron = __toESM(require("electron"), 1);
@@ -58692,6 +58694,7 @@ if (!process.env.ELECTRON_RUN && !process.versions.electron) {
 }
 
 // electron/main.ts
+import_electron2.app.setName("RigControl Web");
 if (!electron_is_dev_default) {
   process.env.NODE_ENV = "production";
 }
@@ -58714,6 +58717,76 @@ function saveWindowState(state) {
     console.error("Failed to save window state:", e);
   }
 }
+function installDesktopIntegration() {
+  const appImagePath = process.env.APPIMAGE;
+  const appDir = process.env.APPDIR;
+  if (!appImagePath || !appDir) {
+    console.error("Error: --install can only be used when running as an AppImage.");
+    process.exit(1);
+  }
+  const home = import_os2.default.homedir();
+  const hicolorDir = import_path2.default.join(home, ".local", "share", "icons", "hicolor");
+  const iconDir = import_path2.default.join(hicolorDir, "512x512", "apps");
+  const desktopDir = import_path2.default.join(home, ".local", "share", "applications");
+  const iconDest = import_path2.default.join(iconDir, "rigcontrol-web.png");
+  const desktopDest = import_path2.default.join(desktopDir, "rigcontrol-web.desktop");
+  import_fs2.default.mkdirSync(iconDir, { recursive: true });
+  import_fs2.default.mkdirSync(desktopDir, { recursive: true });
+  const iconSrc = import_path2.default.join(appDir, "resources", "app.asar", "assets", "icons", "rcw_512x512.png");
+  import_fs2.default.writeFileSync(iconDest, import_fs2.default.readFileSync(iconSrc));
+  const desktop = [
+    "[Desktop Entry]",
+    "Type=Application",
+    "Name=RigControl Web",
+    "Comment=Amateur radio rig control via Hamlib rigctld",
+    `Exec=${appImagePath} %U`,
+    "Icon=rigcontrol-web",
+    "StartupWMClass=RigControl Web",
+    "Categories=HamRadio;Utility;",
+    "Terminal=false"
+  ].join("\n") + "\n";
+  import_fs2.default.writeFileSync(desktopDest, desktop);
+  try {
+    (0, import_child_process2.execSync)(`update-desktop-database "${desktopDir}"`);
+  } catch {
+  }
+  try {
+    (0, import_child_process2.execSync)(`gtk-update-icon-cache -f -t "${hicolorDir}"`);
+  } catch {
+  }
+  console.log("RigControl Web has been integrated into your desktop.");
+  console.log(`  Icon:    ${iconDest}`);
+  console.log(`  Desktop: ${desktopDest}`);
+  console.log("You can now launch it from your application menu.");
+}
+function uninstallDesktopIntegration() {
+  const home = import_os2.default.homedir();
+  const hicolorDir = import_path2.default.join(home, ".local", "share", "icons", "hicolor");
+  const iconDest = import_path2.default.join(hicolorDir, "512x512", "apps", "rigcontrol-web.png");
+  const desktopDest = import_path2.default.join(home, ".local", "share", "applications", "rigcontrol-web.desktop");
+  let removed = false;
+  if (import_fs2.default.existsSync(iconDest)) {
+    import_fs2.default.rmSync(iconDest);
+    removed = true;
+  }
+  if (import_fs2.default.existsSync(desktopDest)) {
+    import_fs2.default.rmSync(desktopDest);
+    removed = true;
+  }
+  if (!removed) {
+    console.log("RigControl Web does not appear to be integrated (nothing to remove).");
+    return;
+  }
+  try {
+    (0, import_child_process2.execSync)(`update-desktop-database "${import_path2.default.dirname(desktopDest)}"`);
+  } catch {
+  }
+  try {
+    (0, import_child_process2.execSync)(`gtk-update-icon-cache -f -t "${hicolorDir}"`);
+  } catch {
+  }
+  console.log("RigControl Web desktop integration has been removed.");
+}
 async function createWindow() {
   const appPath = electron_is_dev_default ? process.cwd() : import_electron2.app.getAppPath();
   const userDataPath = electron_is_dev_default ? process.cwd() : import_electron2.app.getPath("userData");
@@ -58721,6 +58794,7 @@ async function createWindow() {
   const savedState = loadWindowState();
   const defaultWidth = 768;
   const defaultHeight = 600;
+  const iconPath = electron_is_dev_default ? import_path2.default.join(process.cwd(), "assets/icons/rcw_512x512.png") : import_path2.default.join(import_electron2.app.getAppPath(), "assets/icons/rcw_512x512.png");
   const win = new import_electron2.BrowserWindow({
     width: savedState?.width || defaultWidth,
     height: savedState?.height || defaultHeight,
@@ -58732,7 +58806,8 @@ async function createWindow() {
       preload: electron_is_dev_default ? import_path2.default.join(process.cwd(), "dist-electron/preload.cjs") : import_path2.default.join(import_electron2.app.getAppPath(), "dist-electron/preload.cjs")
     },
     title: "RigControl Web",
-    autoHideMenuBar: true
+    autoHideMenuBar: true,
+    icon: iconPath
   });
   setElectronWindow(win);
   import_electron2.ipcMain.on("resize-window", (event, { width, height }) => {
@@ -58788,7 +58863,15 @@ async function createWindow() {
     win.loadURL("https://localhost:3000");
   }
 }
-import_electron2.app.whenReady().then(createWindow);
+if (process.argv.includes("--install")) {
+  installDesktopIntegration();
+  process.exit(0);
+} else if (process.argv.includes("--uninstall")) {
+  uninstallDesktopIntegration();
+  process.exit(0);
+} else {
+  import_electron2.app.whenReady().then(createWindow);
+}
 var isShuttingDown = false;
 import_electron2.app.on("will-quit", (event) => {
   if (isShuttingDown) return;
