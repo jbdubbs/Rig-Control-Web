@@ -247,7 +247,7 @@ export default function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'spots'>('rigctld');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'spots' | 'display'>('rigctld');
   const [potaEnabled, setPotaEnabled] = useState(false);
   const [potaPollRate, setPotaPollRate] = useState(5);
   const [potaMaxAge, setPotaMaxAge] = useState(15);
@@ -341,6 +341,7 @@ export default function App() {
   const [isDesktopSWRCollapsed, setIsDesktopSWRCollapsed] = useState(false);
   const [isDesktopALCCollapsed, setIsDesktopALCCollapsed] = useState(false);
   const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(false);
+  const [showCommandConsole, setShowCommandConsole] = useState(() => localStorage.getItem("show-command-console") === "true");
   const videoEncoderRef = useRef<any>(null);
   const videoDecoderRef = useRef<any>(null);
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
@@ -364,48 +365,6 @@ export default function App() {
     connectedRef.current = connected;
   }, [connected]);
 
-  useEffect(() => {
-    if (!isCompact || isPhone || !(window as any).electron) return;
-
-    const snap = () => {
-      if (containerRef.current) {
-        const height = containerRef.current.offsetHeight;
-        const width = window.innerWidth;
-        const padding = isCompact ? 16 : 64; // p-2 is 8px, so 16px total
-        let targetHeight = height + padding;
-
-        if (isPhone) {
-          // In phone view, cap height at screen resolution
-          const screenHeight = window.screen.availHeight;
-          if (targetHeight > screenHeight) {
-            targetHeight = screenHeight;
-          }
-        }
-
-        (window as any).electron.resizeWindow(width, targetHeight);
-      }
-    };
-
-    const observer = new ResizeObserver(snap);
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    window.addEventListener('resize', snap);
-
-    if (isCompact) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'auto';
-    }
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', snap);
-      document.body.style.overflow = 'auto';
-    };
-  }, [isCompact, isPhone]);
 
   useEffect(() => {
     if (!navigator.mediaDevices) {
@@ -441,14 +400,8 @@ export default function App() {
     const handleResize = () => {
       const width = window.innerWidth;
       const mobile = width < 768;
-      const compact = width >= 768 && width < 1280;
-      
       setIsPhone(mobile);
-      if (mobile || compact) {
-        setIsCompact(true);
-      } else {
-        setIsCompact(false);
-      }
+      setIsCompact(!mobile);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -746,6 +699,11 @@ export default function App() {
   }, [potaEnabled]);
 
   useEffect(() => {
+    localStorage.setItem("show-command-console", showCommandConsole.toString());
+    if (showCommandConsole) setIsConsoleCollapsed(false);
+  }, [showCommandConsole]);
+
+  useEffect(() => {
     if (!potaEnabled) {
       setPotaSpots([]);
       return;
@@ -901,7 +859,7 @@ export default function App() {
     localStorage.setItem("is-desktop-controls-collapsed", isDesktopControlsCollapsed.toString());
     localStorage.setItem("pota-spots-collapsed", potaSpotsCollapsed.toString());
     localStorage.setItem("sota-spots-collapsed", sotaSpotsCollapsed.toString());
-  }, [isCompact, isCompactSMeterCollapsed, isCompactOtherMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed, isDesktopControlsCollapsed, potaSpotsCollapsed, sotaSpotsCollapsed]);
+  }, [isCompact, isCompactSMeterCollapsed, isCompactOtherMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed, isDesktopControlsCollapsed, potaSpotsCollapsed, sotaSpotsCollapsed, showCommandConsole]);
 
   useEffect(() => {
     if (!socket) return;
@@ -2180,7 +2138,7 @@ export default function App() {
   return (
     <div className={cn(
       "bg-[#0a0a0a] text-[#e0e0e0] font-mono",
-      isPhone ? "h-[100dvh] flex flex-col overflow-hidden" : isCompact ? "p-2 overflow-hidden h-fit" : "min-h-screen p-4 md:p-8"
+      isPhone ? "h-[100dvh] flex flex-col overflow-hidden" : isCompact ? "p-2 min-h-screen" : "min-h-screen p-4 md:p-8"
     )}>
       <div
         ref={containerRef}
@@ -2993,6 +2951,65 @@ export default function App() {
                 )}
               </div>
             )}
+            {showCommandConsole && (
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg flex flex-col">
+                <div className="bg-[#1a1b1e] px-3 py-2 border-b border-[#2a2b2e] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Settings size={12} className="text-[#8e9299]" />
+                    <span className="text-[0.5625rem] uppercase font-bold tracking-widest text-[#8e9299]">Rigctld Command Console</span>
+                  </div>
+                  <button
+                    onClick={() => setIsConsoleCollapsed(!isConsoleCollapsed)}
+                    className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isConsoleCollapsed ? "Expand Console" : "Collapse Console"}
+                  >
+                    {isConsoleCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  </button>
+                </div>
+                {!isConsoleCollapsed && (
+                  <div className="p-3 space-y-3">
+                    <div className="bg-[#0a0a0a] rounded border border-[#2a2b2e] h-32 overflow-y-auto p-2 font-mono text-[0.6875rem] space-y-1">
+                      {consoleLogs.length === 0 ? (
+                        <div className="text-[#4a4b4e] italic">No commands sent yet. Try "f" for frequency or "m" for mode.</div>
+                      ) : (
+                        consoleLogs.map((log, i) => (
+                          <div key={i} className="border-b border-[#1a1b1e] pb-1 last:border-0">
+                            <div className="flex justify-between opacity-50 text-[0.5625rem]">
+                              <span>{log.time}</span>
+                              <span>CMD: {log.cmd}</span>
+                            </div>
+                            <div className="text-emerald-500 mt-0.5">
+                              <span className="text-[#8e9299] mr-2">&gt;</span>
+                              {log.resp}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <form onSubmit={handleSendRaw} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={rawCommand}
+                        onChange={(e) => setRawCommand(e.target.value)}
+                        disabled={!connected}
+                        placeholder="e.g. 'f', 'm', 'v', 't'..."
+                        className={cn(
+                          "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-1.5 text-xs focus:outline-none focus:border-emerald-500 transition-colors placeholder:text-[#4a4b4e]",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!connected || !rawCommand.trim()}
+                        className="px-4 py-1.5 bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 rounded font-bold uppercase text-xs hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Send
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : isCompact ? (
           <div className="space-y-2 animate-in fade-in duration-300">
@@ -3641,6 +3658,65 @@ export default function App() {
                 )}
               </div>
             </div>
+            {showCommandConsole && (
+              <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg flex flex-col">
+                <div className="bg-[#1a1b1e] px-3 py-2 border-b border-[#2a2b2e] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Settings size={12} className="text-[#8e9299]" />
+                    <span className="text-[0.5625rem] uppercase font-bold tracking-widest text-[#8e9299]">Rigctld Command Console</span>
+                  </div>
+                  <button
+                    onClick={() => setIsConsoleCollapsed(!isConsoleCollapsed)}
+                    className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
+                    title={isConsoleCollapsed ? "Expand Console" : "Collapse Console"}
+                  >
+                    {isConsoleCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  </button>
+                </div>
+                {!isConsoleCollapsed && (
+                  <div className="p-3 space-y-3">
+                    <div className="bg-[#0a0a0a] rounded border border-[#2a2b2e] h-40 overflow-y-auto p-3 font-mono text-[0.6875rem] space-y-1">
+                      {consoleLogs.length === 0 ? (
+                        <div className="text-[#4a4b4e] italic">No commands sent yet. Try "f" for frequency or "m" for mode.</div>
+                      ) : (
+                        consoleLogs.map((log, i) => (
+                          <div key={i} className="border-b border-[#1a1b1e] pb-1 last:border-0">
+                            <div className="flex justify-between opacity-50 text-[0.5625rem]">
+                              <span>{log.time}</span>
+                              <span>CMD: {log.cmd}</span>
+                            </div>
+                            <div className="text-emerald-500 mt-0.5">
+                              <span className="text-[#8e9299] mr-2">&gt;</span>
+                              {log.resp}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <form onSubmit={handleSendRaw} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={rawCommand}
+                        onChange={(e) => setRawCommand(e.target.value)}
+                        disabled={!connected}
+                        placeholder="Enter hamlib command (e.g. 'f', 'm', 'v', 't')..."
+                        className={cn(
+                          "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 transition-colors placeholder:text-[#4a4b4e]",
+                          !connected && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!connected || !rawCommand.trim()}
+                        className="px-5 py-2 bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 rounded font-bold uppercase text-xs hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Send
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -4663,69 +4739,6 @@ export default function App() {
         </div>
       )}
 
-        {/* Command Console */}
-        {!isCompact && (
-          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-2xl flex flex-col">
-            <div className="bg-[#1a1b1e] px-4 py-2 border-b border-[#2a2b2e] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Settings size={14} className="text-[#8e9299]" />
-                <span className="text-[0.625rem] uppercase font-bold tracking-widest text-[#8e9299]">Rigctld Command Console</span>
-              </div>
-              <button 
-                onClick={() => setIsConsoleCollapsed(!isConsoleCollapsed)}
-                className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
-                title={isConsoleCollapsed ? "Expand Console" : "Collapse Console"}
-              >
-                {isConsoleCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-              </button>
-            </div>
-            
-            {!isConsoleCollapsed && (
-              <div className="p-4 space-y-4">
-                <div className="bg-[#0a0a0a] rounded border border-[#2a2b2e] h-40 overflow-y-auto p-3 font-mono text-[0.6875rem] space-y-1">
-                  {consoleLogs.length === 0 ? (
-                    <div className="text-[#4a4b4e] italic">No commands sent yet. Try "f" for frequency or "m" for mode.</div>
-                  ) : (
-                    consoleLogs.map((log, i) => (
-                      <div key={i} className="border-b border-[#1a1b1e] pb-1 last:border-0">
-                        <div className="flex justify-between opacity-50 text-[0.5625rem]">
-                          <span>{log.time}</span>
-                          <span>CMD: {log.cmd}</span>
-                        </div>
-                        <div className="text-emerald-500 mt-0.5">
-                          <span className="text-[#8e9299] mr-2">&gt;</span>
-                          {log.resp}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <form onSubmit={handleSendRaw} className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={rawCommand}
-                    onChange={(e) => setRawCommand(e.target.value)}
-                    disabled={!connected}
-                    placeholder="Enter hamlib command (e.g. 'f', 'm', 'v', 't')..."
-                    className={cn(
-                      "flex-1 bg-[#0a0a0a] border border-[#2a2b2e] rounded px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 transition-colors placeholder:text-[#4a4b4e]",
-                      !connected && "opacity-50 cursor-not-allowed"
-                    )}
-                  />
-                  <button 
-                    type="submit"
-                    disabled={!connected || !rawCommand.trim()}
-                    className="px-6 py-2 bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 rounded font-bold uppercase text-xs hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Send
-                  </button>
-                </form>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Footer Status Bar */}
         {!isPhone && !isCompact && (
           <footer className="bg-[#151619] px-6 py-3 rounded-xl border border-[#2a2b2e] flex justify-between items-center text-[0.625rem] uppercase tracking-widest text-[#8e9299]">
@@ -5288,7 +5301,7 @@ export default function App() {
 
               {/* Tab Bar */}
               <div className="flex border-b border-[#2a2b2e] bg-[#1a1b1e]">
-                {(['rigctld', 'spots'] as const).map((tab) => (
+                {(['rigctld', 'spots', 'display'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveSettingsTab(tab)}
@@ -5751,6 +5764,32 @@ export default function App() {
                     </div>
                   </div>
                 )}
+              </div>
+              )}
+
+              {activeSettingsTab === 'display' && (
+              <div className="p-6 space-y-6">
+                <div className="space-y-4">
+                  <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">UI Options</h3>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm text-[#e0e0e0] font-bold">Command Console</div>
+                      <div className="text-[0.625rem] text-[#8e9299] mt-0.5">Show the Rigctld raw command console</div>
+                    </div>
+                    <button
+                      onClick={() => setShowCommandConsole(!showCommandConsole)}
+                      className={cn(
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0",
+                        showCommandConsole ? "bg-emerald-500" : "bg-[#2a2b2e]"
+                      )}
+                    >
+                      <span className={cn(
+                        "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                        showCommandConsole ? "translate-x-6" : "translate-x-1"
+                      )} />
+                    </button>
+                  </div>
+                </div>
               </div>
               )}
 
