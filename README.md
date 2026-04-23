@@ -18,7 +18,7 @@ Developers who want to run from source will find build instructions in the [Deve
 ![RigControl Web — Compact View](assets/rigcontrolweb.manual.compactview.main.png)
 
 ### Phone View (Mobile)
-![RigControl Web — Phone View](assets/rigcontrolweb.manual.phoneview.main.jpg)
+<img src="assets/rigcontrolweb.manual.phoneview.main.jpg" alt="RigControl Web — Phone View" width="50%">
 
 ## Features
 
@@ -166,8 +166,8 @@ Open the **General Settings** panel (gear icon) to configure. Settings are organ
 
 ### KEYER Tab
 Configure the CW keyer:
-- **Enable CW Keyer**: Activates keyboard keying and sidetone. The keyer only operates while the audio subsystem is active.
-- **Keying Method**: How the key output is delivered — **DTR** (default), **RTS**, or **rigctld-PTT** (uses the rig's PTT line via Hamlib).
+- **Enable CW Keyer**: Activates keyboard keying and sidetone. The keyer becomes active as soon as the rig is connected — no audio session required.
+- **Keying Method**: How the key output is delivered — **DTR** (default), **RTS**, or **CAT PTT** (uses the rig's PTT line via Hamlib — last resort; most radios process CAT commands too slowly for clean CW timing).
 - **Serial Port**: The port the keyer interface is connected to (may differ from the rig's control port).
 - **Key Mode**: **Iambic A**, **Iambic B**, or **Straight Key**.
 - **Speed (WPM)**: Words per minute — adjustable 5–40 WPM.
