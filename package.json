@@ -58,7 +58,6 @@
     "mac": {
       "target": "dmg",
       "icon": "assets/icons/rcw.icns",
-      "arch": ["arm64"],
       "files": [
         "bin/mac/**/*"
       ]
