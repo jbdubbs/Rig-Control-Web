@@ -363,6 +363,8 @@ export default function App() {
   const [cwPortStatus, setCwPortStatus] = useState<{ open: boolean; port: string; error?: string }>({ open: false, port: "" });
   const [cwKeyActive, setCwKeyActive] = useState(false);
   const [cwStuckAlert, setCwStuckAlert] = useState(false);
+  const [ditButtonActive, setDitButtonActive] = useState(false);
+  const [dahButtonActive, setDahButtonActive] = useState(false);
   const cwStuckAlertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ditPressedRef = useRef(false);
   const dahPressedRef = useRef(false);
@@ -450,11 +452,12 @@ export default function App() {
   // CW keyer: keyboard listener and sidetone lifecycle
   useEffect(() => {
     const settings = cwSettingsRef.current;
-    if (!settings.enabled || !connected) {
+    if (!settings.enabled || !connected || !localAudioReady) {
       stopKeyerTick();
       emitCwKey(false);
       ditPressedRef.current = false;
       dahPressedRef.current = false;
+      teardownSidetone();
       return;
     }
     initSidetone();
@@ -532,7 +535,7 @@ export default function App() {
       dahPressedRef.current = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget]);
+  }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget, localAudioReady]);
 
   // Keep cwSettingsRef in sync with state
   useEffect(() => {
@@ -1321,7 +1324,16 @@ export default function App() {
   };
 
   // ── CW Sidetone ──────────────────────────────────────────────────────────
-  const initSidetone = () => {
+  const teardownSidetone = () => {
+    sidetoneOscRef.current = null;
+    sidetoneGainRef.current = null;
+    if (sidetoneCtxRef.current) {
+      sidetoneCtxRef.current.close().catch(() => {});
+      sidetoneCtxRef.current = null;
+    }
+  };
+
+  const initSidetone = async () => {
     if (sidetoneCtxRef.current) return;
     const ctx = new AudioContext({ latencyHint: 'interactive' });
     const osc = ctx.createOscillator();
@@ -1332,6 +1344,12 @@ export default function App() {
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
+    if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (ctx as any).setSinkId === 'function') {
+      try { await (ctx as any).setSinkId(localAudioSettings.outputDevice); } catch (e) { console.error("Sidetone setSinkId error:", e); }
+    }
+    if (ctx.state === 'suspended') {
+      try { await ctx.resume(); } catch (_) {}
+    }
     sidetoneCtxRef.current = ctx;
     sidetoneOscRef.current = osc;
     sidetoneGainRef.current = gain;
@@ -5415,6 +5433,9 @@ export default function App() {
                         if (audioContextRef.current && typeof (audioContextRef.current as any).setSinkId === 'function') {
                           (audioContextRef.current as any).setSinkId(e.target.value).catch(console.error);
                         }
+                        if (sidetoneCtxRef.current && typeof (sidetoneCtxRef.current as any).setSinkId === 'function') {
+                          (sidetoneCtxRef.current as any).setSinkId(e.target.value).catch(console.error);
+                        }
                       }}
                       className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
                     >
@@ -6368,40 +6389,109 @@ export default function App() {
       {/* Phone sticky PTT bar — sits outside the scroll container */}
       {isPhone && (
         <div className="flex-shrink-0 px-3 py-3 bg-[#151619] border-t border-[#2a2b2e]">
-          <button
-            onPointerDown={(e) => {
-              if (!connected) return;
-              e.currentTarget.setPointerCapture(e.pointerId);
-              handleSetPTT(true);
-            }}
-            onPointerUp={(e) => {
-              if (!connected) return;
-              e.currentTarget.releasePointerCapture(e.pointerId);
-              handleSetPTT(false);
-            }}
-            onPointerCancel={(e) => {
-              if (!connected) return;
-              handleSetPTT(false);
-            }}
-            disabled={!connected}
-            className={cn(
-              "flex flex-col items-center justify-center w-full h-16 rounded-xl border transition-all gap-1 touch-none select-none",
-              !connected && "opacity-50 cursor-not-allowed",
-              status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-            )}
-          >
-            <Mic size={24} />
-            <span className="text-xs uppercase font-bold leading-none">PTT</span>
-          </button>
-          {cwSettings.enabled && (
-            <div className={cn(
-              "mt-2 flex items-center justify-center gap-2 py-1.5 rounded-lg border text-xs font-bold transition-all",
-              cwStuckAlert ? "bg-red-900/30 border-red-500 text-red-400" : cwKeyActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299]"
-            )}>
-              <div className={cn("w-2 h-2 rounded-full", cwStuckAlert ? "bg-red-500" : cwKeyActive ? "bg-amber-400 animate-pulse" : "bg-[#2a2b2e]")} />
-              <span>CW KEY</span>
-              <span className="text-[0.6rem]">{cwSettings.wpm} WPM</span>
+          {cwSettings.enabled && ['CW', 'CWR', 'CW-R'].includes(status?.mode || '') ? (
+            <div className="flex gap-3">
+              <button
+                onPointerDown={(e) => {
+                  if (!connected) return;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  setDitButtonActive(true);
+                  ditPressedRef.current = true;
+                  emitCwPaddle(true, dahPressedRef.current, false);
+                }}
+                onPointerUp={(e) => {
+                  if (!connected) return;
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                  setDitButtonActive(false);
+                  ditPressedRef.current = false;
+                  emitCwPaddle(false, dahPressedRef.current, false);
+                }}
+                onPointerCancel={() => {
+                  if (!connected) return;
+                  setDitButtonActive(false);
+                  ditPressedRef.current = false;
+                  emitCwPaddle(false, dahPressedRef.current, false);
+                }}
+                disabled={!connected}
+                className={cn(
+                  "flex flex-col items-center justify-center flex-1 h-16 rounded-xl border transition-all gap-1 touch-none select-none",
+                  !connected && "opacity-50 cursor-not-allowed",
+                  ditButtonActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#e0e0e0]"
+                )}
+              >
+                <span className="text-2xl font-bold leading-none">·</span>
+                <span className="text-xs uppercase font-bold leading-none">dit</span>
+              </button>
+              <button
+                onPointerDown={(e) => {
+                  if (!connected) return;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  setDahButtonActive(true);
+                  dahPressedRef.current = true;
+                  emitCwPaddle(ditPressedRef.current, true, false);
+                }}
+                onPointerUp={(e) => {
+                  if (!connected) return;
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                  setDahButtonActive(false);
+                  dahPressedRef.current = false;
+                  emitCwPaddle(ditPressedRef.current, false, false);
+                }}
+                onPointerCancel={() => {
+                  if (!connected) return;
+                  setDahButtonActive(false);
+                  dahPressedRef.current = false;
+                  emitCwPaddle(ditPressedRef.current, false, false);
+                }}
+                disabled={!connected}
+                className={cn(
+                  "flex flex-col items-center justify-center flex-1 h-16 rounded-xl border transition-all gap-1 touch-none select-none",
+                  !connected && "opacity-50 cursor-not-allowed",
+                  dahButtonActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#e0e0e0]"
+                )}
+              >
+                <span className="text-2xl font-bold leading-none">—</span>
+                <span className="text-xs uppercase font-bold leading-none">dah</span>
+              </button>
             </div>
+          ) : (
+            <>
+              <button
+                onPointerDown={(e) => {
+                  if (!connected) return;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  handleSetPTT(true);
+                }}
+                onPointerUp={(e) => {
+                  if (!connected) return;
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                  handleSetPTT(false);
+                }}
+                onPointerCancel={(e) => {
+                  if (!connected) return;
+                  handleSetPTT(false);
+                }}
+                disabled={!connected}
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-16 rounded-xl border transition-all gap-1 touch-none select-none",
+                  !connected && "opacity-50 cursor-not-allowed",
+                  status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
+                )}
+              >
+                <Mic size={24} />
+                <span className="text-xs uppercase font-bold leading-none">PTT</span>
+              </button>
+              {cwSettings.enabled && (
+                <div className={cn(
+                  "mt-2 flex items-center justify-center gap-2 py-1.5 rounded-lg border text-xs font-bold transition-all",
+                  cwStuckAlert ? "bg-red-900/30 border-red-500 text-red-400" : cwKeyActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299]"
+                )}>
+                  <div className={cn("w-2 h-2 rounded-full", cwStuckAlert ? "bg-red-500" : cwKeyActive ? "bg-amber-400 animate-pulse" : "bg-[#2a2b2e]")} />
+                  <span>CW KEY</span>
+                  <span className="text-[0.6rem]">{cwSettings.wpm} WPM</span>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
