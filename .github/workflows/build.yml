@@ -22,6 +22,9 @@ jobs:
           - os: windows-latest
             platform: win
             artifact: '*.exe'
+          - os: macos-latest
+            platform: mac
+            artifact: '*.dmg'
 
     runs-on: ${{ matrix.os }}
 
@@ -51,7 +54,7 @@ jobs:
       # --publish never prevents electron-builder from trying to upload to GitHub
       # Releases itself (it lacks a token). The next two steps handle publishing.
       - name: Build
-        run: npm run electron:build -- --${{ matrix.platform }} --publish never
+        run: npm run electron:build -- --${{ matrix.platform }} ${{ matrix.platform == 'mac' && '--arm64' || '' }} --publish never
 
       # Upload as a workflow artifact (useful for inspecting builds without a release)
       - name: Upload artifact

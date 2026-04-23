@@ -1,7 +1,7 @@
 {
   "name": "rigcontrol-web",
   "private": true,
-  "version": "04.21.2026-Beta4",
+  "version": "04.23.2026-Beta5",
   "license": "Apache-2.0",
   "author": "Jason Weisberger NT0Y",
   "description": "A web-based frontend for hamlib rigctld for local installation and portable backend capabilities.",
@@ -58,6 +58,7 @@
     "mac": {
       "target": "dmg",
       "icon": "assets/icons/rcw.icns",
+      "arch": ["arm64"],
       "files": [
         "bin/mac/**/*"
       ]

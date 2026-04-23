@@ -4,7 +4,9 @@ A web-first Electron app for controlling your radio via a Hamlib rigctld network
 
 ## Getting Started
 
-**Most users should download the latest pre-built installer from the [Releases page](https://github.com/jbdubbs/Rig-Control-Web/releases).** Pick the installer for your operating system (Windows `.exe` or Linux `.AppImage`), run it, and you are ready to go — no Node.js, no build tools required.
+**Most users should download the latest pre-built installer from the [Releases page](https://github.com/jbdubbs/Rig-Control-Web/releases).** Pick the installer for your operating system (Windows `.exe`, Linux `.AppImage`, or macOS `.dmg`), run it, and you are ready to go — no Node.js, no build tools required.
+
+> **macOS users:** The `.dmg` is unsigned (no Apple Developer ID certificate). macOS Gatekeeper will block it on first launch. To open it: right-click (or Control-click) the app in Finder and choose **Open**, then click **Open** in the dialog. You only need to do this once.
 
 For full usage instructions, see the **[Wiki](https://github.com/jbdubbs/Rig-Control-Web/wiki)**.
 
@@ -102,10 +104,12 @@ npm run electron:build -- --win
 npm run electron:build -- --linux
 ```
 
-#### macOS (DMG Installer)
+#### macOS (DMG Installer, arm64)
 ```bash
-npm run electron:build -- --mac
+npm run electron:build -- --mac --arm64
 ```
+
+> The resulting `.dmg` is **unsigned**. On first launch, right-click the app in Finder → **Open** → **Open** to bypass Gatekeeper.
 
 Built installers are placed in the `build/` directory.
 
@@ -158,6 +162,7 @@ Open the **General Settings** panel (gear icon) to configure. Settings are organ
 - **Network Settings**: Host and port for the `rigctld` server.
 - **Video Settings**: Capture device selection and stream quality.
 - **Audio Settings**: Backend input/output device (server-side, for the radio), local input/output device (browser-side, for the operator), and enable/disable inbound and outbound audio independently.
+  - **Local Speaker Volume**: A slider (0–200%) below the Local Output dropdown controls the volume of received audio in your browser. 100% is unity gain (system volume unchanged). Above 100% amplifies the signal — useful when your system volume is already at maximum.
 
 ### KEYER Tab
 Configure the CW keyer:
