@@ -1,6 +1,6 @@
 # RigControl Web
 
-A web-first Electron app for controlling your radio via a Hamlib rigctld network which also includes bidirectional audio for making SSB contacts, and video support so you can see the front panel of your radio.  Audio via your radio's virtual USB Audio Device, Digirig or similar.  Video feeding your radio's video output back into your computer with a USB to HDMI adapter (or any old webcam pointed at it).
+A web-first app for controlling your radio and making CW and SSB contacts!  Full support for making voice and CW contacts with built-in audio, built-in CW keyer in iambic and straight modes (via keyboard or "vBand adapter"), and video support so you can see the front panel of your radio.  Audio via your radio's virtual USB Audio Device, Digirig or similar.  Video feeding your radio's video output back into your computer with a USB to HDMI adapter (or any old webcam pointed at it).
 
 ## Getting Started
 
