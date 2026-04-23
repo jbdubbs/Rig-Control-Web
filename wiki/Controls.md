@@ -73,6 +73,60 @@ On the phone layout, there is a large dedicated PTT button fixed at the bottom o
 
 > If audio is running, PTT will also activate your microphone automatically when you key up (and release it when you unkey), provided outbound audio is enabled and your microphone is not muted.
 
+---
+
+## CW Keyer
+
+RigControl Web includes a full iambic CW keyer that works from any browser or the Electron app — including phones and tablets.
+
+### Enabling the Keyer
+
+Open **General Settings → KEYER** and toggle **Enable CW Keyer** on. The keyer only becomes active once the audio subsystem is running (join audio first). Once enabled, an indicator in the Quick Controls area shows the current key state and WPM.
+
+### Keyboard Keys (Desktop)
+
+By default:
+- **Left Ctrl** — Dit
+- **Right Ctrl** — Dah
+- **Space** — Straight key (when straight key mode is selected)
+
+Keys can be rebound in the KEYER settings tab — click the binding field and press any key to reassign it. Key presses are ignored when a text input has focus, so you can still type normally while the keyer is enabled.
+
+### Touch Paddles (Phone and Tablet)
+
+When the rig is in a CW mode (`CW`, `CWR`) and the keyer is enabled, the PTT button at the bottom of the phone layout is automatically replaced by two large touch paddle buttons:
+
+- **· dit** — Left paddle
+- **— dah** — Right paddle
+
+Hold them like iambic paddles. Both can be held simultaneously for automatic alternating dit-dah sequences in iambic mode.
+
+### Keying Modes
+
+| Mode | Behavior |
+|------|----------|
+| **Iambic A** | Releases the current element when both paddles are released mid-squeeze |
+| **Iambic B** | Completes one additional element after both paddles are released mid-squeeze |
+| **Straight Key** | Key down while held, key up on release — no timing logic |
+
+### Sidetone
+
+The keyer plays a local audio tone in your browser as you key, giving you instant feedback with no network latency. This is entirely separate from any audio coming back from the radio. You can:
+
+- Enable or disable the sidetone independently of the keyer
+- Adjust the tone frequency (Hz) and volume
+- The sidetone is automatically routed to the same audio output device you have selected in the Audio settings
+
+### Key Output
+
+The physical key signal can be sent three ways (configured in KEYER settings):
+
+| Method | Description |
+|--------|-------------|
+| **DTR** | Keys a DTR line on a serial port (most common — works with Digirig, SignaLink, and similar) |
+| **RTS** | Keys an RTS line on the same or a different serial port |
+| **rigctld-PTT** | Uses Hamlib's PTT command — useful for radios where the key line is handled by the rig itself |
+
 ### TUNE
 
 The **TUNE** button activates your radio's built-in antenna tuner (if equipped). The tuner will run its tuning cycle and then return to receive.
@@ -112,3 +166,5 @@ The **RF Level** slider controls the radio's RF output power. Slide left to redu
 ## Controls on the Phone Layout
 
 On the phone layout, all of the controls above are available inside the collapsible **Quick Controls** panel. Tap the panel header to expand it. The large PTT button at the bottom of the screen is always visible regardless of whether Quick Controls is expanded.
+
+When the CW keyer is enabled and the rig is in a CW mode, the PTT button at the bottom is automatically replaced by the dit/dah touch paddles described in the [CW Keyer](#cw-keyer) section above.

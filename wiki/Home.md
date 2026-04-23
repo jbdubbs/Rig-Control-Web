@@ -1,6 +1,6 @@
 # RigControl Web — User Guide
 
-RigControl Web is a radio control dashboard that runs in any web browser. It connects to your radio through Hamlib's `rigctld` program, giving you real-time frequency and mode display, one-click tuning, transmit and receive audio over the network, a live video feed of your radio's front panel, and live spot displays for Parks on the Air (POTA) and Summits on the Air (SOTA).
+RigControl Web is a radio control dashboard that runs in any web browser. It connects to your radio through Hamlib's `rigctld` program, giving you real-time frequency and mode display, one-click tuning, transmit and receive audio over the network, a live video feed of your radio's front panel, a full iambic CW keyer with local sidetone, and live spot displays for Parks on the Air (POTA) and Summits on the Air (SOTA).
 
 Whether you are sitting at your shack computer or connecting from a phone, tablet, or laptop across the room (or across the country over a VPN), the interface adapts to your screen size automatically.
 

@@ -25,6 +25,10 @@ Developers who want to run from source will find build instructions in the [Deve
   - Multi-client support.
   - Audio device lists show the host API (MME, DirectSound, WASAPI, ALSA, Pipewire/PulseAudio) and native sample rate so you can pick the right entry for your hardware.
   - **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel remotely. Example: FT-710 DVI out → USB HDMI capture card.
+- **CW Keyer**: Full iambic (A/B) and straight-key CW keying from any browser or the Electron app.
+  - Configurable WPM, keying method (DTR, RTS, or rigctld-PTT), serial port, and iambic mode.
+  - Rebindable keyboard keys. Instant local sidetone via Web Audio — no latency from the network.
+  - On phone/tablet, dedicated dit (·) and dah (—) touch paddle buttons replace the PTT bar when the rig is in CW mode.
 - **Live Spots (POTA & SOTA)**: Real-time spot displays for Parks on the Air and Summits on the Air, each independently enable/disable with configurable poll intervals.
   - Filterable by mode (SSB, CW, FT8, FT4) and band (multi-select). Configurable maximum spot age.
   - Sortable columns. Click any spot to instantly tune the VFO and set the mode. SSB spots auto-resolve to USB or LSB based on the 10 MHz boundary.
@@ -42,7 +46,6 @@ Developers who want to run from source will find build instructions in the [Deve
 
 ## TODO
 
-- **Remote CW**: CW keying from a phone, tablet, or laptop while away from home.
 - **macOS Support**: Currently untested — requires externally installed Hamlib 4.7.0 in the system PATH.
 - **Broader Rig Testing**: Currently tested on FT-710 and FT-891, which means other similar modern Yaesu radios should work well. Other Hamlib-supported rigs should work.  Let me know with a bug report.
 
@@ -155,6 +158,16 @@ Open the **General Settings** panel (gear icon) to configure. Settings are organ
 - **Network Settings**: Host and port for the `rigctld` server.
 - **Video Settings**: Capture device selection and stream quality.
 - **Audio Settings**: Backend input/output device (server-side, for the radio), local input/output device (browser-side, for the operator), and enable/disable inbound and outbound audio independently.
+
+### KEYER Tab
+Configure the CW keyer:
+- **Enable CW Keyer**: Activates keyboard keying and sidetone. The keyer only operates while the audio subsystem is active.
+- **Keying Method**: How the key output is delivered — **DTR** (default), **RTS**, or **rigctld-PTT** (uses the rig's PTT line via Hamlib).
+- **Serial Port**: The port the keyer interface is connected to (may differ from the rig's control port).
+- **Key Mode**: **Iambic A**, **Iambic B**, or **Straight Key**.
+- **Speed (WPM)**: Words per minute — adjustable 5–40 WPM.
+- **Sidetone**: Enable/disable local audio feedback, set tone frequency (Hz), and volume. The sidetone plays instantly in the browser — it does not travel through the radio.
+- **Key Bindings**: Rebind the dit, dah, and straight key keyboard keys. Click the binding and press any key to rebind.
 
 ### SPOTS Tab
 Enable POTA and/or SOTA spot displays independently. Each has identical controls:
