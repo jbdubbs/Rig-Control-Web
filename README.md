@@ -31,6 +31,10 @@ Developers who want to run from source will find build instructions in the [Deve
   - Configurable WPM, keying method (DTR, RTS, or rigctld-PTT), serial port, and iambic mode.
   - Rebindable keyboard keys. Instant local sidetone via Web Audio — no latency from the network.
   - On phone/tablet, dedicated dit (·) and dah (—) touch paddle buttons replace the PTT bar when the rig is in CW mode.
+- **CW Decoder**: Real-time Morse code decoding of received audio using the [GGMorse](https://github.com/ggerganov/ggmorse) library compiled to WebAssembly.
+  - Enable in **General Settings → CW → CW Decoder**. Decoded text streams into a scrolling display in all three layouts.
+  - Shows estimated signal pitch (Hz) and speed (WPM) alongside decoded text.
+  - Works even when the local speaker is muted — audio is always fed to the decoder independently of playback.
 - **Live Spots (POTA & SOTA)**: Real-time spot displays for Parks on the Air and Summits on the Air, each independently enable/disable with configurable poll intervals.
   - Filterable by mode (SSB, CW, FT8, FT4) and band (multi-select). Configurable maximum spot age.
   - Sortable columns. Click any spot to instantly tune the VFO and set the mode. SSB spots auto-resolve to USB or LSB based on the 10 MHz boundary.
@@ -165,7 +169,12 @@ Open the **General Settings** panel (gear icon) to configure. Settings are organ
   - **Local Speaker Volume**: A slider (0–200%) below the Local Output dropdown controls the volume of received audio in your browser. 100% is unity gain (system volume unchanged). Above 100% amplifies the signal — useful when your system volume is already at maximum.
 
 ### KEYER Tab
-Configure the CW keyer:
+Configure the CW decoder and keyer:
+
+**CW Decoder**
+- **Enable CW Decoder**: Decodes received audio to text in real time using GGMorse WASM. Works independently of the keyer and does not require audio to be unmuted.
+
+**CW Keyer**
 - **Enable CW Keyer**: Activates keyboard keying and sidetone. The keyer becomes active as soon as the rig is connected — no audio session required.
 - **Keying Method**: How the key output is delivered — **DTR** (default), **RTS**, or **CAT PTT** (uses the rig's PTT line via Hamlib — last resort; most radios process CAT commands too slowly for clean CW timing).
 - **Serial Port**: The port the keyer interface is connected to (may differ from the rig's control port).

@@ -42,6 +42,7 @@ import {
 } from "recharts";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { GGMorseDecoder } from './ggmorseDecoder';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -247,7 +248,11 @@ export default function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'spots' | 'display' | 'keyer'>('rigctld');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'spots' | 'display' | 'cw'>('rigctld');
+  const [cwDecodeEnabled, setCwDecodeEnabled] = useState(() => localStorage.getItem('cw-decode-enabled') === 'true');
+  const [cwDecodedText, setCwDecodedText] = useState('');
+  const [cwWasmReady, setCwWasmReady] = useState(false);
+  const [cwStats, setCwStats] = useState({ pitch: 0, speed: 0 });
   const [potaEnabled, setPotaEnabled] = useState(false);
   const [potaPollRate, setPotaPollRate] = useState(5);
   const [potaMaxAge, setPotaMaxAge] = useState(15);
@@ -298,16 +303,24 @@ export default function App() {
     outputDevice: localStorage.getItem("local-audio-output") || "default"
   });
   const [inboundMuted, setInboundMuted] = useState(false);
+  const [inboundVolume, setInboundVolume] = useState<number>(() => {
+    const saved = localStorage.getItem("local-audio-inbound-volume");
+    return saved !== null ? parseFloat(saved) : 1.0;
+  });
   const [outboundMuted, setOutboundMuted] = useState(true);
   const [localAudioReady, setLocalAudioReady] = useState(false);
   const [audioWasRestarted, setAudioWasRestarted] = useState(false);
   const [isBackendEngineCollapsed, setIsBackendEngineCollapsed] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const playbackNodeRef = useRef<AudioWorkletNode | null>(null);
+  const inboundGainRef = useRef<GainNode | null>(null);
   const captureNodeRef = useRef<AudioWorkletNode | null>(null);
   const opusDecoderRef = useRef<any>(null); // AudioDecoder
   const opusEncoderRef = useRef<any>(null); // AudioEncoder
   const micStreamRef = useRef<MediaStream | null>(null);
+  const cwDecoderRef = useRef<GGMorseDecoder | null>(null);
+  const cwDecodeEnabledRef = useRef(false);
+  const cwTextEndRef = useRef<HTMLDivElement>(null);
 
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [preampLevels, setPreampLevels] = useState<string[]>([]);
@@ -340,8 +353,9 @@ export default function App() {
   const [isDesktopSMeterCollapsed, setIsDesktopSMeterCollapsed] = useState(false);
   const [isDesktopSWRCollapsed, setIsDesktopSWRCollapsed] = useState(false);
   const [isDesktopALCCollapsed, setIsDesktopALCCollapsed] = useState(false);
-  const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(false);
+  const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(() => localStorage.getItem("console-collapsed") === "true");
   const [showCommandConsole, setShowCommandConsole] = useState(() => localStorage.getItem("show-command-console") === "true");
+  const prevShowCommandConsoleRef = useRef(localStorage.getItem("show-command-console") === "true");
 
   // CW Keyer state
   const CW_SETTINGS_DEFAULTS = {
@@ -452,7 +466,7 @@ export default function App() {
   // CW keyer: keyboard listener and sidetone lifecycle
   useEffect(() => {
     const settings = cwSettingsRef.current;
-    if (!settings.enabled || !connected || !localAudioReady) {
+    if (!settings.enabled || !connected) {
       stopKeyerTick();
       emitCwKey(false);
       ditPressedRef.current = false;
@@ -535,12 +549,36 @@ export default function App() {
       dahPressedRef.current = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget, localAudioReady]);
+  }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget]);
 
   // Keep cwSettingsRef in sync with state
   useEffect(() => {
     cwSettingsRef.current = cwSettings;
   }, [cwSettings]);
+
+  // CW decoder lifecycle — WASM loads once on first enable, stays alive
+  useEffect(() => {
+    cwDecodeEnabledRef.current = cwDecodeEnabled;
+    if (cwDecodeEnabled && !cwDecoderRef.current) {
+      setCwWasmReady(false);
+      const decoder = new GGMorseDecoder(
+        (ch) => setCwDecodedText(prev => (prev + ch).slice(-2000)),
+        (pitch, speed) => setCwStats({ pitch, speed }),
+      );
+      decoder.init().then(() => {
+        cwDecoderRef.current = decoder;
+        setCwWasmReady(true);
+      });
+    } else if (!cwDecodeEnabled) {
+      cwDecoderRef.current?.reset();
+      setCwStats({ pitch: 0, speed: 0 });
+    }
+  }, [cwDecodeEnabled]);
+
+  // Auto-scroll decoded text to bottom
+  useEffect(() => {
+    cwTextEndRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' });
+  }, [cwDecodedText]);
 
   useEffect(() => {
     if (socket) {
@@ -858,8 +896,15 @@ export default function App() {
   }, [potaEnabled]);
 
   useEffect(() => {
+    localStorage.setItem("console-collapsed", isConsoleCollapsed.toString());
+  }, [isConsoleCollapsed]);
+
+  useEffect(() => {
     localStorage.setItem("show-command-console", showCommandConsole.toString());
-    if (showCommandConsole) setIsConsoleCollapsed(false);
+    if (showCommandConsole && !prevShowCommandConsoleRef.current) {
+      setIsConsoleCollapsed(false);
+    }
+    prevShowCommandConsoleRef.current = showCommandConsole;
   }, [showCommandConsole]);
 
   useEffect(() => {
@@ -1629,7 +1674,12 @@ export default function App() {
     if (!socket) return;
     const handler = (data: ArrayBuffer | Uint8Array) => {
       // console.count("[AUDIO-IN] Packets received");
-      if (inboundMutedRef.current || !audioSettingsRef.current.inboundEnabled || audioStatusRef.current !== "playing" || !localAudioReadyRef.current) {
+      if (!audioSettingsRef.current.inboundEnabled || audioStatusRef.current !== "playing" || !localAudioReadyRef.current) {
+        return;
+      }
+      // Always decode when CW decoder is active, even if speaker is muted.
+      // The WebCodecs output callback gates playback vs. CW feed independently.
+      if (inboundMutedRef.current && !cwDecodeEnabledRef.current) {
         return;
       }
       playInboundAudio(data);
@@ -1682,6 +1732,10 @@ export default function App() {
       playbackNodeRef.current.disconnect();
       playbackNodeRef.current = null;
     }
+    if (inboundGainRef.current) {
+      inboundGainRef.current.disconnect();
+      inboundGainRef.current = null;
+    }
     if (audioContextRef.current) {
       try { await audioContextRef.current.close(); } catch (_) {}
       audioContextRef.current = null;
@@ -1712,25 +1766,36 @@ export default function App() {
 
       if (!playbackNodeRef.current) {
         playbackNodeRef.current = new AudioWorkletNode(ctx, 'playback-processor');
-        playbackNodeRef.current.connect(ctx.destination);
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = inboundVolume;
+        inboundGainRef.current = gainNode;
+        playbackNodeRef.current.connect(gainNode);
+        gainNode.connect(ctx.destination);
       }
 
       if (!opusDecoderRef.current && typeof (window as any).AudioDecoder !== 'undefined') {
         const decoder = new (window as any).AudioDecoder({
           output: (audioData: any) => {
-            if (inboundMutedRef.current || audioStatusRef.current !== "playing") {
+            const isPlaying = audioStatusRef.current === "playing";
+            const needPcm = isPlaying && (!inboundMutedRef.current);
+            const needCw = isPlaying && cwDecodeEnabledRef.current && !!cwDecoderRef.current;
+
+            if (!needPcm && !needCw) {
               audioData.close();
               return;
             }
-            // Convert AudioData to Float32Array and send to worklet
+
             const options = { planeIndex: 0 };
             const size = audioData.allocationSize(options);
             const buffer = new ArrayBuffer(size);
             audioData.copyTo(buffer, options);
             const float32Data = new Float32Array(buffer);
 
-            if (playbackNodeRef.current) {
+            if (needPcm && playbackNodeRef.current) {
               playbackNodeRef.current.port.postMessage({ type: 'pcm', pcm: float32Data });
+            }
+            if (needCw) {
+              cwDecoderRef.current!.processSamples(float32Data);
             }
             audioData.close();
           },
@@ -2459,12 +2524,6 @@ export default function App() {
           <button onClick={() => setCwStuckAlert(false)} className="ml-2 text-red-400 hover:text-red-200">✕</button>
         </div>
       )}
-      {/* CW mode warning */}
-      {cwSettings.enabled && connected && !['CW', 'CWR', 'CW-R'].includes(status?.mode || '') && (
-        <div className="fixed top-4 right-4 z-40 bg-amber-900/80 border border-amber-500 text-amber-200 text-[0.625rem] font-bold px-3 py-1.5 rounded-lg shadow-lg">
-          Radio not in CW mode
-        </div>
-      )}
       <div
         ref={containerRef}
         className={cn(
@@ -2475,15 +2534,22 @@ export default function App() {
         {/* Header / Connection */}
         <header className="bg-[#151619] rounded-xl border border-[#2a2b2e] shadow-2xl py-1.5 px-3 sm:p-4 flex items-center justify-between gap-2">
           {/* Phone: slim connection indicator */}
-          <div className="flex sm:hidden items-center gap-2">
+          <div className="flex sm:hidden items-center gap-2 flex-shrink-0">
             <div className={cn("w-2 h-2 rounded-full flex-shrink-0", connected ? "bg-emerald-500" : "bg-red-500/70")} />
-            <span className="text-sm font-bold tracking-tight uppercase italic">RigControl Web</span>
+            <span className="text-sm font-bold tracking-tight uppercase italic text-center">RigControl Web</span>
           </div>
           {/* Desktop: full branding */}
           <div className="hidden sm:flex items-center gap-3 min-w-0">
             <Signal size={24} className="text-emerald-500 flex-shrink-0" />
             <h1 className="text-xl font-bold tracking-tighter uppercase italic truncate">RigControl Web</h1>
           </div>
+          {isCompact && cwSettings.enabled && connected && !['CW', 'CWR', 'CW-R'].includes(status?.mode || '') && (
+            <div className="flex-1 flex justify-center px-2">
+              <span className="bg-amber-900/40 border border-amber-500/60 text-amber-300 text-xs font-bold px-3 py-1 rounded-lg text-center">
+                Radio not in CW mode — Switch mode to key
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             <button
               onClick={handleConnect}
@@ -2559,6 +2625,12 @@ export default function App() {
         {/* Main Interface */}
         {isPhone ? (
           <div className="space-y-2 animate-in fade-in duration-300">
+            {/* CW mode warning */}
+            {cwSettings.enabled && connected && !['CW', 'CWR', 'CW-R'].includes(status?.mode || '') && (
+              <div className="bg-amber-900/40 border border-amber-500/60 text-amber-300 text-xs font-bold px-3 py-2 rounded-xl text-center">
+                Radio not in CW mode — Switch mode to key
+              </div>
+            )}
             {/* Unified VFO & Mode/BW Box */}
             <div className={cn(
               "bg-[#151619] rounded-xl border shadow-lg overflow-hidden",
@@ -3548,62 +3620,83 @@ export default function App() {
                   </div>
                 </div>
                 {!isCompactSMeterCollapsed && (
-                  <div className="p-2 flex-1 min-h-[80px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={history}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
-                        <XAxis dataKey="time" hide />
-                        <YAxis 
-                          domain={
-                            activeMeter === 'signal' ? (status.ptt ? [0, 1] : [-54, 0]) :
-                            activeMeter === 'swr' ? [1, 4] :
-                            activeMeter === 'vdd' ? [11, 16] : [0, 1]
-                          } 
-                          hide={activeMeter !== 'swr' && activeMeter !== 'vdd'}
-                          ticks={activeMeter === 'swr' ? [1, 2, 3, 4] : activeMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
-                          width={15}
-                          style={{ fontSize: '6px', fill: '#4a4b4e' }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '8px' }}
-                          itemStyle={{ 
-                            color: activeMeter === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') :
-                                   activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
-                                   activeMeter === 'alc' ? '#3b82f6' : '#10b981'
-                          }}
-                          formatter={(val: number, name: string, props: any) => {
-                            if (activeMeter === 'signal') {
-                              const rawVal = props.payload?.smeter ?? val;
-                              return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (rawVal > 0 ? `S9+${rawVal}dB` : `S${Math.round((rawVal + 54) / 6)}`), status.ptt ? "POWER" : "SIGNAL"];
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <div className={cn("p-2 flex-1", cwDecodeEnabled ? "min-h-[60px]" : "min-h-[80px]")}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={history}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
+                          <XAxis dataKey="time" hide />
+                          <YAxis
+                            domain={
+                              activeMeter === 'signal' ? (status.ptt ? [0, 1] : [-54, 0]) :
+                              activeMeter === 'swr' ? [1, 4] :
+                              activeMeter === 'vdd' ? [11, 16] : [0, 1]
                             }
-                            if (activeMeter === 'swr') {
-                              return [(props.payload?.swr ?? 1).toFixed(2), 'SWR'];
+                            hide={activeMeter !== 'swr' && activeMeter !== 'vdd'}
+                            ticks={activeMeter === 'swr' ? [1, 2, 3, 4] : activeMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
+                            width={15}
+                            style={{ fontSize: '6px', fill: '#4a4b4e' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '8px' }}
+                            itemStyle={{
+                              color: activeMeter === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') :
+                                     activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
+                                     activeMeter === 'alc' ? '#3b82f6' : '#10b981'
+                            }}
+                            formatter={(val: number, name: string, props: any) => {
+                              if (activeMeter === 'signal') {
+                                const rawVal = props.payload?.smeter ?? val;
+                                return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (rawVal > 0 ? `S9+${rawVal}dB` : `S${Math.round((rawVal + 54) / 6)}`), status.ptt ? "POWER" : "SIGNAL"];
+                              }
+                              if (activeMeter === 'swr') {
+                                return [(props.payload?.swr ?? 1).toFixed(2), 'SWR'];
+                              }
+                              if (activeMeter === 'vdd') {
+                                return [`${(val ?? 0).toFixed(1)}V`, 'VDD'];
+                              }
+                              return [(val ?? 0).toFixed(activeMeter === 'alc' ? 5 : 2), activeMeter.toUpperCase()];
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey={
+                              activeMeter === 'signal' ? (status.ptt ? "powerMeter" : "smeterGraph") :
+                              activeMeter === 'swr' ? 'swrGraph' : activeMeter
                             }
-                            if (activeMeter === 'vdd') {
-                              return [`${(val ?? 0).toFixed(1)}V`, 'VDD'];
+                            stroke={
+                              activeMeter === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") :
+                              activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
+                              activeMeter === 'alc' ? '#3b82f6' : '#10b981'
                             }
-                            return [(val ?? 0).toFixed(activeMeter === 'alc' ? 5 : 2), activeMeter.toUpperCase()];
-                          }}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey={
-                            activeMeter === 'signal' ? (status.ptt ? "powerMeter" : "smeterGraph") :
-                            activeMeter === 'swr' ? 'swrGraph' : activeMeter
-                          } 
-                          stroke={
-                            activeMeter === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") :
-                            activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
-                            activeMeter === 'alc' ? '#3b82f6' : '#10b981'
-                          } 
-                          strokeWidth={1.5} 
-                          dot={false} 
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+                            strokeWidth={1.5}
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    {cwDecodeEnabled && (
+                      <div className="flex-1 flex flex-col min-h-[60px] border-t border-[#2a2b2e] overflow-hidden">
+                        <div className="px-2 py-1 flex items-center justify-between border-b border-[#2a2b2e]">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[0.625rem] uppercase text-emerald-500 font-bold tracking-wider">CW Decode</span>
+                            {cwStats.pitch > 0 && (
+                              <span className="text-[0.625rem] text-[#8e9299]">
+                                {Math.round(cwStats.pitch)}Hz&nbsp;{Math.round(cwStats.speed)}wpm
+                              </span>
+                            )}
+                          </div>
+                          <button onClick={() => setCwDecodedText('')} className="px-1.5 py-0.5 hover:bg-white/5 rounded text-[0.5rem] uppercase tracking-wider text-[#8e9299] hover:text-white/60">Clear</button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto cw-scroll p-2 font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all">
+                          {cwDecodedText || <span className="text-[#4a4b4e]">waiting for CW…</span>}
+                          <div ref={cwTextEndRef} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -5444,6 +5537,24 @@ export default function App() {
                         <option key={d.deviceId} value={d.deviceId}>{d.label || `Output ${d.deviceId.slice(0, 5)}`}</option>
                       ))}
                     </select>
+                    <div className="flex items-center gap-3 pt-1">
+                      <label className="text-[0.625rem] uppercase text-[#4a4b4e] font-bold whitespace-nowrap">Local Speaker Volume</label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={2}
+                        step={0.01}
+                        value={inboundVolume}
+                        onChange={(e) => {
+                          const vol = parseFloat(e.target.value);
+                          setInboundVolume(vol);
+                          localStorage.setItem("local-audio-inbound-volume", String(vol));
+                          if (inboundGainRef.current) inboundGainRef.current.gain.value = vol;
+                        }}
+                        className="flex-1 accent-blue-500"
+                      />
+                      <span className="text-xs text-[#8e9299] w-8 text-right">{Math.round(inboundVolume * 100)}%</span>
+                    </div>
                   </div>
 
                   <p className="text-[0.5rem] uppercase text-[#4a4b4e] font-bold">
@@ -5650,7 +5761,7 @@ export default function App() {
 
               {/* Tab Bar */}
               <div className="flex border-b border-[#2a2b2e] bg-[#1a1b1e]">
-                {(['rigctld', 'spots', 'display', 'keyer'] as const).map((tab) => (
+                {(['rigctld', 'spots', 'display', 'cw'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveSettingsTab(tab)}
@@ -6116,8 +6227,31 @@ export default function App() {
               </div>
               )}
 
-              {activeSettingsTab === 'keyer' && (
+              {activeSettingsTab === 'cw' && (
               <div className="p-6 space-y-6">
+
+                {/* CW Decoder */}
+                <div className="space-y-4">
+                  <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">CW Decoder</h3>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm text-[#e0e0e0] font-bold">Enable CW Decoder</div>
+                      <div className="text-[0.625rem] text-[#8e9299] mt-0.5">Decode incoming audio to text in real time</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const next = !cwDecodeEnabled;
+                        setCwDecodeEnabled(next);
+                        localStorage.setItem('cw-decode-enabled', String(next));
+                      }}
+                      disabled={cwDecodeEnabled && !cwWasmReady}
+                      title={cwDecodeEnabled && !cwWasmReady ? 'Loading decoder…' : undefined}
+                      className={cn("relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0", cwDecodeEnabled ? "bg-emerald-500" : "bg-[#2a2b2e]", cwDecodeEnabled && !cwWasmReady && "opacity-50 cursor-wait")}
+                    >
+                      <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white transition-transform", cwDecodeEnabled ? "translate-x-6" : "translate-x-1")} />
+                    </button>
+                  </div>
+                </div>
 
                 {/* Enable & Keying Method */}
                 <div className="space-y-4">
@@ -6389,6 +6523,25 @@ export default function App() {
       {/* Phone sticky PTT bar — sits outside the scroll container */}
       {isPhone && (
         <div className="flex-shrink-0 px-3 py-3 bg-[#151619] border-t border-[#2a2b2e]">
+          {cwDecodeEnabled && (
+            <div className="mb-2">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[0.625rem] uppercase text-emerald-500 font-bold tracking-wider">CW Decode</span>
+                  {cwStats.pitch > 0 && (
+                    <span className="text-[0.625rem] text-[#8e9299]">
+                      {Math.round(cwStats.pitch)}Hz&nbsp;{Math.round(cwStats.speed)}wpm
+                    </span>
+                  )}
+                </div>
+                <button onClick={() => setCwDecodedText('')} className="px-1.5 py-0.5 hover:bg-white/5 rounded text-[0.5rem] uppercase tracking-wider text-[#8e9299] hover:text-white/60">Clear</button>
+              </div>
+              <div className="bg-[#0a0a0a] rounded-lg border border-[#2a2b2e] p-2 h-14 overflow-y-auto cw-scroll font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all">
+                {cwDecodedText || <span className="text-[#4a4b4e]">waiting for CW…</span>}
+                <div ref={cwTextEndRef} />
+              </div>
+            </div>
+          )}
           {cwSettings.enabled && ['CW', 'CWR', 'CW-R'].includes(status?.mode || '') ? (
             <div className="flex gap-3">
               <button
@@ -6481,16 +6634,6 @@ export default function App() {
                 <Mic size={24} />
                 <span className="text-xs uppercase font-bold leading-none">PTT</span>
               </button>
-              {cwSettings.enabled && (
-                <div className={cn(
-                  "mt-2 flex items-center justify-center gap-2 py-1.5 rounded-lg border text-xs font-bold transition-all",
-                  cwStuckAlert ? "bg-red-900/30 border-red-500 text-red-400" : cwKeyActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299]"
-                )}>
-                  <div className={cn("w-2 h-2 rounded-full", cwStuckAlert ? "bg-red-500" : cwKeyActive ? "bg-amber-400 animate-pulse" : "bg-[#2a2b2e]")} />
-                  <span>CW KEY</span>
-                  <span className="text-[0.6rem]">{cwSettings.wpm} WPM</span>
-                </div>
-              )}
             </>
           )}
         </div>

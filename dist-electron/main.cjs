@@ -58561,7 +58561,7 @@ async function startServer(appPath, userDataPath) {
     socket.on("get-modes", async () => {
       try {
         const modes = await sendToRig("M ?", false, true);
-        const modeList = modes.split(/[\s\n]+/).filter(Boolean);
+        const modeList = modes.split(/[\s\n]+/).filter((m) => Boolean(m) && m !== "RPRT" && !/^\d+$/.test(m));
         socket.emit("available-modes", modeList);
       } catch (err) {
         console.error("Failed to get modes:", err);

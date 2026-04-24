@@ -3,3 +3,10 @@
 html, body {
   background-color: #0a0a0a;
 }
+
+.cw-scroll {
+  scrollbar-width: none;
+}
+.cw-scroll::-webkit-scrollbar {
+  display: none;
+}

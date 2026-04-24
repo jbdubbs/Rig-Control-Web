@@ -59,11 +59,12 @@ Think of it this way: **backend audio = the radio's end; local audio = your end*
 
 1. Open Video & Audio Settings.
 2. Under **Local Client Audio (Your System)**, select your microphone from the **Local Input (Microphone)** dropdown and your speakers or headphones from the **Local Output (Speakers/Headphones)** dropdown.
-3. These settings are saved in your browser and apply only to your device — a different device connecting to the same server will have its own local audio settings.
+3. Use the **Local Speaker Volume** slider (directly below the Local Output dropdown) to set the playback volume for received audio.
+4. These settings are saved in your browser and apply only to your device — a different device connecting to the same server will have its own local audio settings.
 
 > **Browser permission:** The first time you use audio, your browser will ask for permission to access your microphone. You must allow this for transmit audio to work. If your microphone devices show without names (just "Input 1", etc.), click **Request Permission** next to the dropdown to prompt the browser permission dialog.
 
-> **Device changes apply immediately** — you do not need to stop and restart audio when switching local devices.
+> **Device changes apply immediately** — you do not need to stop and restart audio when switching local devices or adjusting the speaker volume.
 
 ---
 
@@ -100,6 +101,18 @@ Once you have joined audio, two mute buttons appear in the Video & Audio panel h
 
 - **Inbound mute** (headphone icon) — Mutes received audio so you do not hear it through your local speakers. The radio continues receiving; you just will not hear it.
 - **Outbound mute** (microphone icon) — Mutes your microphone so your voice is not sent to the radio even if you key PTT.
+
+---
+
+### Local Speaker Volume
+
+The **Local Speaker Volume** slider is found directly below the Local Output (Speakers/Headphones) dropdown in Video & Audio Settings.
+
+- **0%** — silence (equivalent to mute, but continuous rather than a toggle)
+- **100%** — unity gain: audio plays at your system volume level with no modification
+- **101–200%** — amplification beyond system volume; useful when your OS volume is already at maximum and the received audio is still too quiet
+
+The slider adjusts volume in real time with no need to stop or restart audio. Your setting is saved in the browser and restored automatically on your next visit.
 
 ---
 

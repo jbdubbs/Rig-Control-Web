@@ -81,7 +81,7 @@ RigControl Web includes a full iambic CW keyer that works from any browser or th
 
 ### Enabling the Keyer
 
-Open **General Settings → KEYER** and toggle **Enable CW Keyer** on. The keyer only becomes active once the audio subsystem is running (join audio first). Once enabled, an indicator in the Quick Controls area shows the current key state and WPM.
+Open **General Settings → KEYER** and toggle **Enable CW Keyer** on. The keyer becomes active as soon as the rig is connected — no audio session is required. Once enabled, an indicator in the Quick Controls area shows the current WPM.
 
 ### Keyboard Keys (Desktop)
 
@@ -91,6 +91,8 @@ By default:
 - **Space** — Straight key (when straight key mode is selected)
 
 Keys can be rebound in the KEYER settings tab — click the binding field and press any key to reassign it. Key presses are ignored when a text input has focus, so you can still type normally while the keyer is enabled.
+
+The default Left Ctrl / Right Ctrl bindings also match the vBand USB paddle interface, so a vBand plugged into a USB port works without any rebinding.
 
 ### Touch Paddles (Phone and Tablet)
 
@@ -125,7 +127,42 @@ The physical key signal can be sent three ways (configured in KEYER settings):
 |--------|-------------|
 | **DTR** | Keys a DTR line on a serial port (most common — works with Digirig, SignaLink, and similar) |
 | **RTS** | Keys an RTS line on the same or a different serial port |
-| **rigctld-PTT** | Uses Hamlib's PTT command — useful for radios where the key line is handled by the rig itself |
+| **CAT PTT** | Uses Hamlib's PTT command to key the radio. **Last resort only** — most radios process CAT commands too slowly for clean CW timing. Only use this if your radio is specifically known to handle fast CAT keying. |
+
+---
+
+## CW Decoder
+
+RigControl Web includes a real-time Morse code decoder that converts received audio to text as you listen. It works entirely in the browser using [GGMorse](https://github.com/ggerganov/ggmorse), an open-source CW decoding library compiled to WebAssembly.
+
+### Enabling the Decoder
+
+Open **General Settings → CW → CW Decoder** and toggle **Enable CW Decoder** on. The WASM module loads on first enable — a brief "Loading decoder…" state indicates it is initializing. Once loaded, it stays active for the lifetime of the page.
+
+### Decoded Text Display
+
+Once enabled, a scrolling text area appears in the main screen:
+- **Compact and desktop layouts**: the text area appears in the CW keyer area.
+- **Phone layout**: the text area appears in the phone CW panel.
+
+Decoded characters stream in real time. The display keeps the last 2000 characters and auto-scrolls to the latest output.
+
+A small inline readout shows the decoder's estimated signal **pitch** (Hz) and **speed** (WPM) based on the last decoded burst.
+
+### Decoding While Muted
+
+The decoder is fed audio from the inbound pipeline independently of the speaker. If you mute the local speaker or reduce the speaker volume to zero, the decoder continues to receive audio and will still decode CW. You do not need to hear the signal to copy it.
+
+### Decoder Independence From the Keyer
+
+The CW Decoder and CW Keyer are independent features. You can:
+- Enable the decoder without enabling the keyer.
+- Enable both at the same time (useful for a QSO: decoding the other station while keying your own).
+- Enable the keyer without the decoder.
+
+Each is controlled by its own toggle in the KEYER settings tab.
+
+---
 
 ### TUNE
 
