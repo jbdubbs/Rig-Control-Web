@@ -11,7 +11,6 @@ import {
   Signal,
   Gauge,
   RefreshCw,
-  Download,
   Volume2,
   VolumeX,
   MicOff,
@@ -22,10 +21,7 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
-  Maximize2,
-  Minimize2,
   Pencil,
-  Check,
   AlertCircle,
   AlertTriangle,
   Headphones,
@@ -225,7 +221,6 @@ export default function App() {
     return saved === null ? true : saved === "true";
   });
   const [isPhone, setIsPhone] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [phoneMeterTab, setPhoneMeterTab] = useState<'signal' | 'swr' | 'alc'>('signal');
   const [activeMeter, setActiveMeter] = useState<'signal' | 'swr' | 'alc' | 'vdd'>('signal');
   const [activeVFO, setActiveVFO] = useState<'A' | 'B'>('A');
@@ -320,7 +315,9 @@ export default function App() {
   const micStreamRef = useRef<MediaStream | null>(null);
   const cwDecoderRef = useRef<GGMorseDecoder | null>(null);
   const cwDecodeEnabledRef = useRef(false);
-  const cwTextEndRef = useRef<HTMLDivElement>(null);
+  const cwScrollContainerRef = useRef<HTMLDivElement>(null);
+  const stickyBarRef = useRef<HTMLDivElement>(null);
+  const [stickyBarHeight, setStickyBarHeight] = useState(0);
 
   const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
   const [preampLevels, setPreampLevels] = useState<string[]>([]);
@@ -575,9 +572,21 @@ export default function App() {
     }
   }, [cwDecodeEnabled]);
 
-  // Auto-scroll decoded text to bottom
+  // Track sticky bar height so the SPOTS pill floats the same distance above it
   useEffect(() => {
-    cwTextEndRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' });
+    const el = stickyBarRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setStickyBarHeight(el.offsetHeight));
+    ro.observe(el);
+    setStickyBarHeight(el.offsetHeight);
+    return () => ro.disconnect();
+  }, [isPhone]);
+
+  // Auto-scroll decoded text to bottom — direct scrollTop avoids scrollIntoView
+  // propagating up to the fixed settings modal overlay on mobile.
+  useEffect(() => {
+    const el = cwScrollContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [cwDecodedText]);
 
   useEffect(() => {
@@ -1389,15 +1398,15 @@ export default function App() {
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
+    sidetoneCtxRef.current = ctx;
+    sidetoneOscRef.current = osc;
+    sidetoneGainRef.current = gain;
     if (localAudioSettings.outputDevice && localAudioSettings.outputDevice !== 'default' && typeof (ctx as any).setSinkId === 'function') {
       try { await (ctx as any).setSinkId(localAudioSettings.outputDevice); } catch (e) { console.error("Sidetone setSinkId error:", e); }
     }
     if (ctx.state === 'suspended') {
-      try { await ctx.resume(); } catch (_) {}
+      ctx.resume().catch(() => {});
     }
-    sidetoneCtxRef.current = ctx;
-    sidetoneOscRef.current = osc;
-    sidetoneGainRef.current = gain;
   };
 
   const sidetoneOn = () => {
@@ -1405,6 +1414,7 @@ export default function App() {
     const gain = sidetoneGainRef.current;
     const osc = sidetoneOscRef.current;
     if (!ctx || !gain || !osc || !cwSettingsRef.current.sidetoneEnabled) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     osc.frequency.value = cwSettingsRef.current.sidetoneHz;
     gain.gain.cancelScheduledValues(ctx.currentTime);
     gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
@@ -2615,7 +2625,8 @@ export default function App() {
               const target = potaEnabled ? potaSpotsBoxRef.current : sotaSpotsBoxRef.current;
               target?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-[#151619] border border-emerald-500/50 text-emerald-400 rounded-full text-[0.625rem] font-bold uppercase tracking-wider shadow-lg backdrop-blur-sm"
+            style={{ bottom: stickyBarHeight + 8 }}
+            className="fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-[#151619] border border-emerald-500/50 text-emerald-400 rounded-full text-[0.625rem] font-bold uppercase tracking-wider shadow-lg backdrop-blur-sm"
           >
             <MapPin size={10} />
             SPOTS ↓
@@ -3679,7 +3690,7 @@ export default function App() {
                       </ResponsiveContainer>
                     </div>
                     {cwDecodeEnabled && (
-                      <div className="flex-1 flex flex-col min-h-[60px] border-t border-[#2a2b2e] overflow-hidden">
+                      <div className="flex flex-col h-[80px] border-t border-[#2a2b2e] overflow-hidden">
                         <div className="px-2 py-1 flex items-center justify-between border-b border-[#2a2b2e]">
                           <div className="flex items-center gap-2">
                             <span className="text-[0.625rem] uppercase text-emerald-500 font-bold tracking-wider">CW Decode</span>
@@ -3691,9 +3702,8 @@ export default function App() {
                           </div>
                           <button onClick={() => setCwDecodedText('')} className="px-1.5 py-0.5 hover:bg-white/5 rounded text-[0.5rem] uppercase tracking-wider text-[#8e9299] hover:text-white/60">Clear</button>
                         </div>
-                        <div className="flex-1 overflow-y-auto cw-scroll p-2 font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all">
+                        <div ref={cwScrollContainerRef} className="flex-1 overflow-y-auto cw-scroll p-2 font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all">
                           {cwDecodedText || <span className="text-[#4a4b4e]">waiting for CW…</span>}
-                          <div ref={cwTextEndRef} />
                         </div>
                       </div>
                     )}
@@ -6522,7 +6532,7 @@ export default function App() {
 
       {/* Phone sticky PTT bar — sits outside the scroll container */}
       {isPhone && (
-        <div className="flex-shrink-0 px-3 py-3 bg-[#151619] border-t border-[#2a2b2e]">
+        <div ref={stickyBarRef} className="flex-shrink-0 px-3 py-3 bg-[#151619] border-t border-[#2a2b2e]">
           {cwDecodeEnabled && (
             <div className="mb-2">
               <div className="flex items-center justify-between mb-1">
@@ -6536,9 +6546,8 @@ export default function App() {
                 </div>
                 <button onClick={() => setCwDecodedText('')} className="px-1.5 py-0.5 hover:bg-white/5 rounded text-[0.5rem] uppercase tracking-wider text-[#8e9299] hover:text-white/60">Clear</button>
               </div>
-              <div className="bg-[#0a0a0a] rounded-lg border border-[#2a2b2e] p-2 h-14 overflow-y-auto cw-scroll font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all">
+              <div ref={cwScrollContainerRef} className="bg-[#0a0a0a] rounded-lg border border-[#2a2b2e] p-2 h-14 overflow-y-auto cw-scroll font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all">
                 {cwDecodedText || <span className="text-[#4a4b4e]">waiting for CW…</span>}
-                <div ref={cwTextEndRef} />
               </div>
             </div>
           )}

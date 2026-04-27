@@ -204,7 +204,8 @@ Applies to: `react`, `react-dom`, `express`, `socket.io`, `socket.io-client`,
 `motion`, `recharts`, `tailwindcss`, `tailwind-merge`, `clsx`, `libopus-node`,
 `electron`, `electron-builder`, `esbuild`, `vite`, `vitest`, `concurrently`,
 `wait-on`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`,
-`@vitejs/plugin-react`, `@tailwindcss/vite`, PortAudio (bundled in naudiodon)
+`@vitejs/plugin-react`, `@tailwindcss/vite`, PortAudio (bundled in naudiodon),
+`ggmorse` (github:ggerganov/ggmorse, WASM CW decoder)
 
 > Permission is hereby granted, free of charge, to any person obtaining a copy
 > of this software and associated documentation files (the "Software"), to deal

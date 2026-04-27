@@ -1760,9 +1760,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     socket.on("get-audio-devices", async () => {
       vlog("[AUDIO] Client requested audio devices list");
       const { inputs, outputs, error } = await listAudioDevices();
-      if (error) {
-        socket.emit("audio-error", error);
-      }
       socket.emit("audio-devices-list", { inputs, outputs });
     });
 
@@ -1944,16 +1941,6 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       saveSettings();
       if (oldRigNumber !== rigctldSettings.rigNumber) {
         fetchRadioCapabilities(rigctldSettings.rigNumber);
-      }
-    });
-
-    socket.on("toggle-auto-start", (enabled) => {
-      autoStartEnabled = enabled;
-      saveSettings();
-      if (enabled) {
-        startRigctld();
-      } else {
-        stopRigctld();
       }
     });
 
