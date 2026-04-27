@@ -5,6 +5,9 @@
   "license": "Apache-2.0",
   "author": "Jason Weisberger NT0Y",
   "description": "A web-based frontend for hamlib rigctld for local installation and portable backend capabilities.",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
