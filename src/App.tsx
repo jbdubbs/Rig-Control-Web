@@ -11,11 +11,11 @@ import {
   Zap,
   X,
 } from "lucide-react";
-import { GGMorseDecoder } from './ggmorseDecoder';
 import { cn } from "./utils";
 import PhoneLayout from "./layouts/PhoneLayout";
 import CompactLayout from "./layouts/CompactLayout";
 import DesktopLayout from "./layouts/DesktopLayout";
+import PhoneStickyBar from "./layouts/PhoneStickyBar";
 import SettingsModal from "./modals/SettingsModal";
 import VideoSettingsModal from "./modals/VideoSettingsModal";
 import { usePotaSpots } from "./hooks/usePotaSpots";
@@ -24,6 +24,9 @@ import { useCWKeyer } from "./hooks/useCWKeyer";
 import { useVideoStream } from "./hooks/useVideoStream";
 import { useAudio } from "./hooks/useAudio";
 import { useRigControl } from "./hooks/useRigControl";
+import { useLayoutState } from "./hooks/useLayoutState";
+import { useCwDecoder } from "./hooks/useCwDecoder";
+import { usePanelState } from "./hooks/usePanelState";
 
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -46,48 +49,6 @@ export default function App() {
     return stored;
   });
 
-  const [showSetupModal, setShowSetupModal] = useState(false);
-  const [isCompact, setIsCompact] = useState(() => {
-    const saved = localStorage.getItem("is-compact");
-    return saved === null ? true : saved === "true";
-  });
-  const [isPhone, setIsPhone] = useState(false);
-  const [phoneMeterTab, setPhoneMeterTab] = useState<'signal' | 'swr' | 'alc'>('signal');
-  const [activeMeter, setActiveMeter] = useState<'signal' | 'swr' | 'alc' | 'vdd'>('signal');
-  const [isPhoneVFOCollapsed, setIsPhoneVFOCollapsed] = useState(true);
-  const [isPhoneMeterCollapsed, setIsPhoneMeterCollapsed] = useState(true);
-  const [isPhoneQuickControlsCollapsed, setIsPhoneQuickControlsCollapsed] = useState(true);
-  const [isCompactSMeterCollapsed, setIsCompactSMeterCollapsed] = useState(() => localStorage.getItem("is-compact-smeter-collapsed") === "true");
-  const [isCompactOtherMeterCollapsed, setIsCompactOtherMeterCollapsed] = useState(() => localStorage.getItem("is-compact-other-meter-collapsed") === "true");
-  const [isCompactControlsCollapsed, setIsCompactControlsCollapsed] = useState(() => localStorage.getItem("is-compact-controls-collapsed") === "true");
-  const [isCompactRFPowerCollapsed, setIsCompactRFPowerCollapsed] = useState(() => localStorage.getItem("is-compact-rfpower-collapsed") === "true");
-  const [isDesktopControlsCollapsed, setIsDesktopControlsCollapsed] = useState(() => localStorage.getItem("is-desktop-controls-collapsed") === "true");
-  const [isDesktopModeCollapsed, setIsDesktopModeCollapsed] = useState(false);
-  const [isDesktopBwCollapsed, setIsDesktopBwCollapsed] = useState(false);
-  const [isDesktopRFPowerCollapsed, setIsDesktopRFPowerCollapsed] = useState(false);
-  const [isDesktopSMeterCollapsed, setIsDesktopSMeterCollapsed] = useState(false);
-  const [isDesktopSWRCollapsed, setIsDesktopSWRCollapsed] = useState(false);
-  const [isDesktopALCCollapsed, setIsDesktopALCCollapsed] = useState(false);
-  const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(() => localStorage.getItem("console-collapsed") === "true");
-  const [showCommandConsole, setShowCommandConsole] = useState(() => localStorage.getItem("show-command-console") === "true");
-  const prevShowCommandConsoleRef = useRef(localStorage.getItem("show-command-console") === "true");
-  const [ditButtonActive, setDitButtonActive] = useState(false);
-  const [dahButtonActive, setDahButtonActive] = useState(false);
-  const [stickyBarHeight, setStickyBarHeight] = useState(0);
-
-  // CW decoder state — lives in App because it bridges useAudio (cwDecodeEnabledRef) and the UI
-  const [cwDecodeEnabled, setCwDecodeEnabled] = useState(() => localStorage.getItem('cw-decode-enabled') === 'true');
-  const [cwDecodedText, setCwDecodedText] = useState('');
-  const [cwWasmReady, setCwWasmReady] = useState(false);
-  const [cwStats, setCwStats] = useState({ pitch: 0, speed: 0 });
-  const cwDecoderRef = useRef<GGMorseDecoder | null>(null);
-  const cwDecodeEnabledRef = useRef(false);
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const stickyBarRef = useRef<HTMLDivElement>(null);
-  const cwScrollContainerRef = useRef<HTMLDivElement>(null);
-  const isFirstMount = useRef(true);
-
   const clientId = useMemo(() => {
     let id = localStorage.getItem("client-id");
     if (!id) {
@@ -106,6 +67,39 @@ export default function App() {
   }, []);
 
   // ── Hooks ─────────────────────────────────────────────────────────────────
+  const { isCompact, isPhone, stickyBarHeight, containerRef, stickyBarRef } = useLayoutState();
+
+  const {
+    showSetupModal, setShowSetupModal,
+    phoneMeterTab, setPhoneMeterTab,
+    activeMeter, setActiveMeter,
+    isPhoneVFOCollapsed, setIsPhoneVFOCollapsed,
+    isPhoneMeterCollapsed, setIsPhoneMeterCollapsed,
+    isPhoneQuickControlsCollapsed, setIsPhoneQuickControlsCollapsed,
+    isCompactSMeterCollapsed, setIsCompactSMeterCollapsed,
+    isCompactControlsCollapsed, setIsCompactControlsCollapsed,
+    isCompactRFPowerCollapsed, setIsCompactRFPowerCollapsed,
+    isDesktopControlsCollapsed, setIsDesktopControlsCollapsed,
+    isDesktopModeCollapsed, setIsDesktopModeCollapsed,
+    isDesktopBwCollapsed, setIsDesktopBwCollapsed,
+    isDesktopRFPowerCollapsed, setIsDesktopRFPowerCollapsed,
+    isDesktopSMeterCollapsed, setIsDesktopSMeterCollapsed,
+    isDesktopSWRCollapsed, setIsDesktopSWRCollapsed,
+    isDesktopALCCollapsed, setIsDesktopALCCollapsed,
+    isConsoleCollapsed, setIsConsoleCollapsed,
+    showCommandConsole, setShowCommandConsole,
+  } = usePanelState();
+
+  const {
+    cwDecodeEnabled, setCwDecodeEnabled,
+    cwDecodedText, setCwDecodedText,
+    cwWasmReady,
+    cwStats,
+    cwDecoderRef,
+    cwDecodeEnabledRef,
+    cwScrollContainerRef,
+  } = useCwDecoder();
+
   const {
     rigctldSettings, setRigctldSettings,
     settingsLoaded, setSettingsLoaded,
@@ -284,52 +278,11 @@ export default function App() {
 
   // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    const handleResize = () => {
-      const width = window.innerWidth;
-      const mobile = width < 768;
-      setIsPhone(mobile);
-      setIsCompact(!mobile);
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // CW decoder lifecycle — WASM loads once on first enable, stays alive
-  useEffect(() => {
-    cwDecodeEnabledRef.current = cwDecodeEnabled;
-    if (cwDecodeEnabled && !cwDecoderRef.current) {
-      setCwWasmReady(false);
-      const decoder = new GGMorseDecoder(
-        (ch) => setCwDecodedText(prev => (prev + ch).slice(-2000)),
-        (pitch, speed) => setCwStats({ pitch, speed }),
-      );
-      decoder.init().then(() => {
-        cwDecoderRef.current = decoder;
-        setCwWasmReady(true);
-      });
-    } else if (!cwDecodeEnabled) {
-      cwDecoderRef.current?.reset();
-      setCwStats({ pitch: 0, speed: 0 });
-    }
-  }, [cwDecodeEnabled]);
-
-  useEffect(() => {
-    const el = stickyBarRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setStickyBarHeight(el.offsetHeight));
-    ro.observe(el);
-    setStickyBarHeight(el.offsetHeight);
-    return () => ro.disconnect();
-  }, [isPhone]);
-
-  // Auto-scroll decoded text to bottom
-  useEffect(() => {
-    const el = cwScrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [cwDecodedText]);
+    localStorage.setItem("backend-url", backendUrl);
+  }, [backendUrl]);
 
   // Save settings debounce (skip first mount to avoid overwriting on load)
+  const isFirstMount = useRef(true);
   useEffect(() => {
     if (isFirstMount.current) {
       isFirstMount.current = false;
@@ -351,31 +304,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [rigctldSettings, host, port, pollRate, socket, potaEnabled, potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter, sotaEnabled, sotaPollRate, sotaMaxAge, sotaModeFilter, sotaBandFilter]);
 
-  useEffect(() => {
-    localStorage.setItem("console-collapsed", isConsoleCollapsed.toString());
-  }, [isConsoleCollapsed]);
-
-  useEffect(() => {
-    localStorage.setItem("show-command-console", showCommandConsole.toString());
-    if (showCommandConsole && !prevShowCommandConsoleRef.current) {
-      setIsConsoleCollapsed(false);
-    }
-    prevShowCommandConsoleRef.current = showCommandConsole;
-  }, [showCommandConsole]);
-
-  useEffect(() => {
-    localStorage.setItem("backend-url", backendUrl);
-  }, [backendUrl]);
-
-  useEffect(() => {
-    localStorage.setItem("is-compact", isCompact.toString());
-    localStorage.setItem("is-compact-smeter-collapsed", isCompactSMeterCollapsed.toString());
-    localStorage.setItem("is-compact-other-meter-collapsed", isCompactOtherMeterCollapsed.toString());
-    localStorage.setItem("is-compact-controls-collapsed", isCompactControlsCollapsed.toString());
-    localStorage.setItem("is-compact-rfpower-collapsed", isCompactRFPowerCollapsed.toString());
-    localStorage.setItem("is-desktop-controls-collapsed", isDesktopControlsCollapsed.toString());
-  }, [isCompact, isCompactSMeterCollapsed, isCompactOtherMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed, isDesktopControlsCollapsed, showCommandConsole]);
-
+  // Notify server which meters need computing based on visible layout
   useEffect(() => {
     if (!socket) return;
     const visible = [];
@@ -1035,120 +964,23 @@ export default function App() {
         />
       </div>
 
-      {/* Phone sticky PTT bar */}
+      {/* Phone sticky PTT/CW bar */}
       {isPhone && (
-        <div ref={stickyBarRef} className="flex-shrink-0 px-3 py-3 bg-[#151619] border-t border-[#2a2b2e]">
-          {cwDecodeEnabled && (
-            <div className="mb-2">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[0.625rem] uppercase text-emerald-500 font-bold tracking-wider">CW Decode</span>
-                  {cwStats.pitch > 0 && (
-                    <span className="text-[0.625rem] text-[#8e9299]">
-                      {Math.round(cwStats.pitch)}Hz&nbsp;{Math.round(cwStats.speed)}wpm
-                    </span>
-                  )}
-                </div>
-                <button onClick={() => setCwDecodedText('')} className="px-1.5 py-0.5 hover:bg-white/5 rounded text-[0.5rem] uppercase tracking-wider text-[#8e9299] hover:text-white/60">Clear</button>
-              </div>
-              <div ref={cwScrollContainerRef} className="bg-[#0a0a0a] rounded-lg border border-[#2a2b2e] p-2 h-14 overflow-y-auto cw-scroll font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all">
-                {cwDecodedText || <span className="text-[#4a4b4e]">waiting for CW…</span>}
-              </div>
-            </div>
-          )}
-          {cwSettings.enabled && ['CW', 'CWR', 'CW-R'].includes(status?.mode || '') ? (
-            <div className="flex gap-3">
-              <button
-                onPointerDown={(e) => {
-                  if (!connected) return;
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setDitButtonActive(true);
-                  ditPressedRef.current = true;
-                  emitCwPaddle(true, dahPressedRef.current, false);
-                }}
-                onPointerUp={(e) => {
-                  if (!connected) return;
-                  e.currentTarget.releasePointerCapture(e.pointerId);
-                  setDitButtonActive(false);
-                  ditPressedRef.current = false;
-                  emitCwPaddle(false, dahPressedRef.current, false);
-                }}
-                onPointerCancel={() => {
-                  if (!connected) return;
-                  setDitButtonActive(false);
-                  ditPressedRef.current = false;
-                  emitCwPaddle(false, dahPressedRef.current, false);
-                }}
-                disabled={!connected}
-                className={cn(
-                  "flex flex-col items-center justify-center flex-1 h-16 rounded-xl border transition-all gap-1 touch-none select-none",
-                  !connected && "opacity-50 cursor-not-allowed",
-                  ditButtonActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#e0e0e0]"
-                )}
-              >
-                <span className="text-2xl font-bold leading-none">·</span>
-                <span className="text-xs uppercase font-bold leading-none">dit</span>
-              </button>
-              <button
-                onPointerDown={(e) => {
-                  if (!connected) return;
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setDahButtonActive(true);
-                  dahPressedRef.current = true;
-                  emitCwPaddle(ditPressedRef.current, true, false);
-                }}
-                onPointerUp={(e) => {
-                  if (!connected) return;
-                  e.currentTarget.releasePointerCapture(e.pointerId);
-                  setDahButtonActive(false);
-                  dahPressedRef.current = false;
-                  emitCwPaddle(ditPressedRef.current, false, false);
-                }}
-                onPointerCancel={() => {
-                  if (!connected) return;
-                  setDahButtonActive(false);
-                  dahPressedRef.current = false;
-                  emitCwPaddle(ditPressedRef.current, false, false);
-                }}
-                disabled={!connected}
-                className={cn(
-                  "flex flex-col items-center justify-center flex-1 h-16 rounded-xl border transition-all gap-1 touch-none select-none",
-                  !connected && "opacity-50 cursor-not-allowed",
-                  dahButtonActive ? "bg-amber-500/20 border-amber-400 text-amber-300" : "bg-[#0a0a0a] border-[#2a2b2e] text-[#e0e0e0]"
-                )}
-              >
-                <span className="text-2xl font-bold leading-none">—</span>
-                <span className="text-xs uppercase font-bold leading-none">dah</span>
-              </button>
-            </div>
-          ) : (
-            <button
-              onPointerDown={(e) => {
-                if (!connected) return;
-                e.currentTarget.setPointerCapture(e.pointerId);
-                handleSetPTT(true);
-              }}
-              onPointerUp={(e) => {
-                if (!connected) return;
-                e.currentTarget.releasePointerCapture(e.pointerId);
-                handleSetPTT(false);
-              }}
-              onPointerCancel={() => {
-                if (!connected) return;
-                handleSetPTT(false);
-              }}
-              disabled={!connected}
-              className={cn(
-                "flex flex-col items-center justify-center w-full h-16 rounded-xl border transition-all gap-1 touch-none select-none",
-                !connected && "opacity-50 cursor-not-allowed",
-                status.ptt ? "bg-red-500/20 border-red-500 text-red-500" : "bg-[#0a0a0a] border-[#2a2b2e]"
-              )}
-            >
-              <Mic size={24} />
-              <span className="text-xs uppercase font-bold leading-none">PTT</span>
-            </button>
-          )}
-        </div>
+        <PhoneStickyBar
+          stickyBarRef={stickyBarRef}
+          cwDecodeEnabled={cwDecodeEnabled}
+          cwStats={cwStats}
+          cwDecodedText={cwDecodedText}
+          setCwDecodedText={setCwDecodedText}
+          cwScrollContainerRef={cwScrollContainerRef}
+          cwSettings={cwSettings}
+          status={status}
+          connected={connected}
+          handleSetPTT={handleSetPTT}
+          ditPressedRef={ditPressedRef}
+          dahPressedRef={dahPressedRef}
+          emitCwPaddle={emitCwPaddle}
+        />
       )}
     </div>
   );

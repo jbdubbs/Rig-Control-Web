@@ -55,12 +55,6 @@ Developers who want to run from source will find build instructions in the [Deve
 - **macOS Support**: Currently untested — requires externally installed Hamlib 4.7.0 in the system PATH.
 - **Broader Rig Testing**: Currently tested on FT-710 and FT-891, which means other similar modern Yaesu radios should work well. Other Hamlib-supported rigs should work.  Let me know with a bug report.
 
-## What this app is/isn't
-- This app is for modern or the most popular rigs on the market which do not have built-in networking capabilities available, or rigs which require a subscription service to use them.  Examples include FT-710, FT-DX10, IC-7300, IC-7300 Mk II, FTX-1/F, FT-991A, FT-891, Kenwood 590/890/990, and other popular non-networked rigs which are supported by Hamlib.  Rig control will not be reinvented in this app.  I'll leave that to the experts.
-- Audio capabilities are dependant on the radio having a modern and widely used digital sound interface, whether that's with a built-in sound card, Digirig, Allscan URI, Master Communications DRI, or the like.
-- Video capabilities are dependant on the radio having a video output of some kind, which can be fed back into the shack computer with an adapter.  (https://a.co/d/08s41ath + https://a.co/d/00hEobog for example for a modern Yaesu rig).
-- **What it's not!** This app is not for making every rig on earth work 100% correctly with the software.  This software may never work perfectly with your TenTec 506 Rebel, for example.  There will not be 1000 different rig control options, 17 different ways to interface with every CW keyer under the sun, and it will not reverse engineer your SCU-LAN10 interface to get a full live spectrum view like a Web SDR.  Rotators, amplifiers, satellite ops, etc will not likely be supported unless there is broad community impact.  This app is about bringing a simple way to remotely operate your rig to the masses.
-
 ## Prerequisites
 
 ### Common
@@ -68,18 +62,16 @@ Developers who want to run from source will find build instructions in the [Deve
   - **Windows 10 or higher** (tested on Windows 11 23H2) — Requires Hamlib 4.7.0 or later installed.
     - For audio, use MME or DirectSound devices from the backend audio device selector. WASAPI requires the Windows audio device to be configured at 48 kHz in Sound settings (for example, FT-710 only works at 44,100).
   - **Linux kernel 6.0 or higher** (tested on Fedora 43) — Bundled with latest daily Hamlib snapshot.  Hamlib install not required.
-  - **macOS**
+  - **macOS** (TBA — no test hardware available)
     - Requires externally installed Hamlib 4.7.0 in the system PATH.
-    - Completely untested.  No testing hardware.
 
 ### Compile from Source
 - **Node.js**: Version 18 or higher.
 - **Hamlib**: 4.7.0 or higher.
   - **Electron Apps**: Bundle `rigctld` by placing the binary in `bin/[linux|windows|mac]/`.  Not required.  Will fall back to system Hamlib binaries.
 
-### Installing Hamlib (if required, 4.7.0 or higher)
-- **Linux**: `sudo apt install libhamlib-utils`, `sudo dnf install hamlib`
-  - **WARNING**: Most linux distros only have a very old version of Hamlib available.  If using the system Hamlib instead of a bundled version, install from source at the [Hamlib website](https://hamlib.github.io/).
+### Installing Hamlib (if required)
+- **Linux**: `sudo apt install libhamlib-utils`
 - **macOS**: `brew install hamlib`
 - **Windows**: Download and install from the [Hamlib website](https://hamlib.github.io/).
 
@@ -176,17 +168,7 @@ Open the **General Settings** panel (gear icon) to configure. Settings are organ
 - **Audio Settings**: Backend input/output device (server-side, for the radio), local input/output device (browser-side, for the operator), and enable/disable inbound and outbound audio independently.
   - **Local Speaker Volume**: A slider (0–200%) below the Local Output dropdown controls the volume of received audio in your browser. 100% is unity gain (system volume unchanged). Above 100% amplifies the signal — useful when your system volume is already at maximum.
 
-### SPOTS Tab
-Enable POTA and/or SOTA spot displays independently. Each has identical controls:
-- **Poll Frequency**: How often to fetch new spots (1–5 minutes).
-- **Max Spot Age**: Discard spots older than this threshold.
-- **Band Filter**: Multi-select checkbox grid. No selection = all bands shown.
-- **Mode Filter**: Limit spots to SSB, CW, FT8, FT4, or ALL.
-
-### Display Tab
-Option to display the Command Console, which allows inputting raw hamlib commands that bypass the UI.  See [here](https://hamlib.sourceforge.net/html/rigctld.1.html) for a list of commands.
-
-### CW Tab
+### KEYER Tab
 Configure the CW decoder and keyer:
 
 **CW Decoder**
@@ -200,6 +182,13 @@ Configure the CW decoder and keyer:
 - **Speed (WPM)**: Words per minute — adjustable 5–40 WPM.
 - **Sidetone**: Enable/disable local audio feedback, set tone frequency (Hz), and volume. The sidetone plays instantly in the browser — it does not travel through the radio.
 - **Key Bindings**: Rebind the dit, dah, and straight key keyboard keys. Click the binding and press any key to rebind.
+
+### SPOTS Tab
+Enable POTA and/or SOTA spot displays independently. Each has identical controls:
+- **Poll Frequency**: How often to fetch new spots (1–5 minutes).
+- **Max Spot Age**: Discard spots older than this threshold.
+- **Band Filter**: Multi-select checkbox grid. No selection = all bands shown.
+- **Mode Filter**: Limit spots to SSB, CW, FT8, FT4, or ALL.
 
 ## License
 
