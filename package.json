@@ -1,10 +1,13 @@
 {
   "name": "rigcontrol-web",
   "private": true,
-  "version": "04.24.2026-Beta6",
+  "version": "04.27.2026-Beta7",
   "license": "Apache-2.0",
   "author": "Jason Weisberger NT0Y",
   "description": "A web-based frontend for hamlib rigctld for local installation and portable backend capabilities.",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -64,7 +67,6 @@
     }
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
@@ -72,8 +74,6 @@
     "express": "^4.21.2",
     "libopus-node": "^0.0.4",
     "lucide-react": "^0.546.0",
-    "lyra-codec": "^1.1.1",
-    "motion": "^12.23.24",
     "naudiodon": "github:jbdubbs/naudiodon-gcc15",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
