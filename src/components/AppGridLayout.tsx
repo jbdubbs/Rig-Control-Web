@@ -84,7 +84,7 @@ export default function AppGridLayout({
           autoSize={true}
         >
           {viewLayout.items.map(item => (
-            <div key={item.i} className="overflow-hidden">
+            <div key={item.i} className="overflow-hidden h-full">
               {renderPanel(item)}
             </div>
           ))}

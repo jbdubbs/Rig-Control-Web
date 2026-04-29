@@ -33,6 +33,7 @@ export interface GridItem {
   // Custom fields (preserved through react-grid-layout, ignored by the library)
   panelType?: PanelType;
   tabGroup?: TabGroupConfig;
+  isPlaceholder?: boolean; // edit-mode empty-cell sentinel, never persisted
 }
 
 export interface ViewLayout {
@@ -66,3 +67,15 @@ export const PANEL_MIN_SIZES: Partial<Record<PanelType, { minW: number; minH: nu
   videoaudio: { minW: 1, minH: 1 },
   commandconsole: { minW: 1, minH: 1 },
 };
+
+export interface GridLayoutCallbacks {
+  onExitEditMode: () => void;
+  addPanel: (panelType: PanelType) => void;
+  removePanel: (itemId: string) => void;
+  setGridSize: (cols: number, rows: number) => void;
+  mergeIntoTabGroup: (targetId: string, sourceId: string) => void;
+  removeFromTabGroup: (groupId: string, panelType: PanelType) => void;
+  setTabGroupActiveIndex: (itemId: string, index: number) => void;
+  updateItemPositions: (positions: Array<{ i: string; x: number; y: number; w: number; h: number }>) => void;
+  resetToDefault: () => void;
+}

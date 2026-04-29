@@ -29,6 +29,7 @@ import { useLayoutState } from "./hooks/useLayoutState";
 import { useCwDecoder } from "./hooks/useCwDecoder";
 import { usePanelState } from "./hooks/usePanelState";
 import { useLayoutConfig } from "./hooks/useLayoutConfig";
+import type { PanelType } from "./types/layout";
 
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -70,8 +71,39 @@ export default function App() {
 
   // ── Hooks ─────────────────────────────────────────────────────────────────
   const { isCompact, isPhone, stickyBarHeight, containerRef, stickyBarRef } = useLayoutState();
-  const [isEditMode, setIsEditMode] = useState(false);
-  const { compactLayout, setCompactLayout, phoneLayout, setPhoneLayout } = useLayoutConfig();
+  const [isCompactEditMode, setIsCompactEditMode] = useState(false);
+  const [isPhoneEditMode, setIsPhoneEditMode] = useState(false);
+  const {
+    compactLayout, setCompactLayout,
+    phoneLayout, setPhoneLayout,
+    addPanel, removePanel, setGridSize,
+    mergeIntoTabGroup, removeFromTabGroup,
+    setTabGroupActiveIndex, updateItemPositions, resetToDefault,
+  } = useLayoutConfig();
+
+  const compactGridCallbacks = useMemo(() => ({
+    onExitEditMode: () => setIsCompactEditMode(false),
+    addPanel: (panelType: PanelType) => addPanel('compact', panelType),
+    removePanel: (itemId: string) => removePanel('compact', itemId),
+    setGridSize: (cols: number, rows: number) => setGridSize('compact', cols, rows),
+    mergeIntoTabGroup: (targetId: string, sourceId: string) => mergeIntoTabGroup('compact', targetId, sourceId),
+    removeFromTabGroup: (groupId: string, panelType: PanelType) => removeFromTabGroup('compact', groupId, panelType),
+    setTabGroupActiveIndex: (itemId: string, index: number) => setTabGroupActiveIndex('compact', itemId, index),
+    updateItemPositions: (positions: Array<{ i: string; x: number; y: number; w: number; h: number }>) => updateItemPositions('compact', positions),
+    resetToDefault: () => resetToDefault('compact'),
+  }), [addPanel, removePanel, setGridSize, mergeIntoTabGroup, removeFromTabGroup, setTabGroupActiveIndex, updateItemPositions, resetToDefault]);
+
+  const phoneGridCallbacks = useMemo(() => ({
+    onExitEditMode: () => setIsPhoneEditMode(false),
+    addPanel: (panelType: PanelType) => addPanel('phone', panelType),
+    removePanel: (itemId: string) => removePanel('phone', itemId),
+    setGridSize: (cols: number, rows: number) => setGridSize('phone', cols, rows),
+    mergeIntoTabGroup: (targetId: string, sourceId: string) => mergeIntoTabGroup('phone', targetId, sourceId),
+    removeFromTabGroup: (groupId: string, panelType: PanelType) => removeFromTabGroup('phone', groupId, panelType),
+    setTabGroupActiveIndex: (itemId: string, index: number) => setTabGroupActiveIndex('phone', itemId, index),
+    updateItemPositions: (positions: Array<{ i: string; x: number; y: number; w: number; h: number }>) => updateItemPositions('phone', positions),
+    resetToDefault: () => resetToDefault('phone'),
+  }), [addPanel, removePanel, setGridSize, mergeIntoTabGroup, removeFromTabGroup, setTabGroupActiveIndex, updateItemPositions, resetToDefault]);
 
   const {
     showSetupModal, setShowSetupModal,
@@ -418,14 +450,14 @@ export default function App() {
             </button>
             {(isCompact || isPhone) && (
               <button
-                onClick={() => setIsEditMode(v => !v)}
+                onClick={() => isCompact ? setIsCompactEditMode(v => !v) : setIsPhoneEditMode(v => !v)}
                 className={cn(
                   "p-1.5 sm:p-2 bg-[#0a0a0a] border rounded-lg transition-all flex-shrink-0",
-                  isEditMode
+                  (isCompact ? isCompactEditMode : isPhoneEditMode)
                     ? "text-emerald-400 border-emerald-500/70 bg-emerald-500/10"
                     : "text-[#8e9299] border-[#2a2b2e] hover:text-emerald-400"
                 )}
-                title={isEditMode ? "Exit layout editor" : "Edit layout"}
+                title={(isCompact ? isCompactEditMode : isPhoneEditMode) ? "Exit layout editor" : "Edit layout"}
               >
                 <LayoutGrid size={18} />
               </button>
@@ -578,6 +610,9 @@ export default function App() {
             setIsConsoleCollapsed={setIsConsoleCollapsed}
             setRawCommand={setRawCommand}
             handleSendRaw={handleSendRaw}
+            phoneLayout={phoneLayout}
+            isEditMode={isPhoneEditMode}
+            gridCallbacks={phoneGridCallbacks}
           />
         ) : isCompact ? (
           <CompactLayout
@@ -680,7 +715,8 @@ export default function App() {
             handleSendRaw={handleSendRaw}
             compactLayout={compactLayout}
             setCompactLayout={setCompactLayout}
-            isEditMode={isEditMode}
+            isEditMode={isCompactEditMode}
+            gridCallbacks={compactGridCallbacks}
           />
         ) : (
           <DesktopLayout

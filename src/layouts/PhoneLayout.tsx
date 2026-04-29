@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import type { Socket } from "socket.io-client";
 import { Radio, Monitor, Zap, MapPin, Settings } from "lucide-react";
 import { cn } from "../utils";
@@ -12,7 +12,11 @@ import type {
   RfPowerCapabilities,
   ConsoleLog,
 } from "../types";
+import type { GridItem, GridLayoutCallbacks, PanelType, ViewLayout } from "../types/layout";
+import { PANEL_LABELS } from "../types/layout";
 import PanelChrome from "../components/PanelChrome";
+import EditToolbar from "../components/EditToolbar";
+import PanelPicker from "../components/PanelPicker";
 import CommandConsolePanel from "../panels/CommandConsolePanel";
 import RfLevelsPanel from "../panels/RfLevelsPanel";
 import VfoPanel, { VfoCollapsedHeader } from "../panels/VfoPanel";
@@ -24,6 +28,11 @@ import ControlsPanel from "../panels/ControlsPanel";
 import TabbedMeterPanel, {
   TabbedMeterHeaderContent,
 } from "../panels/TabbedMeterPanel";
+
+const PHONE_PANEL_TYPES: PanelType[] = [
+  'vfo', 'videoaudio', 'smeter', 'controls',
+  'spots_pota', 'spots_sota', 'commandconsole',
+];
 
 export interface PhoneLayoutProps {
   // Core rig state
@@ -146,6 +155,11 @@ export interface PhoneLayoutProps {
   setIsConsoleCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   setRawCommand: React.Dispatch<React.SetStateAction<string>>;
   handleSendRaw: (e: React.FormEvent) => void;
+
+  // Grid layout
+  phoneLayout: ViewLayout;
+  isEditMode: boolean;
+  gridCallbacks?: GridLayoutCallbacks;
 }
 
 function PhoneLayout({
@@ -246,10 +260,302 @@ function PhoneLayout({
   setIsConsoleCollapsed,
   setRawCommand,
   handleSendRaw,
+  phoneLayout,
+  isEditMode,
+  gridCallbacks,
 }: PhoneLayoutProps) {
+
+  const [showPanelPicker, setShowPanelPicker] = useState(false);
+
+  const existingPhonePanelTypes = useMemo(() => {
+    const types = new Set<PanelType>();
+    phoneLayout.items.forEach(item => {
+      if (item.panelType) types.add(item.panelType);
+      item.tabGroup?.panels.forEach(p => types.add(p));
+    });
+    return types;
+  }, [phoneLayout.items]);
+
+  const visibleItems = useMemo(() => {
+    return [...phoneLayout.items]
+      .filter(item => {
+        if (item.panelType === 'commandconsole' && !showCommandConsole) return false;
+        if (item.panelType === 'spots_pota' && !potaEnabled) return false;
+        if (item.panelType === 'spots_sota' && !sotaEnabled) return false;
+        return true;
+      })
+      .sort((a, b) => a.y - b.y);
+  }, [phoneLayout.items, showCommandConsole, potaEnabled, sotaEnabled]);
+
+  function movePhonePanel(item: GridItem, direction: 'up' | 'down', idx: number) {
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= visibleItems.length) return;
+    const a = item;
+    const b = visibleItems[targetIdx];
+    gridCallbacks?.updateItemPositions([
+      { i: a.i, x: a.x, y: b.y, w: a.w, h: a.h },
+      { i: b.i, x: b.x, y: a.y, w: b.w, h: b.h },
+    ]);
+  }
+
+  function renderPhonePanel(panelType: PanelType | undefined): React.ReactNode {
+    switch (panelType) {
+      case 'vfo':
+        return (
+          <PanelChrome
+            title="VFO"
+            icon={<Radio size={12} />}
+            isCollapsed={isPhoneVFOCollapsed}
+            setIsCollapsed={setIsPhoneVFOCollapsed}
+            collapsedContent={
+              <VfoCollapsedHeader
+                status={status}
+                inputVfoA={inputVfoA}
+                inputVfoB={inputVfoB}
+                localMode={localMode}
+                vfoStep={vfoStep}
+                connected={connected}
+                adjustVfoFrequency={adjustVfoFrequency}
+              />
+            }
+            className={cn(
+              "shadow-lg",
+              status.isSplit
+                ? "border-amber-500/30"
+                : status.vfo === "VFOA"
+                ? "border-emerald-500/30"
+                : "border-blue-500/30"
+            )}
+            bodyClassName="p-3 space-y-2"
+            headerSize="md"
+          >
+            <VfoPanel
+              variant="phone"
+              connected={connected}
+              status={status}
+              vfoStep={vfoStep}
+              setVfoStep={setVfoStep}
+              inputVfoA={inputVfoA}
+              setInputVfoA={setInputVfoA}
+              inputVfoB={inputVfoB}
+              setInputVfoB={setInputVfoB}
+              adjustVfoFrequency={adjustVfoFrequency}
+              handleSetVFO={handleSetVFO}
+              handleToggleSplit={handleToggleSplit}
+              handleSetFreq={handleSetFreq}
+              localMode={localMode}
+              availableModes={availableModes}
+              handleSetMode={handleSetMode}
+              handleSetBw={handleSetBw}
+              bandwidth={status?.bandwidth || "2400"}
+            />
+          </PanelChrome>
+        );
+
+      case 'videoaudio':
+        return (
+          <PanelChrome
+            title="Video & Audio"
+            icon={<Monitor size={12} />}
+            isCollapsed={isVideoCollapsed}
+            setIsCollapsed={setIsVideoCollapsed}
+            headerActions={
+              <VideoAudioHeaderActions
+                variant="phone"
+                socket={socket}
+                videoStatus={videoStatus}
+                setIsVideoSettingsOpen={setIsVideoSettingsOpen}
+                enumerateVideoDevices={enumerateVideoDevices}
+                isElectronSource={isElectronSource}
+                audioStatus={audioStatus}
+                localAudioReady={localAudioReady}
+                audioWasRestarted={audioWasRestarted}
+                audioSettings={audioSettings}
+                inboundMuted={inboundMuted}
+                setInboundMuted={setInboundMuted}
+                outboundMuted={outboundMuted}
+                setOutboundMuted={setOutboundMuted}
+                handleJoinAudio={handleJoinAudio}
+              />
+            }
+            className="shadow-lg"
+            bodyClassName="p-0"
+            headerSize="md"
+          >
+            <VideoAudioPanel
+              variant="phone"
+              socket={socket}
+              videoStatus={videoStatus}
+              isElectronSource={isElectronSource}
+              videoError={videoError}
+              setVideoError={setVideoError}
+              videoPreviewCallbackRef={videoPreviewCallbackRef}
+              videoCanvasRef={videoCanvasRef}
+            />
+          </PanelChrome>
+        );
+
+      case 'smeter':
+        return (
+          <PanelChrome
+            isCollapsed={isPhoneMeterCollapsed}
+            setIsCollapsed={setIsPhoneMeterCollapsed}
+            customHeaderContent={
+              <TabbedMeterHeaderContent
+                isCollapsed={isPhoneMeterCollapsed}
+                status={status}
+                meterTab={phoneMeterTab}
+                setMeterTab={setPhoneMeterTab}
+              />
+            }
+            bodyClassName="p-3"
+            headerSize="md"
+          >
+            <TabbedMeterPanel
+              status={status}
+              history={history}
+              meterTab={phoneMeterTab}
+            />
+          </PanelChrome>
+        );
+
+      case 'controls':
+        return (
+          <PanelChrome
+            title="Quick Controls"
+            icon={<Zap size={12} />}
+            isCollapsed={isPhoneQuickControlsCollapsed}
+            setIsCollapsed={setIsPhoneQuickControlsCollapsed}
+            bodyClassName="p-3 flex flex-col gap-4"
+            headerSize="md"
+          >
+            <ControlsPanel
+              variant="phone"
+              connected={connected}
+              status={status}
+              isTuning={isTuning}
+              tuneJustFinished={tuneJustFinished}
+              cwSettings={cwSettings}
+              cwKeyActive={cwKeyActive}
+              cwStuckAlert={cwStuckAlert}
+              attenuatorLevels={attenuatorLevels}
+              preampLevels={preampLevels}
+              agcLevels={agcLevels}
+              nbCapabilities={nbCapabilities}
+              nrCapabilities={nrCapabilities}
+              anfCapabilities={anfCapabilities}
+              handleSetPTT={handleSetPTT}
+              handleSetFunc={handleSetFunc}
+              handleVfoOp={handleVfoOp}
+              cycleAttenuator={cycleAttenuator}
+              cyclePreamp={cyclePreamp}
+              cycleAgc={cycleAgc}
+              getAttenuatorLabel={getAttenuatorLabel}
+              getPreampLabel={getPreampLabel}
+              getAgcLabel={getAgcLabel}
+            />
+            <div className="flex flex-col gap-3">
+              <RfLevelsPanel
+                variant="phone"
+                connected={connected}
+                localRFPower={localRFPower}
+                setLocalRFPower={setLocalRFPower}
+                rfPowerCapabilities={rfPowerCapabilities}
+                isDraggingRF={isDraggingRF}
+                localRFLevel={localRFLevel}
+                setLocalRFLevel={setLocalRFLevel}
+                isDraggingRFLevel={isDraggingRFLevel}
+                localNRLevel={localNRLevel}
+                setLocalNRLevel={setLocalNRLevel}
+                nrCapabilities={nrCapabilities}
+                isDraggingNR={isDraggingNR}
+                localNBLevel={localNBLevel}
+                setLocalNBLevel={setLocalNBLevel}
+                nbCapabilities={nbCapabilities}
+                isDraggingNB={isDraggingNB}
+              />
+            </div>
+          </PanelChrome>
+        );
+
+      case 'spots_pota':
+        return (
+          <PanelChrome
+            title="POTA Spots"
+            icon={<MapPin size={12} />}
+            isCollapsed={potaSpotsCollapsed}
+            setIsCollapsed={setPotaSpotsCollapsed}
+            headerActions={
+              <span className="text-[0.5rem] text-[#8e9299]">
+                {filteredSpots.length} spot{filteredSpots.length !== 1 ? "s" : ""}
+              </span>
+            }
+            outerRef={potaSpotsBoxRef}
+            bodyClassName="p-0"
+            headerSize="md"
+          >
+            <SpotsPanel
+              variant="phone"
+              type="pota"
+              renderTable={() => renderSpotsTable(false)}
+            />
+          </PanelChrome>
+        );
+
+      case 'spots_sota':
+        return (
+          <PanelChrome
+            title="SOTA Spots"
+            icon={<MapPin size={12} />}
+            isCollapsed={sotaSpotsCollapsed}
+            setIsCollapsed={setSotaSpotsCollapsed}
+            headerActions={
+              <span className="text-[0.5rem] text-[#8e9299]">
+                {filteredSotaSpots.length} spot
+                {filteredSotaSpots.length !== 1 ? "s" : ""}
+              </span>
+            }
+            outerRef={sotaSpotsBoxRef}
+            bodyClassName="p-0"
+            headerSize="md"
+          >
+            <SpotsPanel
+              variant="phone"
+              type="sota"
+              renderTable={() => renderSotaSpotsTable()}
+            />
+          </PanelChrome>
+        );
+
+      case 'commandconsole':
+        return (
+          <PanelChrome
+            title="Rigctld Command Console"
+            icon={<Settings size={12} />}
+            isCollapsed={isConsoleCollapsed}
+            setIsCollapsed={setIsConsoleCollapsed}
+            bodyClassName="p-3"
+            headerSize="md"
+          >
+            <CommandConsolePanel
+              variant="phone"
+              connected={connected}
+              consoleLogs={consoleLogs}
+              rawCommand={rawCommand}
+              setRawCommand={setRawCommand}
+              handleSendRaw={handleSendRaw}
+            />
+          </PanelChrome>
+        );
+
+      default:
+        return null;
+    }
+  }
+
   return (
-    <div className="space-y-2 animate-in fade-in duration-300">
-      {/* CW mode warning */}
+    <div className={cn("space-y-2 animate-in fade-in duration-300", isEditMode && "pb-16")}>
+      {/* CW mode warning — always at top, not part of the configurable panel order */}
       {cwSettings.enabled &&
         connected &&
         !["CW", "CWR", "CW-R"].includes(status?.mode || "") && (
@@ -258,239 +564,61 @@ function PhoneLayout({
           </div>
         )}
 
-      {/* VFO */}
-      <PanelChrome
-        title="VFO"
-        icon={<Radio size={12} />}
-        isCollapsed={isPhoneVFOCollapsed}
-        setIsCollapsed={setIsPhoneVFOCollapsed}
-        collapsedContent={
-          <VfoCollapsedHeader
-            status={status}
-            inputVfoA={inputVfoA}
-            inputVfoB={inputVfoB}
-            localMode={localMode}
-            vfoStep={vfoStep}
-            connected={connected}
-            adjustVfoFrequency={adjustVfoFrequency}
-          />
-        }
-        className={cn(
-          "shadow-lg",
-          status.isSplit
-            ? "border-amber-500/30"
-            : status.vfo === "VFOA"
-            ? "border-emerald-500/30"
-            : "border-blue-500/30"
-        )}
-        bodyClassName="p-3 space-y-2"
-        headerSize="md"
-      >
-        <VfoPanel
-          variant="phone"
-          connected={connected}
-          status={status}
-          vfoStep={vfoStep}
-          setVfoStep={setVfoStep}
-          inputVfoA={inputVfoA}
-          setInputVfoA={setInputVfoA}
-          inputVfoB={inputVfoB}
-          setInputVfoB={setInputVfoB}
-          adjustVfoFrequency={adjustVfoFrequency}
-          handleSetVFO={handleSetVFO}
-          handleToggleSplit={handleToggleSplit}
-          handleSetFreq={handleSetFreq}
-          localMode={localMode}
-          availableModes={availableModes}
-          handleSetMode={handleSetMode}
-          handleSetBw={handleSetBw}
-          bandwidth={status?.bandwidth || "2400"}
-        />
-      </PanelChrome>
-
-      {/* Video & Audio */}
-      <PanelChrome
-        title="Video & Audio"
-        icon={<Monitor size={12} />}
-        isCollapsed={isVideoCollapsed}
-        setIsCollapsed={setIsVideoCollapsed}
-        headerActions={
-          <VideoAudioHeaderActions
-            variant="phone"
-            socket={socket}
-            videoStatus={videoStatus}
-            setIsVideoSettingsOpen={setIsVideoSettingsOpen}
-            enumerateVideoDevices={enumerateVideoDevices}
-            isElectronSource={isElectronSource}
-            audioStatus={audioStatus}
-            localAudioReady={localAudioReady}
-            audioWasRestarted={audioWasRestarted}
-            audioSettings={audioSettings}
-            inboundMuted={inboundMuted}
-            setInboundMuted={setInboundMuted}
-            outboundMuted={outboundMuted}
-            setOutboundMuted={setOutboundMuted}
-            handleJoinAudio={handleJoinAudio}
-          />
-        }
-        className="shadow-lg"
-        bodyClassName="p-0"
-        headerSize="md"
-      >
-        <VideoAudioPanel
-          variant="phone"
-          socket={socket}
-          videoStatus={videoStatus}
-          isElectronSource={isElectronSource}
-          videoError={videoError}
-          setVideoError={setVideoError}
-          videoPreviewCallbackRef={videoPreviewCallbackRef}
-          videoCanvasRef={videoCanvasRef}
-        />
-      </PanelChrome>
-
-      {/* Meters */}
-      <PanelChrome
-        isCollapsed={isPhoneMeterCollapsed}
-        setIsCollapsed={setIsPhoneMeterCollapsed}
-        customHeaderContent={
-          <TabbedMeterHeaderContent
-            isCollapsed={isPhoneMeterCollapsed}
-            status={status}
-            meterTab={phoneMeterTab}
-            setMeterTab={setPhoneMeterTab}
-          />
-        }
-        bodyClassName="p-3"
-        headerSize="md"
-      >
-        <TabbedMeterPanel
-          status={status}
-          history={history}
-          meterTab={phoneMeterTab}
-        />
-      </PanelChrome>
-
-      {/* Quick Controls */}
-      <PanelChrome
-        title="Quick Controls"
-        icon={<Zap size={12} />}
-        isCollapsed={isPhoneQuickControlsCollapsed}
-        setIsCollapsed={setIsPhoneQuickControlsCollapsed}
-        bodyClassName="p-3 flex flex-col gap-4"
-        headerSize="md"
-      >
-        <ControlsPanel
-          variant="phone"
-          connected={connected}
-          status={status}
-          isTuning={isTuning}
-          tuneJustFinished={tuneJustFinished}
-          cwSettings={cwSettings}
-          cwKeyActive={cwKeyActive}
-          cwStuckAlert={cwStuckAlert}
-          attenuatorLevels={attenuatorLevels}
-          preampLevels={preampLevels}
-          agcLevels={agcLevels}
-          nbCapabilities={nbCapabilities}
-          nrCapabilities={nrCapabilities}
-          anfCapabilities={anfCapabilities}
-          handleSetPTT={handleSetPTT}
-          handleSetFunc={handleSetFunc}
-          handleVfoOp={handleVfoOp}
-          cycleAttenuator={cycleAttenuator}
-          cyclePreamp={cyclePreamp}
-          cycleAgc={cycleAgc}
-          getAttenuatorLabel={getAttenuatorLabel}
-          getPreampLabel={getPreampLabel}
-          getAgcLabel={getAgcLabel}
-        />
-        <div className="flex flex-col gap-3">
-          <RfLevelsPanel
-            variant="phone"
-            connected={connected}
-            localRFPower={localRFPower}
-            setLocalRFPower={setLocalRFPower}
-            rfPowerCapabilities={rfPowerCapabilities}
-            isDraggingRF={isDraggingRF}
-            localRFLevel={localRFLevel}
-            setLocalRFLevel={setLocalRFLevel}
-            isDraggingRFLevel={isDraggingRFLevel}
-            localNRLevel={localNRLevel}
-            setLocalNRLevel={setLocalNRLevel}
-            nrCapabilities={nrCapabilities}
-            isDraggingNR={isDraggingNR}
-            localNBLevel={localNBLevel}
-            setLocalNBLevel={setLocalNBLevel}
-            nbCapabilities={nbCapabilities}
-            isDraggingNB={isDraggingNB}
-          />
+      {visibleItems.map((item, idx) => (
+        <div key={item.i} className="relative">
+          {renderPhonePanel(item.panelType)}
+          {isEditMode && (
+            <div className="absolute top-1.5 right-1.5 z-30 flex items-center gap-0.5">
+              <span className="text-[0.5rem] uppercase tracking-widest font-bold text-[#5a5b5e] mr-1 select-none">
+                {PANEL_LABELS[item.panelType!] ?? item.panelType}
+              </span>
+              <button
+                disabled={idx === 0}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); movePhonePanel(item, 'up', idx); }}
+                className="w-6 h-6 flex items-center justify-center rounded bg-[#0a0a0a]/90 border border-[#3a3b3e] text-[#aaaaaa] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-[10px] transition-all"
+                title="Move up"
+              >▲</button>
+              <button
+                disabled={idx === visibleItems.length - 1}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); movePhonePanel(item, 'down', idx); }}
+                className="w-6 h-6 flex items-center justify-center rounded bg-[#0a0a0a]/90 border border-[#3a3b3e] text-[#aaaaaa] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-[10px] transition-all"
+                title="Move down"
+              >▼</button>
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); gridCallbacks?.removePanel(item.i); }}
+                className="w-6 h-6 flex items-center justify-center rounded bg-red-500/80 hover:bg-red-500 text-white text-[10px] ml-0.5 transition-all"
+                title={`Remove ${PANEL_LABELS[item.panelType!] ?? item.panelType}`}
+              >×</button>
+            </div>
+          )}
         </div>
-      </PanelChrome>
+      ))}
 
-      {potaEnabled && (
-        <PanelChrome
-          title="POTA Spots"
-          icon={<MapPin size={12} />}
-          isCollapsed={potaSpotsCollapsed}
-          setIsCollapsed={setPotaSpotsCollapsed}
-          headerActions={
-            <span className="text-[0.5rem] text-[#8e9299]">
-              {filteredSpots.length} spot{filteredSpots.length !== 1 ? "s" : ""}
-            </span>
-          }
-          outerRef={potaSpotsBoxRef}
-          bodyClassName="p-0"
-          headerSize="md"
-        >
-          <SpotsPanel
-            variant="phone"
-            type="pota"
-            renderTable={() => renderSpotsTable(false)}
+      {isEditMode && gridCallbacks && (
+        <>
+          <EditToolbar
+            cols={1}
+            rows={phoneLayout.items.length}
+            showColsControl={false}
+            showRowsControl={false}
+            onColsChange={() => {}}
+            onRowsChange={() => {}}
+            onAddPanel={() => setShowPanelPicker(true)}
+            onReset={() => gridCallbacks.resetToDefault()}
+            onDone={() => gridCallbacks.onExitEditMode()}
           />
-        </PanelChrome>
-      )}
-      {sotaEnabled && (
-        <PanelChrome
-          title="SOTA Spots"
-          icon={<MapPin size={12} />}
-          isCollapsed={sotaSpotsCollapsed}
-          setIsCollapsed={setSotaSpotsCollapsed}
-          headerActions={
-            <span className="text-[0.5rem] text-[#8e9299]">
-              {filteredSotaSpots.length} spot
-              {filteredSotaSpots.length !== 1 ? "s" : ""}
-            </span>
-          }
-          outerRef={sotaSpotsBoxRef}
-          bodyClassName="p-0"
-          headerSize="md"
-        >
-          <SpotsPanel
-            variant="phone"
-            type="sota"
-            renderTable={() => renderSotaSpotsTable()}
-          />
-        </PanelChrome>
-      )}
-      {showCommandConsole && (
-        <PanelChrome
-          title="Rigctld Command Console"
-          icon={<Settings size={12} />}
-          isCollapsed={isConsoleCollapsed}
-          setIsCollapsed={setIsConsoleCollapsed}
-          bodyClassName="p-3"
-          headerSize="md"
-        >
-          <CommandConsolePanel
-            variant="phone"
-            connected={connected}
-            consoleLogs={consoleLogs}
-            rawCommand={rawCommand}
-            setRawCommand={setRawCommand}
-            handleSendRaw={handleSendRaw}
-          />
-        </PanelChrome>
+          {showPanelPicker && (
+            <PanelPicker
+              availableTypes={PHONE_PANEL_TYPES}
+              existingTypes={existingPhonePanelTypes}
+              onSelect={(type) => { gridCallbacks.addPanel(type); setShowPanelPicker(false); }}
+              onClose={() => setShowPanelPicker(false)}
+            />
+          )}
+        </>
       )}
     </div>
   );

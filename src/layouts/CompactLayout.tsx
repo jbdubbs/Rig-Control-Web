@@ -1,6 +1,6 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import type { Socket } from "socket.io-client";
-import { Monitor, Settings, ChevronDown, ChevronUp } from "lucide-react";
+import { Monitor, Settings, ChevronDown, ChevronUp, GripHorizontal } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -21,9 +21,12 @@ import type {
   RfPowerCapabilities,
   ConsoleLog,
 } from "../types";
-import type { GridItem, ViewLayout } from "../types/layout";
+import type { GridItem, GridLayoutCallbacks, PanelType, ViewLayout } from "../types/layout";
 import AppGridLayout from "../components/AppGridLayout";
 import PanelChrome from "../components/PanelChrome";
+import EditToolbar from "../components/EditToolbar";
+import PanelPicker from "../components/PanelPicker";
+import TabGroupCell from "../components/TabGroupCell";
 import CommandConsolePanel from "../panels/CommandConsolePanel";
 import RfLevelsPanel from "../panels/RfLevelsPanel";
 import VfoPanel from "../panels/VfoPanel";
@@ -32,6 +35,13 @@ import VideoAudioPanel, {
 } from "../panels/VideoAudioPanel";
 import ControlsPanel from "../panels/ControlsPanel";
 import CwDecodePanel from "../panels/CwDecodePanel";
+
+export type { GridLayoutCallbacks };
+
+const COMPACT_PANEL_TYPES: PanelType[] = [
+  'vfo', 'smeter', 'videoaudio', 'controls', 'rflevels',
+  'commandconsole', 'spots_pota', 'spots_sota',
+];
 
 export interface CompactLayoutProps {
   // Core rig state
@@ -159,6 +169,7 @@ export interface CompactLayoutProps {
   compactLayout: ViewLayout;
   setCompactLayout: (layout: ViewLayout) => void;
   isEditMode: boolean;
+  gridCallbacks?: GridLayoutCallbacks;
 }
 
 function CompactLayout({
@@ -262,47 +273,62 @@ function CompactLayout({
   compactLayout,
   setCompactLayout,
   isEditMode,
+  gridCallbacks,
 }: CompactLayoutProps) {
 
-  const renderPanel = useCallback((item: GridItem): React.ReactNode => {
-    const type = item.panelType;
+  const [showPanelPicker, setShowPanelPicker] = useState(false);
 
-    if (item.tabGroup) {
-      // Tab groups rendered inline — will get full TabGroupCell treatment in Phase 2
-      const { panels, activeIndex } = item.tabGroup;
-      const activeType = panels[activeIndex];
+  const existingPanelTypes = useMemo(() => {
+    const types = new Set<PanelType>();
+    compactLayout.items.forEach(item => {
+      if (item.panelType) types.add(item.panelType);
+      item.tabGroup?.panels.forEach(p => types.add(p));
+    });
+    return types;
+  }, [compactLayout.items]);
+
+  const renderPanel = useCallback((item: GridItem): React.ReactNode => {
+    function wrapPanel(content: React.ReactNode): React.ReactNode {
+      if (!isEditMode) return content;
       return (
-        <div className="h-full flex flex-col bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg">
-          <div className="p-2 border-b border-[#2a2b2e] flex items-center gap-1 bg-[#1a1b1e]">
-            {panels.map((p, idx) => (
-              <button
-                key={p}
-                onClick={() => {
-                  const updated = compactLayout.items.map(i =>
-                    i.i === item.i && i.tabGroup
-                      ? { ...i, tabGroup: { ...i.tabGroup, activeIndex: idx } }
-                      : i
-                  );
-                  setCompactLayout({ ...compactLayout, items: updated });
-                }}
-                className={cn(
-                  "px-2 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
-                  idx === activeIndex ? "bg-emerald-500 text-white" : "text-[#8e9299] hover:bg-white/5"
-                )}
-              >
-                {p.replace('spots_', '')}
-              </button>
-            ))}
+        <div className="relative h-full flex flex-col">
+          <div className="grid-drag-handle flex items-center justify-between px-2 py-1 bg-[#0f1012] border-b border-[#2a2b2e] cursor-grab flex-shrink-0 rounded-t-xl select-none">
+            <GripHorizontal size={10} className="text-[#4a4b4e]" />
+            <button
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); gridCallbacks?.removePanel(item.i); }}
+              className="w-4 h-4 flex items-center justify-center bg-red-500/80 hover:bg-red-500 text-white rounded-full text-[10px] leading-none transition-colors"
+              title="Remove panel"
+            >
+              ×
+            </button>
           </div>
           <div className="flex-1 overflow-hidden">
-            {renderPanelByType(activeType, item)}
+            {content}
           </div>
         </div>
       );
     }
 
+    const type = item.panelType;
+
+    if (item.tabGroup) {
+      return wrapPanel(
+        <TabGroupCell
+          item={item}
+          isEditMode={isEditMode}
+          renderPanel={(activeItem) => renderPanelByType(activeItem.panelType, activeItem) ?? <></>}
+          onTabChange={(idx) => gridCallbacks?.setTabGroupActiveIndex(item.i, idx)}
+          onRemoveTab={isEditMode ? (idx) => {
+            const pt = item.tabGroup!.panels[idx];
+            gridCallbacks?.removeFromTabGroup(item.i, pt);
+          } : undefined}
+        />
+      );
+    }
+
     if (!type) return null;
-    return renderPanelByType(type, item);
+    return wrapPanel(renderPanelByType(type, item));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     status, connected, availableModes, socket, vfoSupported,
@@ -318,7 +344,7 @@ function CompactLayout({
     cwSettings, cwKeyActive, cwStuckAlert,
     potaEnabled, sotaEnabled, activeCompactPowerTab,
     showCommandConsole, isConsoleCollapsed, consoleLogs, rawCommand,
-    compactLayout,
+    compactLayout, isEditMode, gridCallbacks,
   ]);
 
   function renderPanelByType(type: GridItem['panelType'], item: GridItem): React.ReactNode {
@@ -672,14 +698,36 @@ function CompactLayout({
   };
 
   return (
-    <div className="animate-in fade-in duration-300">
+    <div className={cn("animate-in fade-in duration-300", isEditMode && "pb-16")}>
       <AppGridLayout
         viewLayout={visibleLayout}
         isEditMode={isEditMode}
         renderPanel={renderPanel}
         onItemsChange={(updated) => setCompactLayout({ ...compactLayout, items: updated })}
+        onDropOnto={gridCallbacks ? (targetId, sourceId) => gridCallbacks.mergeIntoTabGroup(targetId, sourceId) : undefined}
         rowHeight={180}
       />
+      {isEditMode && gridCallbacks && (
+        <>
+          <EditToolbar
+            cols={compactLayout.cols}
+            rows={compactLayout.rows}
+            onColsChange={(c) => gridCallbacks.setGridSize(c, compactLayout.rows)}
+            onRowsChange={(r) => gridCallbacks.setGridSize(compactLayout.cols, r)}
+            onAddPanel={() => setShowPanelPicker(true)}
+            onReset={() => gridCallbacks.resetToDefault()}
+            onDone={() => gridCallbacks.onExitEditMode()}
+          />
+          {showPanelPicker && (
+            <PanelPicker
+              availableTypes={COMPACT_PANEL_TYPES}
+              existingTypes={existingPanelTypes}
+              onSelect={(type) => { gridCallbacks.addPanel(type); setShowPanelPicker(false); }}
+              onClose={() => setShowPanelPicker(false)}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }
