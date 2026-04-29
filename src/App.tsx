@@ -10,6 +10,7 @@ import {
   Monitor,
   Zap,
   X,
+  LayoutGrid,
 } from "lucide-react";
 import { cn } from "./utils";
 import PhoneLayout from "./layouts/PhoneLayout";
@@ -27,6 +28,7 @@ import { useRigControl } from "./hooks/useRigControl";
 import { useLayoutState } from "./hooks/useLayoutState";
 import { useCwDecoder } from "./hooks/useCwDecoder";
 import { usePanelState } from "./hooks/usePanelState";
+import { useLayoutConfig } from "./hooks/useLayoutConfig";
 
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -68,6 +70,8 @@ export default function App() {
 
   // ── Hooks ─────────────────────────────────────────────────────────────────
   const { isCompact, isPhone, stickyBarHeight, containerRef, stickyBarRef } = useLayoutState();
+  const [isEditMode, setIsEditMode] = useState(false);
+  const { compactLayout, setCompactLayout, phoneLayout, setPhoneLayout } = useLayoutConfig();
 
   const {
     showSetupModal, setShowSetupModal,
@@ -412,6 +416,20 @@ export default function App() {
             >
               <Settings size={18} />
             </button>
+            {(isCompact || isPhone) && (
+              <button
+                onClick={() => setIsEditMode(v => !v)}
+                className={cn(
+                  "p-1.5 sm:p-2 bg-[#0a0a0a] border rounded-lg transition-all flex-shrink-0",
+                  isEditMode
+                    ? "text-emerald-400 border-emerald-500/70 bg-emerald-500/10"
+                    : "text-[#8e9299] border-[#2a2b2e] hover:text-emerald-400"
+                )}
+                title={isEditMode ? "Exit layout editor" : "Edit layout"}
+              >
+                <LayoutGrid size={18} />
+              </button>
+            )}
           </div>
         </header>
 
@@ -550,6 +568,9 @@ export default function App() {
             setSotaSpotsCollapsed={setSotaSpotsCollapsed}
             renderSotaSpotsTable={renderSotaSpotsTable}
             cwSettings={cwSettings}
+            cwKeyActive={cwKeyActive}
+            cwStuckAlert={cwStuckAlert}
+            handleSetPTT={handleSetPTT}
             showCommandConsole={showCommandConsole}
             isConsoleCollapsed={isConsoleCollapsed}
             consoleLogs={consoleLogs}
@@ -657,6 +678,9 @@ export default function App() {
             setIsConsoleCollapsed={setIsConsoleCollapsed}
             setRawCommand={setRawCommand}
             handleSendRaw={handleSendRaw}
+            compactLayout={compactLayout}
+            setCompactLayout={setCompactLayout}
+            isEditMode={isEditMode}
           />
         ) : (
           <DesktopLayout
