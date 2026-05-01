@@ -1292,8 +1292,8 @@ var require_node = __commonJS({
           }
           break;
         case "FILE":
-          var fs3 = require("fs");
-          stream2 = new fs3.SyncWriteStream(fd2, { autoClose: false });
+          var fs6 = require("fs");
+          stream2 = new fs6.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -14080,11 +14080,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path3) {
-      if (!path3 || typeof path3 !== "string") {
+    function lookup(path6) {
+      if (!path6 || typeof path6 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path3).toLowerCase().substr(1);
+      var extension2 = extname("x." + path6).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -17639,8 +17639,8 @@ var require_node2 = __commonJS({
           }
           break;
         case "FILE":
-          var fs3 = require("fs");
-          stream2 = new fs3.SyncWriteStream(fd2, { autoClose: false });
+          var fs6 = require("fs");
+          stream2 = new fs6.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -18358,8 +18358,8 @@ var require_node3 = __commonJS({
           }
           break;
         case "FILE":
-          var fs3 = require("fs");
-          stream2 = new fs3.SyncWriteStream(fd2, { autoClose: false });
+          var fs6 = require("fs");
+          stream2 = new fs6.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -18447,7 +18447,7 @@ var require_path_to_regexp = __commonJS({
   "node_modules/path-to-regexp/index.js"(exports2, module2) {
     module2.exports = pathToRegexp;
     var MATCHING_GROUP_REGEXP = /\\.|\((?:\?<(.*?)>)?(?!\?)/g;
-    function pathToRegexp(path3, keys, options) {
+    function pathToRegexp(path6, keys, options) {
       options = options || {};
       keys = keys || [];
       var strict = options.strict;
@@ -18461,8 +18461,8 @@ var require_path_to_regexp = __commonJS({
       var pos = 0;
       var backtrack = "";
       var m;
-      if (path3 instanceof RegExp) {
-        while (m = MATCHING_GROUP_REGEXP.exec(path3.source)) {
+      if (path6 instanceof RegExp) {
+        while (m = MATCHING_GROUP_REGEXP.exec(path6.source)) {
           if (m[0][0] === "\\") continue;
           keys.push({
             name: m[1] || name++,
@@ -18470,18 +18470,18 @@ var require_path_to_regexp = __commonJS({
             offset: m.index
           });
         }
-        return path3;
+        return path6;
       }
-      if (Array.isArray(path3)) {
-        path3 = path3.map(function(value) {
+      if (Array.isArray(path6)) {
+        path6 = path6.map(function(value) {
           return pathToRegexp(value, keys, options).source;
         });
-        return new RegExp(path3.join("|"), flags);
+        return new RegExp(path6.join("|"), flags);
       }
-      if (typeof path3 !== "string") {
+      if (typeof path6 !== "string") {
         throw new TypeError("path must be a string, array of strings, or regular expression");
       }
-      path3 = path3.replace(
+      path6 = path6.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
         function(match, slash, format, key, capture, star, optional, offset) {
           if (match[0] === "\\") {
@@ -18498,7 +18498,7 @@ var require_path_to_regexp = __commonJS({
           if (slash || format) {
             backtrack = "";
           } else {
-            backtrack += path3.slice(pos, offset);
+            backtrack += path6.slice(pos, offset);
           }
           pos = offset + match.length;
           if (match === "*") {
@@ -18526,7 +18526,7 @@ var require_path_to_regexp = __commonJS({
           return result;
         }
       );
-      while (m = MATCHING_GROUP_REGEXP.exec(path3)) {
+      while (m = MATCHING_GROUP_REGEXP.exec(path6)) {
         if (m[0][0] === "\\") continue;
         if (keysOffset + i === keys.length || keys[keysOffset + i].offset > m.index) {
           keys.splice(keysOffset + i, 0, {
@@ -18538,13 +18538,13 @@ var require_path_to_regexp = __commonJS({
         }
         i++;
       }
-      path3 += strict ? "" : path3[path3.length - 1] === "/" ? "?" : "/?";
+      path6 += strict ? "" : path6[path6.length - 1] === "/" ? "?" : "/?";
       if (end) {
-        path3 += "$";
-      } else if (path3[path3.length - 1] !== "/") {
-        path3 += lookahead ? "(?=/|$)" : "(?:/|$)";
+        path6 += "$";
+      } else if (path6[path6.length - 1] !== "/") {
+        path6 += lookahead ? "(?=/|$)" : "(?:/|$)";
       }
-      return new RegExp("^" + path3, flags);
+      return new RegExp("^" + path6, flags);
     }
   }
 });
@@ -18557,19 +18557,19 @@ var require_layer = __commonJS({
     var debug = require_src3()("express:router:layer");
     var hasOwnProperty = Object.prototype.hasOwnProperty;
     module2.exports = Layer;
-    function Layer(path3, options, fn) {
+    function Layer(path6, options, fn) {
       if (!(this instanceof Layer)) {
-        return new Layer(path3, options, fn);
+        return new Layer(path6, options, fn);
       }
-      debug("new %o", path3);
+      debug("new %o", path6);
       var opts = options || {};
       this.handle = fn;
       this.name = fn.name || "<anonymous>";
       this.params = void 0;
       this.path = void 0;
-      this.regexp = pathRegexp(path3, this.keys = [], opts);
-      this.regexp.fast_star = path3 === "*";
-      this.regexp.fast_slash = path3 === "/" && opts.end === false;
+      this.regexp = pathRegexp(path6, this.keys = [], opts);
+      this.regexp.fast_star = path6 === "*";
+      this.regexp.fast_slash = path6 === "/" && opts.end === false;
     }
     Layer.prototype.handle_error = function handle_error(error, req, res, next) {
       var fn = this.handle;
@@ -18593,20 +18593,20 @@ var require_layer = __commonJS({
         next(err);
       }
     };
-    Layer.prototype.match = function match(path3) {
+    Layer.prototype.match = function match(path6) {
       var match2;
-      if (path3 != null) {
+      if (path6 != null) {
         if (this.regexp.fast_slash) {
           this.params = {};
           this.path = "";
           return true;
         }
         if (this.regexp.fast_star) {
-          this.params = { "0": decode_param(path3) };
-          this.path = path3;
+          this.params = { "0": decode_param(path6) };
+          this.path = path6;
           return true;
         }
-        match2 = this.regexp.exec(path3);
+        match2 = this.regexp.exec(path6);
       }
       if (!match2) {
         this.params = void 0;
@@ -18699,10 +18699,10 @@ var require_route = __commonJS({
     var slice = Array.prototype.slice;
     var toString = Object.prototype.toString;
     module2.exports = Route;
-    function Route(path3) {
-      this.path = path3;
+    function Route(path6) {
+      this.path = path6;
       this.stack = [];
-      debug("new %o", path3);
+      debug("new %o", path6);
       this.methods = {};
     }
     Route.prototype._handles_method = function _handles_method(method) {
@@ -18914,8 +18914,8 @@ var require_router = __commonJS({
         if (++sync > 100) {
           return setImmediate(next, err);
         }
-        var path3 = getPathname(req);
-        if (path3 == null) {
+        var path6 = getPathname(req);
+        if (path6 == null) {
           return done(layerError);
         }
         var layer;
@@ -18923,7 +18923,7 @@ var require_router = __commonJS({
         var route;
         while (match !== true && idx < stack.length) {
           layer = stack[idx++];
-          match = matchLayer(layer, path3);
+          match = matchLayer(layer, path6);
           route = layer.route;
           if (typeof match !== "boolean") {
             layerError = layerError || match;
@@ -18961,18 +18961,18 @@ var require_router = __commonJS({
           } else if (route) {
             layer.handle_request(req, res, next);
           } else {
-            trim_prefix(layer, layerError, layerPath, path3);
+            trim_prefix(layer, layerError, layerPath, path6);
           }
           sync = 0;
         });
       }
-      function trim_prefix(layer, layerError, layerPath, path3) {
+      function trim_prefix(layer, layerError, layerPath, path6) {
         if (layerPath.length !== 0) {
-          if (layerPath !== path3.slice(0, layerPath.length)) {
+          if (layerPath !== path6.slice(0, layerPath.length)) {
             next(layerError);
             return;
           }
-          var c = path3[layerPath.length];
+          var c = path6[layerPath.length];
           if (c && c !== "/" && c !== ".") return next(layerError);
           debug("trim prefix (%s) from url %s", layerPath, req.url);
           removed = layerPath;
@@ -19050,7 +19050,7 @@ var require_router = __commonJS({
     };
     proto.use = function use(fn) {
       var offset = 0;
-      var path3 = "/";
+      var path6 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -19058,7 +19058,7 @@ var require_router = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path3 = fn;
+          path6 = fn;
         }
       }
       var callbacks = flatten(slice.call(arguments, offset));
@@ -19070,8 +19070,8 @@ var require_router = __commonJS({
         if (typeof fn !== "function") {
           throw new TypeError("Router.use() requires a middleware function but got a " + gettype(fn));
         }
-        debug("use %o %s", path3, fn.name || "<anonymous>");
-        var layer = new Layer(path3, {
+        debug("use %o %s", path6, fn.name || "<anonymous>");
+        var layer = new Layer(path6, {
           sensitive: this.caseSensitive,
           strict: false,
           end: false
@@ -19081,9 +19081,9 @@ var require_router = __commonJS({
       }
       return this;
     };
-    proto.route = function route(path3) {
-      var route2 = new Route(path3);
-      var layer = new Layer(path3, {
+    proto.route = function route(path6) {
+      var route2 = new Route(path6);
+      var layer = new Layer(path6, {
         sensitive: this.caseSensitive,
         strict: this.strict,
         end: true
@@ -19093,8 +19093,8 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      proto[method] = function(path3) {
-        var route = this.route(path3);
+      proto[method] = function(path6) {
+        var route = this.route(path6);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
@@ -19130,9 +19130,9 @@ var require_router = __commonJS({
       }
       return toString.call(obj).replace(objectRegExp, "$1");
     }
-    function matchLayer(layer, path3) {
+    function matchLayer(layer, path6) {
       try {
-        return layer.match(path3);
+        return layer.match(path6);
       } catch (err) {
         return err;
       }
@@ -19250,13 +19250,13 @@ var require_view = __commonJS({
   "node_modules/express/lib/view.js"(exports2, module2) {
     "use strict";
     var debug = require_src3()("express:view");
-    var path3 = require("path");
-    var fs3 = require("fs");
-    var dirname = path3.dirname;
-    var basename = path3.basename;
-    var extname = path3.extname;
-    var join = path3.join;
-    var resolve = path3.resolve;
+    var path6 = require("path");
+    var fs6 = require("fs");
+    var dirname = path6.dirname;
+    var basename = path6.basename;
+    var extname = path6.extname;
+    var join = path6.join;
+    var resolve = path6.resolve;
     module2.exports = View;
     function View(name, options) {
       var opts = options || {};
@@ -19285,17 +19285,17 @@ var require_view = __commonJS({
       this.path = this.lookup(fileName);
     }
     View.prototype.lookup = function lookup(name) {
-      var path4;
+      var path7;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name);
-      for (var i = 0; i < roots.length && !path4; i++) {
+      for (var i = 0; i < roots.length && !path7; i++) {
         var root = roots[i];
         var loc = resolve(root, name);
         var dir = dirname(loc);
         var file = basename(loc);
-        path4 = this.resolve(dir, file);
+        path7 = this.resolve(dir, file);
       }
-      return path4;
+      return path7;
     };
     View.prototype.render = function render(options, callback) {
       debug('render "%s"', this.path);
@@ -19303,21 +19303,21 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve2(dir, file) {
       var ext = this.ext;
-      var path4 = join(dir, file);
-      var stat = tryStat(path4);
+      var path7 = join(dir, file);
+      var stat = tryStat(path7);
       if (stat && stat.isFile()) {
-        return path4;
+        return path7;
       }
-      path4 = join(dir, basename(file, ext), "index" + ext);
-      stat = tryStat(path4);
+      path7 = join(dir, basename(file, ext), "index" + ext);
+      stat = tryStat(path7);
       if (stat && stat.isFile()) {
-        return path4;
+        return path7;
       }
     };
-    function tryStat(path4) {
-      debug('stat "%s"', path4);
+    function tryStat(path7) {
+      debug('stat "%s"', path7);
       try {
-        return fs3.statSync(path4);
+        return fs6.statSync(path7);
       } catch (e) {
         return void 0;
       }
@@ -19922,8 +19922,8 @@ var require_node4 = __commonJS({
           }
           break;
         case "FILE":
-          var fs3 = require("fs");
-          stream2 = new fs3.SyncWriteStream(fd2, { autoClose: false });
+          var fs6 = require("fs");
+          stream2 = new fs6.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -20095,8 +20095,8 @@ var require_types = __commonJS({
 // node_modules/mime/mime.js
 var require_mime = __commonJS({
   "node_modules/mime/mime.js"(exports2, module2) {
-    var path3 = require("path");
-    var fs3 = require("fs");
+    var path6 = require("path");
+    var fs6 = require("fs");
     function Mime() {
       this.types = /* @__PURE__ */ Object.create(null);
       this.extensions = /* @__PURE__ */ Object.create(null);
@@ -20117,7 +20117,7 @@ var require_mime = __commonJS({
     };
     Mime.prototype.load = function(file) {
       this._loading = file;
-      var map = {}, content = fs3.readFileSync(file, "ascii"), lines = content.split(/[\r\n]+/);
+      var map = {}, content = fs6.readFileSync(file, "ascii"), lines = content.split(/[\r\n]+/);
       lines.forEach(function(line) {
         var fields = line.replace(/\s*#.*|^\s*|\s*$/g, "").split(/\s+/);
         map[fields.shift()] = fields;
@@ -20125,8 +20125,8 @@ var require_mime = __commonJS({
       this.define(map);
       this._loading = null;
     };
-    Mime.prototype.lookup = function(path4, fallback) {
-      var ext = path4.replace(/^.*[\.\/\\]/, "").toLowerCase();
+    Mime.prototype.lookup = function(path7, fallback) {
+      var ext = path7.replace(/^.*[\.\/\\]/, "").toLowerCase();
       return this.types[ext] || fallback || this.default_type;
     };
     Mime.prototype.extension = function(mimeType) {
@@ -20355,33 +20355,33 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs3 = require("fs");
+    var fs6 = require("fs");
     var mime = require_mime();
     var ms = require_ms5();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path3 = require("path");
+    var path6 = require("path");
     var statuses = require_statuses();
     var Stream = require("stream");
     var util = require("util");
-    var extname = path3.extname;
-    var join = path3.join;
-    var normalize = path3.normalize;
-    var resolve = path3.resolve;
-    var sep = path3.sep;
+    var extname = path6.extname;
+    var join = path6.join;
+    var normalize = path6.normalize;
+    var resolve = path6.resolve;
+    var sep = path6.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
     var MAX_MAXAGE = 60 * 60 * 24 * 365 * 1e3;
     var UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
     module2.exports = send;
     module2.exports.mime = mime;
-    function send(req, path4, options) {
-      return new SendStream(req, path4, options);
+    function send(req, path7, options) {
+      return new SendStream(req, path7, options);
     }
-    function SendStream(req, path4, options) {
+    function SendStream(req, path7, options) {
       Stream.call(this);
       var opts = options || {};
       this.options = opts;
-      this.path = path4;
+      this.path = path7;
       this.req = req;
       this._acceptRanges = opts.acceptRanges !== void 0 ? Boolean(opts.acceptRanges) : true;
       this._cacheControl = opts.cacheControl !== void 0 ? Boolean(opts.cacheControl) : true;
@@ -20427,8 +20427,8 @@ var require_send = __commonJS({
       this._index = index2;
       return this;
     }, "send.index: pass index as option");
-    SendStream.prototype.root = function root(path4) {
-      this._root = resolve(String(path4));
+    SendStream.prototype.root = function root(path7) {
+      this._root = resolve(String(path7));
       debug("root %s", this._root);
       return this;
     };
@@ -20541,10 +20541,10 @@ var require_send = __commonJS({
       var lastModified = this.res.getHeader("Last-Modified");
       return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
     };
-    SendStream.prototype.redirect = function redirect(path4) {
+    SendStream.prototype.redirect = function redirect(path7) {
       var res = this.res;
       if (hasListeners(this, "directory")) {
-        this.emit("directory", res, path4);
+        this.emit("directory", res, path7);
         return;
       }
       if (this.hasTrailingSlash()) {
@@ -20564,42 +20564,42 @@ var require_send = __commonJS({
     SendStream.prototype.pipe = function pipe(res) {
       var root = this._root;
       this.res = res;
-      var path4 = decode(this.path);
-      if (path4 === -1) {
+      var path7 = decode(this.path);
+      if (path7 === -1) {
         this.error(400);
         return res;
       }
-      if (~path4.indexOf("\0")) {
+      if (~path7.indexOf("\0")) {
         this.error(400);
         return res;
       }
       var parts;
       if (root !== null) {
-        if (path4) {
-          path4 = normalize("." + sep + path4);
+        if (path7) {
+          path7 = normalize("." + sep + path7);
         }
-        if (UP_PATH_REGEXP.test(path4)) {
-          debug('malicious path "%s"', path4);
+        if (UP_PATH_REGEXP.test(path7)) {
+          debug('malicious path "%s"', path7);
           this.error(403);
           return res;
         }
-        parts = path4.split(sep);
-        path4 = normalize(join(root, path4));
+        parts = path7.split(sep);
+        path7 = normalize(join(root, path7));
       } else {
-        if (UP_PATH_REGEXP.test(path4)) {
-          debug('malicious path "%s"', path4);
+        if (UP_PATH_REGEXP.test(path7)) {
+          debug('malicious path "%s"', path7);
           this.error(403);
           return res;
         }
-        parts = normalize(path4).split(sep);
-        path4 = resolve(path4);
+        parts = normalize(path7).split(sep);
+        path7 = resolve(path7);
       }
       if (containsDotFile(parts)) {
         var access = this._dotfiles;
         if (access === void 0) {
           access = parts[parts.length - 1][0] === "." ? this._hidden ? "allow" : "ignore" : "allow";
         }
-        debug('%s dotfile "%s"', access, path4);
+        debug('%s dotfile "%s"', access, path7);
         switch (access) {
           case "allow":
             break;
@@ -20613,13 +20613,13 @@ var require_send = __commonJS({
         }
       }
       if (this._index.length && this.hasTrailingSlash()) {
-        this.sendIndex(path4);
+        this.sendIndex(path7);
         return res;
       }
-      this.sendFile(path4);
+      this.sendFile(path7);
       return res;
     };
-    SendStream.prototype.send = function send2(path4, stat) {
+    SendStream.prototype.send = function send2(path7, stat) {
       var len = stat.size;
       var options = this.options;
       var opts = {};
@@ -20631,9 +20631,9 @@ var require_send = __commonJS({
         this.headersAlreadySent();
         return;
       }
-      debug('pipe "%s"', path4);
-      this.setHeader(path4, stat);
-      this.type(path4);
+      debug('pipe "%s"', path7);
+      this.setHeader(path7, stat);
+      this.type(path7);
       if (this.isConditionalGET()) {
         if (this.isPreconditionFailure()) {
           this.error(412);
@@ -20682,28 +20682,28 @@ var require_send = __commonJS({
         res.end();
         return;
       }
-      this.stream(path4, opts);
+      this.stream(path7, opts);
     };
-    SendStream.prototype.sendFile = function sendFile(path4) {
+    SendStream.prototype.sendFile = function sendFile(path7) {
       var i = 0;
       var self2 = this;
-      debug('stat "%s"', path4);
-      fs3.stat(path4, function onstat(err, stat) {
-        if (err && err.code === "ENOENT" && !extname(path4) && path4[path4.length - 1] !== sep) {
+      debug('stat "%s"', path7);
+      fs6.stat(path7, function onstat(err, stat) {
+        if (err && err.code === "ENOENT" && !extname(path7) && path7[path7.length - 1] !== sep) {
           return next(err);
         }
         if (err) return self2.onStatError(err);
-        if (stat.isDirectory()) return self2.redirect(path4);
-        self2.emit("file", path4, stat);
-        self2.send(path4, stat);
+        if (stat.isDirectory()) return self2.redirect(path7);
+        self2.emit("file", path7, stat);
+        self2.send(path7, stat);
       });
       function next(err) {
         if (self2._extensions.length <= i) {
           return err ? self2.onStatError(err) : self2.error(404);
         }
-        var p = path4 + "." + self2._extensions[i++];
+        var p = path7 + "." + self2._extensions[i++];
         debug('stat "%s"', p);
-        fs3.stat(p, function(err2, stat) {
+        fs6.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self2.emit("file", p, stat);
@@ -20711,7 +20711,7 @@ var require_send = __commonJS({
         });
       }
     };
-    SendStream.prototype.sendIndex = function sendIndex(path4) {
+    SendStream.prototype.sendIndex = function sendIndex(path7) {
       var i = -1;
       var self2 = this;
       function next(err) {
@@ -20719,9 +20719,9 @@ var require_send = __commonJS({
           if (err) return self2.onStatError(err);
           return self2.error(404);
         }
-        var p = join(path4, self2._index[i]);
+        var p = join(path7, self2._index[i]);
         debug('stat "%s"', p);
-        fs3.stat(p, function(err2, stat) {
+        fs6.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self2.emit("file", p, stat);
@@ -20730,10 +20730,10 @@ var require_send = __commonJS({
       }
       next();
     };
-    SendStream.prototype.stream = function stream(path4, options) {
+    SendStream.prototype.stream = function stream(path7, options) {
       var self2 = this;
       var res = this.res;
-      var stream2 = fs3.createReadStream(path4, options);
+      var stream2 = fs6.createReadStream(path7, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -20748,10 +20748,10 @@ var require_send = __commonJS({
         self2.emit("end");
       });
     };
-    SendStream.prototype.type = function type(path4) {
+    SendStream.prototype.type = function type(path7) {
       var res = this.res;
       if (res.getHeader("Content-Type")) return;
-      var type2 = mime.lookup(path4);
+      var type2 = mime.lookup(path7);
       if (!type2) {
         debug("no content-type");
         return;
@@ -20760,9 +20760,9 @@ var require_send = __commonJS({
       debug("content-type %s", type2);
       res.setHeader("Content-Type", type2 + (charset ? "; charset=" + charset : ""));
     };
-    SendStream.prototype.setHeader = function setHeader(path4, stat) {
+    SendStream.prototype.setHeader = function setHeader(path7, stat) {
       var res = this.res;
-      this.emit("headers", res, path4, stat);
+      this.emit("headers", res, path7, stat);
       if (this._acceptRanges && !res.getHeader("Accept-Ranges")) {
         debug("accept ranges");
         res.setHeader("Accept-Ranges", "bytes");
@@ -20821,9 +20821,9 @@ var require_send = __commonJS({
       }
       return err instanceof Error ? createError(status, err, { expose: false }) : createError(status, err);
     }
-    function decode(path4) {
+    function decode(path7) {
       try {
-        return decodeURIComponent(path4);
+        return decodeURIComponent(path7);
       } catch (err) {
         return -1;
       }
@@ -21732,10 +21732,10 @@ var require_utils2 = __commonJS({
     var querystring = require("querystring");
     exports2.etag = createETagGenerator({ weak: false });
     exports2.wetag = createETagGenerator({ weak: true });
-    exports2.isAbsolute = function(path3) {
-      if ("/" === path3[0]) return true;
-      if (":" === path3[1] && ("\\" === path3[2] || "/" === path3[2])) return true;
-      if ("\\\\" === path3.substring(0, 2)) return true;
+    exports2.isAbsolute = function(path6) {
+      if ("/" === path6[0]) return true;
+      if (":" === path6[1] && ("\\" === path6[2] || "/" === path6[2])) return true;
+      if ("\\\\" === path6.substring(0, 2)) return true;
     };
     exports2.flatten = deprecate.function(
       flatten,
@@ -21946,7 +21946,7 @@ var require_application = __commonJS({
     };
     app2.use = function use(fn) {
       var offset = 0;
-      var path3 = "/";
+      var path6 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -21954,7 +21954,7 @@ var require_application = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path3 = fn;
+          path6 = fn;
         }
       }
       var fns = flatten(slice.call(arguments, offset));
@@ -21965,12 +21965,12 @@ var require_application = __commonJS({
       var router = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router.use(path3, fn2);
+          return router.use(path6, fn2);
         }
-        debug(".use app under %s", path3);
-        fn2.mountpath = path3;
+        debug(".use app under %s", path6);
+        fn2.mountpath = path6;
         fn2.parent = this;
-        router.use(path3, function mounted_app(req, res, next) {
+        router.use(path6, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -21982,9 +21982,9 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app2.route = function route(path3) {
+    app2.route = function route(path6) {
       this.lazyrouter();
-      return this._router.route(path3);
+      return this._router.route(path6);
     };
     app2.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
@@ -22035,7 +22035,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app2.path = function path3() {
+    app2.path = function path6() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
     app2.enabled = function enabled(setting) {
@@ -22051,19 +22051,19 @@ var require_application = __commonJS({
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app2[method] = function(path3) {
+      app2[method] = function(path6) {
         if (method === "get" && arguments.length === 1) {
-          return this.set(path3);
+          return this.set(path6);
         }
         this.lazyrouter();
-        var route = this._router.route(path3);
+        var route = this._router.route(path6);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
     });
-    app2.all = function all(path3) {
+    app2.all = function all(path6) {
       this.lazyrouter();
-      var route = this._router.route(path3);
+      var route = this._router.route(path6);
       var args = slice.call(arguments, 1);
       for (var i = 0; i < methods.length; i++) {
         route[methods[i]].apply(route, args);
@@ -22822,7 +22822,7 @@ var require_request = __commonJS({
       var subdomains2 = !isIP(hostname) ? hostname.split(".").reverse() : [hostname];
       return subdomains2.slice(offset);
     });
-    defineGetter(req, "path", function path3() {
+    defineGetter(req, "path", function path6() {
       return parse(this).pathname;
     });
     defineGetter(req, "hostname", function hostname() {
@@ -23144,7 +23144,7 @@ var require_response = __commonJS({
     var http = require("http");
     var isAbsolute = require_utils2().isAbsolute;
     var onFinished = require_on_finished();
-    var path3 = require("path");
+    var path6 = require("path");
     var statuses = require_statuses();
     var merge = require_utils_merge();
     var sign = require_cookie_signature().sign;
@@ -23153,9 +23153,9 @@ var require_response = __commonJS({
     var setCharset = require_utils2().setCharset;
     var cookie = require_cookie();
     var send = require_send();
-    var extname = path3.extname;
+    var extname = path6.extname;
     var mime = send.mime;
-    var resolve = path3.resolve;
+    var resolve = path6.resolve;
     var vary = require_vary();
     var res = Object.create(http.ServerResponse.prototype);
     module2.exports = res;
@@ -23332,26 +23332,26 @@ var require_response = __commonJS({
       this.type("txt");
       return this.send(body);
     };
-    res.sendFile = function sendFile(path4, options, callback) {
+    res.sendFile = function sendFile(path7, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
       var opts = options || {};
-      if (!path4) {
+      if (!path7) {
         throw new TypeError("path argument is required to res.sendFile");
       }
-      if (typeof path4 !== "string") {
+      if (typeof path7 !== "string") {
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      if (!opts.root && !isAbsolute(path4)) {
+      if (!opts.root && !isAbsolute(path7)) {
         throw new TypeError("path must be absolute or specify root to res.sendFile");
       }
-      var pathname = encodeURI(path4);
+      var pathname = encodeURI(path7);
       var file = send(req, pathname, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
@@ -23361,7 +23361,7 @@ var require_response = __commonJS({
         }
       });
     };
-    res.sendfile = function(path4, options, callback) {
+    res.sendfile = function(path7, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
@@ -23371,7 +23371,7 @@ var require_response = __commonJS({
         done = options;
         opts = {};
       }
-      var file = send(req, path4, opts);
+      var file = send(req, path7, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
         if (err && err.code === "EISDIR") return next();
@@ -23384,7 +23384,7 @@ var require_response = __commonJS({
       res.sendfile,
       "res.sendfile: Use res.sendFile instead"
     );
-    res.download = function download(path4, filename, options, callback) {
+    res.download = function download(path7, filename, options, callback) {
       var done = callback;
       var name = filename;
       var opts = options || null;
@@ -23401,7 +23401,7 @@ var require_response = __commonJS({
         opts = filename;
       }
       var headers = {
-        "Content-Disposition": contentDisposition(name || path4)
+        "Content-Disposition": contentDisposition(name || path7)
       };
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
@@ -23414,7 +23414,7 @@ var require_response = __commonJS({
       }
       opts = Object.create(opts);
       opts.headers = headers;
-      var fullPath = !opts.root ? resolve(path4) : path4;
+      var fullPath = !opts.root ? resolve(path7) : path7;
       return this.sendFile(fullPath, opts, done);
     };
     res.contentType = res.type = function contentType(type) {
@@ -23715,11 +23715,11 @@ var require_serve_static = __commonJS({
         }
         var forwardError = !fallthrough;
         var originalUrl = parseUrl.original(req);
-        var path3 = parseUrl(req).pathname;
-        if (path3 === "/" && originalUrl.pathname.substr(-1) !== "/") {
-          path3 = "";
+        var path6 = parseUrl(req).pathname;
+        if (path6 === "/" && originalUrl.pathname.substr(-1) !== "/") {
+          path6 = "";
         }
-        var stream = send(req, path3, opts);
+        var stream = send(req, path6, opts);
         stream.on("directory", onDirectory);
         if (setHeaders) {
           stream.on("headers", setHeaders);
@@ -30378,11 +30378,11 @@ var require_server = __commonJS({
        * @protected
        */
       _computePath(options) {
-        let path3 = (options.path || "/engine.io").replace(/\/$/, "");
+        let path6 = (options.path || "/engine.io").replace(/\/$/, "");
         if (options.addTrailingSlash !== false) {
-          path3 += "/";
+          path6 += "/";
         }
-        return path3;
+        return path6;
       }
       /**
        * Returns a list of available transports for upgrade given a certain transport.
@@ -30881,10 +30881,10 @@ var require_server = __commonJS({
        * @param {Object} options
        */
       attach(server, options = {}) {
-        const path3 = this._computePath(options);
+        const path6 = this._computePath(options);
         const destroyUpgradeTimeout = options.destroyUpgradeTimeout || 1e3;
         function check(req) {
-          return path3 === req.url.slice(0, path3.length);
+          return path6 === req.url.slice(0, path6.length);
         }
         const listeners = server.listeners("request").slice(0);
         server.removeAllListeners("request");
@@ -30892,7 +30892,7 @@ var require_server = __commonJS({
         server.on("listening", this.init.bind(this));
         server.on("request", (req, res) => {
           if (check(req)) {
-            debug('intercepting request for path "%s"', path3);
+            debug('intercepting request for path "%s"', path6);
             this.handleRequest(req, res);
           } else {
             let i = 0;
@@ -31731,8 +31731,8 @@ var require_userver = __commonJS({
        * @param options
        */
       attach(app2, options = {}) {
-        const path3 = this._computePath(options);
-        app2.any(path3, this.handleRequest.bind(this)).ws(path3, {
+        const path6 = this._computePath(options);
+        app2.any(path6, this.handleRequest.bind(this)).ws(path6, {
           compression: options.compression,
           idleTimeout: options.idleTimeout,
           maxBackpressure: options.maxBackpressure,
@@ -39773,7 +39773,7 @@ var require_dist2 = __commonJS({
     var zlib_1 = require("zlib");
     var accepts = require_accepts();
     var stream_1 = require("stream");
-    var path3 = require("path");
+    var path6 = require("path");
     var engine_io_1 = require_engine_io();
     var client_1 = require_client();
     var events_1 = require("events");
@@ -39968,7 +39968,7 @@ var require_dist2 = __commonJS({
             res.writeHeader("cache-control", "public, max-age=0");
             res.writeHeader("content-type", "application/" + (isMap ? "json" : "javascript") + "; charset=utf-8");
             res.writeHeader("etag", expectedEtag);
-            const filepath = path3.join(__dirname, "../client-dist/", filename);
+            const filepath = path6.join(__dirname, "../client-dist/", filename);
             (0, uws_1.serveFile)(res, filepath);
           });
         }
@@ -40050,7 +40050,7 @@ var require_dist2 = __commonJS({
        * @private
        */
       static sendFile(filename, req, res) {
-        const readStream = (0, fs_1.createReadStream)(path3.join(__dirname, "../client-dist/", filename));
+        const readStream = (0, fs_1.createReadStream)(path6.join(__dirname, "../client-dist/", filename));
         const encoding = accepts(req).encodings(["br", "gzip", "deflate"]);
         const onError = (err) => {
           if (err) {
@@ -41998,13 +41998,13 @@ function __disposeResources(env2) {
   }
   return next();
 }
-function __rewriteRelativeImportExtension(path3, preserveJsx) {
-  if (typeof path3 === "string" && /^\.\.?\//.test(path3)) {
-    return path3.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
+function __rewriteRelativeImportExtension(path6, preserveJsx) {
+  if (typeof path6 === "string" && /^\.\.?\//.test(path6)) {
+    return path6.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
       return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : d + ext + "." + cm.toLowerCase() + "js";
     });
   }
-  return path3;
+  return path6;
 }
 var extendStatics, __assign, __createBinding, __setModuleDefault, ownKeys, _SuppressedError, tslib_es6_default;
 var init_tslib_es6 = __esm({
@@ -51947,14 +51947,14 @@ var require_dependency_container = __commonJS({
           provider = providerOrConstructor;
         }
         if (providers_1.isTokenProvider(provider)) {
-          const path3 = [token];
+          const path6 = [token];
           let tokenProvider = provider;
           while (tokenProvider != null) {
             const currentToken = tokenProvider.useToken;
-            if (path3.includes(currentToken)) {
-              throw new Error(`Token registration cycle detected! ${[...path3, currentToken].join(" -> ")}`);
+            if (path6.includes(currentToken)) {
+              throw new Error(`Token registration cycle detected! ${[...path6, currentToken].join(" -> ")}`);
             }
-            path3.push(currentToken);
+            path6.push(currentToken);
             const registration = this._registry.get(currentToken);
             if (registration && providers_1.isTokenProvider(registration.provider)) {
               tokenProvider = registration.provider;
@@ -57098,12 +57098,377 @@ var require_selfsigned = __commonJS({
   }
 });
 
+// server/vlog.ts
+var VERBOSE, vlog;
+var init_vlog = __esm({
+  "server/vlog.ts"() {
+    VERBOSE = process.argv.includes("-v") || process.argv.includes("--verbose");
+    vlog = (...args) => {
+      if (VERBOSE) console.log(...args);
+    };
+  }
+});
+
+// server/rigctld.ts
+var rigctld_exports = {};
+__export(rigctld_exports, {
+  addLog: () => addLog,
+  checkExistingRigctld: () => checkExistingRigctld,
+  checkVersionSupported: () => checkVersionSupported,
+  emitRigctldStatus: () => emitRigctldStatus,
+  fetchRadioCapabilities: () => fetchRadioCapabilities,
+  getRigctldPath: () => getRigctldPath,
+  getRigctldVersion: () => getRigctldVersion,
+  killExistingRigctld: () => killExistingRigctld,
+  registerRigctldHandlers: () => registerRigctldHandlers,
+  startRigctld: () => startRigctld,
+  stopRigctld: () => stopRigctld
+});
+function getRigctldPath(baseDir) {
+  let platformDir = "";
+  if (process.platform === "win32") platformDir = "windows";
+  else if (process.platform === "linux") platformDir = "linux";
+  else if (process.platform === "darwin") platformDir = "mac";
+  const binaryName = process.platform === "win32" ? "rigctld.exe" : "rigctld";
+  let binBase = baseDir;
+  if (baseDir.endsWith(".asar")) {
+    binBase = baseDir.replace(".asar", ".asar.unpacked");
+  }
+  const localPath = platformDir ? import_path2.default.join(binBase, "bin", platformDir, binaryName) : "";
+  if (localPath && import_fs3.default.existsSync(localPath)) {
+    console.log(`[HAMLIB] Using bundled rigctld at: ${localPath}`);
+    return localPath;
+  }
+  console.log(`[HAMLIB] Bundled rigctld not found at ${localPath || "unsupported platform"}, falling back to system PATH`);
+  return "rigctld";
+}
+function getRigctldVersion(baseDir) {
+  return new Promise((resolve) => {
+    const proc = (0, import_child_process.spawn)(getRigctldPath(baseDir), ["-V"]);
+    let output = "";
+    proc.stdout?.on("data", (d) => output += d.toString());
+    proc.stderr?.on("data", (d) => output += d.toString());
+    proc.on("close", () => {
+      const match = output.match(/hamlib\s+([\d.]+)/i);
+      resolve(match ? match[1] : null);
+    });
+    proc.on("error", () => resolve(null));
+  });
+}
+function checkVersionSupported(version) {
+  if (!version) return true;
+  const parts = version.split(".").map(Number);
+  const min = [4, 7, 0];
+  for (let i = 0; i < Math.max(parts.length, min.length); i++) {
+    const v = parts[i] || 0;
+    const m = min[i] || 0;
+    if (v > m) return true;
+    if (v < m) return false;
+  }
+  return true;
+}
+function emitRigctldStatus(ctx) {
+  ctx.io.emit("rigctld-status", {
+    status: ctx.rigctldStatus,
+    logs: ctx.rigctldLogs,
+    version: ctx.rigctldVersion,
+    isVersionSupported: ctx.isRigctldVersionSupported
+  });
+}
+function addLog(ctx, data) {
+  const lines = data.split("\n").filter((l) => l.trim());
+  ctx.rigctldLogs = [...ctx.rigctldLogs, ...lines].slice(-100);
+  ctx.io.emit("rigctld-log", lines);
+}
+function stopRigctld(ctx) {
+  if (ctx.rigctldProcess) {
+    console.log("Stopping rigctld...");
+    ctx.rigctldProcess.kill();
+    ctx.rigctldProcess = null;
+    ctx.rigctldStatus = "stopped";
+    emitRigctldStatus(ctx);
+  }
+}
+function checkExistingRigctld() {
+  return new Promise((resolve) => {
+    const cmd = process.platform === "win32" ? 'tasklist /FI "IMAGENAME eq rigctld.exe"' : "pgrep rigctld";
+    (0, import_child_process.exec)(cmd, (err, stdout) => {
+      if (process.platform === "win32") {
+        resolve(stdout.toLowerCase().includes("rigctld.exe"));
+      } else {
+        resolve(!err && !!stdout.trim());
+      }
+    });
+  });
+}
+function killExistingRigctld() {
+  return new Promise((resolve) => {
+    const cmd = process.platform === "win32" ? "taskkill /F /IM rigctld.exe" : "pkill -9 rigctld";
+    (0, import_child_process.exec)(cmd, () => resolve());
+  });
+}
+async function fetchRadioCapabilities(ctx, rigNumber) {
+  if (!rigNumber || rigNumber === "" || rigNumber === "1") {
+    ctx.rigctldSettings.preampCapabilities = [];
+    ctx.rigctldSettings.attenuatorCapabilities = [];
+    ctx.rigctldSettings.agcCapabilities = [];
+    ctx.saveSettings();
+    ctx.io.emit("preamp-capabilities", ctx.rigctldSettings.preampCapabilities);
+    ctx.io.emit("attenuator-capabilities", ctx.rigctldSettings.attenuatorCapabilities);
+    ctx.io.emit("agc-capabilities", ctx.rigctldSettings.agcCapabilities);
+    ctx.io.emit("anf-capabilities", ctx.rigctldSettings.anfSupported);
+    return;
+  }
+  const rigctldPath = getRigctldPath(ctx.baseDir);
+  vlog(`[HAMLIB] Fetching radio capabilities for rig ${rigNumber}...`);
+  (0, import_child_process.exec)(`"${rigctldPath}" -m ${rigNumber} -u`, (error, stdout) => {
+    if (error) {
+      console.error(`[HAMLIB] Error getting radio capabilities: ${error.message}`);
+      ctx.rigctldSettings.preampCapabilities = [];
+      ctx.rigctldSettings.attenuatorCapabilities = [];
+      ctx.rigctldSettings.agcCapabilities = [];
+      ctx.rigctldSettings.nbSupported = false;
+      ctx.rigctldSettings.nrSupported = false;
+      ctx.rigctldSettings.anfSupported = false;
+    } else {
+      const lines = stdout.split("\n");
+      const preampLine = lines.find((line) => line.trim().startsWith("Preamp:"));
+      if (preampLine) {
+        ctx.rigctldSettings.preampCapabilities = preampLine.replace("Preamp:", "").trim().split(/\s+/).filter(Boolean);
+        vlog(`[HAMLIB] Found preamp capabilities for rig ${rigNumber}: ${ctx.rigctldSettings.preampCapabilities.join(", ")}`);
+      } else {
+        ctx.rigctldSettings.preampCapabilities = [];
+        vlog(`[HAMLIB] No preamp capabilities found for rig ${rigNumber}`);
+      }
+      const attenuatorLine = lines.find((line) => line.trim().startsWith("Attenuator:"));
+      if (attenuatorLine) {
+        ctx.rigctldSettings.attenuatorCapabilities = attenuatorLine.replace("Attenuator:", "").trim().split(/\s+/).filter(Boolean);
+        vlog(`[HAMLIB] Found attenuator capabilities for rig ${rigNumber}: ${ctx.rigctldSettings.attenuatorCapabilities.join(", ")}`);
+      } else {
+        ctx.rigctldSettings.attenuatorCapabilities = [];
+        vlog(`[HAMLIB] No attenuator capabilities found for rig ${rigNumber}`);
+      }
+      const agcLine = lines.find((line) => line.trim().startsWith("AGC levels:"));
+      if (agcLine) {
+        ctx.rigctldSettings.agcCapabilities = agcLine.replace("AGC levels:", "").trim().split(/\s+/).filter(Boolean);
+        vlog(`[HAMLIB] Found AGC capabilities for rig ${rigNumber}: ${ctx.rigctldSettings.agcCapabilities.join(", ")}`);
+      } else {
+        ctx.rigctldSettings.agcCapabilities = [];
+        vlog(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
+      }
+      const setFunctionsLine = lines.find((line) => line.trim().startsWith("Set functions:"));
+      if (setFunctionsLine) {
+        const functions = setFunctionsLine.replace("Set functions:", "").trim().split(/\s+/);
+        ctx.rigctldSettings.nbSupported = functions.includes("NB");
+        ctx.rigctldSettings.nrSupported = functions.includes("NR");
+        ctx.rigctldSettings.anfSupported = functions.includes("ANF");
+        vlog(`[HAMLIB] NB supported for rig ${rigNumber}: ${ctx.rigctldSettings.nbSupported}`);
+        vlog(`[HAMLIB] NR supported for rig ${rigNumber}: ${ctx.rigctldSettings.nrSupported}`);
+        vlog(`[HAMLIB] ANF supported for rig ${rigNumber}: ${ctx.rigctldSettings.anfSupported}`);
+      } else {
+        ctx.rigctldSettings.nbSupported = false;
+        ctx.rigctldSettings.nrSupported = false;
+        ctx.rigctldSettings.anfSupported = false;
+        vlog(`[HAMLIB] NB/NR/ANF not supported for rig ${rigNumber}`);
+      }
+      const getLevelLine = lines.find((line) => line.trim().startsWith("Get level:"));
+      if (getLevelLine) {
+        const nbMatch = getLevelLine.match(/NB\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+        if (nbMatch) {
+          ctx.rigctldSettings.nbLevelRange = {
+            min: parseFloat(nbMatch[1]),
+            max: parseFloat(nbMatch[2]),
+            step: parseFloat(nbMatch[3])
+          };
+          vlog(`[HAMLIB] NB level range for rig ${rigNumber}: min=${ctx.rigctldSettings.nbLevelRange.min}, max=${ctx.rigctldSettings.nbLevelRange.max}, step=${ctx.rigctldSettings.nbLevelRange.step}`);
+        } else {
+          ctx.rigctldSettings.nbLevelRange = { min: 0, max: 1, step: 0.1 };
+        }
+        const nrMatch = getLevelLine.match(/NR\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+        if (nrMatch) {
+          ctx.rigctldSettings.nrLevelRange = {
+            min: parseFloat(nrMatch[1]),
+            max: parseFloat(nrMatch[2]),
+            step: parseFloat(nrMatch[3])
+          };
+          vlog(`[HAMLIB] NR level range for rig ${rigNumber}: min=${ctx.rigctldSettings.nrLevelRange.min}, max=${ctx.rigctldSettings.nrLevelRange.max}, step=${ctx.rigctldSettings.nrLevelRange.step}`);
+        } else {
+          ctx.rigctldSettings.nrLevelRange = { min: 0, max: 1, step: 0.1 };
+        }
+        const rfPowerMatch = getLevelLine.match(/RFPOWER\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
+        if (rfPowerMatch) {
+          ctx.rigctldSettings.rfPowerRange = {
+            min: parseFloat(rfPowerMatch[1]),
+            max: parseFloat(rfPowerMatch[2]),
+            step: parseFloat(rfPowerMatch[3])
+          };
+          vlog(`[HAMLIB] RF Power range for rig ${rigNumber}: min=${ctx.rigctldSettings.rfPowerRange.min}, max=${ctx.rigctldSettings.rfPowerRange.max}, step=${ctx.rigctldSettings.rfPowerRange.step}`);
+        } else {
+          ctx.rigctldSettings.rfPowerRange = { min: 0, max: 1, step: 0.01 };
+        }
+      }
+    }
+    ctx.saveSettings();
+    ctx.io.emit("preamp-capabilities", ctx.rigctldSettings.preampCapabilities);
+    ctx.io.emit("attenuator-capabilities", ctx.rigctldSettings.attenuatorCapabilities);
+    ctx.io.emit("agc-capabilities", ctx.rigctldSettings.agcCapabilities);
+    ctx.io.emit("nb-capabilities", { supported: ctx.rigctldSettings.nbSupported, range: ctx.rigctldSettings.nbLevelRange });
+    ctx.io.emit("nr-capabilities", { supported: ctx.rigctldSettings.nrSupported, range: ctx.rigctldSettings.nrLevelRange });
+    ctx.io.emit("rfpower-capabilities", { range: ctx.rigctldSettings.rfPowerRange });
+    ctx.io.emit("anf-capabilities", { supported: ctx.rigctldSettings.anfSupported });
+  });
+}
+async function startRigctld(ctx) {
+  if (ctx.rigctldProcess) {
+    stopRigctld(ctx);
+  }
+  ctx.rigctldVersion = await getRigctldVersion(ctx.baseDir);
+  ctx.isRigctldVersionSupported = checkVersionSupported(ctx.rigctldVersion);
+  console.log(`[HAMLIB] rigctld version check: ${ctx.rigctldVersion || "unknown"}`);
+  addLog(ctx, `Hamlib (rigctld) version check: ${ctx.rigctldVersion || "unknown"}`);
+  if (!ctx.isRigctldVersionSupported) {
+    console.warn(`rigctld version ${ctx.rigctldVersion} is less than 4.7.0 and is unsupported.`);
+    addLog(ctx, `Warning: rigctld version ${ctx.rigctldVersion} is less than 4.7.0 and is unsupported.`);
+  }
+  const isAlreadyRunning = await checkExistingRigctld();
+  if (isAlreadyRunning) {
+    console.warn("rigctld is already running on the system");
+    ctx.rigctldStatus = "already_running";
+    emitRigctldStatus(ctx);
+    addLog(ctx, "Error: rigctld is already running on the system. Please stop it or use the 'Kill and Restart' option.");
+    return;
+  }
+  const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = ctx.rigctldSettings;
+  if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
+    console.error("Cannot start rigctld: missing settings");
+    ctx.rigctldStatus = "error";
+    emitRigctldStatus(ctx);
+    return;
+  }
+  const rigctldPath = getRigctldPath(ctx.baseDir);
+  console.log(`Starting rigctld: ${rigctldPath} -m ${rigNumber} -r ${serialPort} -t ${portNumber} -T ${ipAddress} -s ${serialPortSpeed}`);
+  ctx.rigctldProcess = (0, import_child_process.spawn)(rigctldPath, [
+    "-m",
+    rigNumber,
+    "-r",
+    serialPort,
+    "-t",
+    portNumber,
+    "-T",
+    ipAddress,
+    "-s",
+    serialPortSpeed
+  ], { detached: false });
+  ctx.rigctldStatus = "running";
+  emitRigctldStatus(ctx);
+  addLog(ctx, "rigctld started");
+  ctx.rigctldProcess.stdout?.on("data", (data) => {
+    const str = data.toString();
+    vlog(`rigctld stdout: ${str}`);
+    addLog(ctx, str);
+  });
+  ctx.rigctldProcess.stderr?.on("data", (data) => {
+    const str = data.toString();
+    console.error(`rigctld stderr: ${str}`);
+    addLog(ctx, str);
+  });
+  ctx.rigctldProcess.on("close", (code) => {
+    console.log(`rigctld process exited with code ${code}`);
+    addLog(ctx, `rigctld exited with code ${code}`);
+    ctx.rigctldProcess = null;
+    ctx.rigctldStatus = code === 0 ? "stopped" : "error";
+    emitRigctldStatus(ctx);
+  });
+  ctx.rigctldProcess.on("error", (err) => {
+    console.error("Failed to start rigctld:", err);
+    addLog(ctx, `Error: ${err.message}`);
+    ctx.rigctldProcess = null;
+    ctx.rigctldStatus = "error";
+    emitRigctldStatus(ctx);
+  });
+}
+function registerRigctldHandlers(socket, ctx) {
+  socket.on("start-rigctld", () => {
+    ctx.autoStartEnabled = true;
+    ctx.saveSettings();
+    startRigctld(ctx);
+  });
+  socket.on("stop-rigctld", () => {
+    ctx.autoStartEnabled = false;
+    ctx.saveSettings();
+    stopRigctld(ctx);
+  });
+  socket.on("kill-existing-rigctld", async () => {
+    addLog(ctx, "Killing existing rigctld process...");
+    await killExistingRigctld();
+    addLog(ctx, "Existing rigctld killed. Starting new process...");
+    startRigctld(ctx);
+  });
+  socket.on("test-rigctld", async (data) => {
+    const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = data;
+    addLog(ctx, "Testing rigctld configuration...");
+    ctx.rigctldVersion = await getRigctldVersion(ctx.baseDir);
+    ctx.isRigctldVersionSupported = checkVersionSupported(ctx.rigctldVersion);
+    console.log(`[HAMLIB] Test rigctld version check: ${ctx.rigctldVersion || "unknown"}`);
+    addLog(ctx, `Hamlib (rigctld) version check: ${ctx.rigctldVersion || "unknown"}`);
+    emitRigctldStatus(ctx);
+    if (!ctx.rigctldVersion) {
+      socket.emit("test-result", { success: false, message: "rigctld binary not found in system PATH or bin folder" });
+      addLog(ctx, "Error: rigctld binary not found");
+      return;
+    }
+    if (!ctx.isRigctldVersionSupported) {
+      addLog(ctx, `Warning: rigctld version ${ctx.rigctldVersion} is less than 4.7.0 and is unsupported.`);
+    }
+    const testProc = (0, import_child_process.spawn)(getRigctldPath(ctx.baseDir), [
+      "-m",
+      rigNumber,
+      "-r",
+      serialPort,
+      "-t",
+      portNumber,
+      "-T",
+      ipAddress,
+      "-s",
+      serialPortSpeed
+    ]);
+    let errorMsg = "";
+    testProc.stderr?.on("data", (d) => errorMsg += d.toString());
+    const timeout = setTimeout(() => {
+      testProc.kill();
+      socket.emit("test-result", { success: true, message: "Configuration looks valid (process started successfully)" });
+      addLog(ctx, "Test: Success");
+    }, 2e3);
+    testProc.on("error", (err) => {
+      clearTimeout(timeout);
+      socket.emit("test-result", { success: false, message: `Failed to start: ${err.message}` });
+      addLog(ctx, `Test Failed: ${err.message}`);
+    });
+    testProc.on("close", (c) => {
+      clearTimeout(timeout);
+      if (c !== null && c !== 0) {
+        socket.emit("test-result", { success: false, message: `Process exited with code ${c}. Error: ${errorMsg}` });
+        addLog(ctx, `Test Failed: ${errorMsg}`);
+      }
+    });
+  });
+}
+var import_path2, import_fs3, import_child_process;
+var init_rigctld = __esm({
+  "server/rigctld.ts"() {
+    import_path2 = __toESM(require("path"), 1);
+    import_fs3 = __toESM(require("fs"), 1);
+    import_child_process = require("child_process");
+    init_vlog();
+  }
+});
+
 // electron/main.ts
 var import_electron2 = require("electron");
-var import_path2 = __toESM(require("path"), 1);
-var import_fs2 = __toESM(require("fs"), 1);
+var import_path5 = __toESM(require("path"), 1);
+var import_fs5 = __toESM(require("fs"), 1);
 var import_os2 = __toESM(require("os"), 1);
-var import_child_process2 = require("child_process");
+var import_child_process3 = require("child_process");
 
 // node_modules/electron-is-dev/index.js
 var import_electron = __toESM(require("electron"), 1);
@@ -57125,16 +57490,14 @@ var import_dist = __toESM(require_dist2(), 1);
 var { Server, Namespace, Socket } = import_dist.default;
 
 // server.ts
-var import_net = __toESM(require("net"), 1);
+var import_path4 = __toESM(require("path"), 1);
+var import_fs4 = __toESM(require("fs"), 1);
+
+// server/tls.ts
 var import_os = __toESM(require("os"), 1);
 var import_path = __toESM(require("path"), 1);
-var import_child_process = require("child_process");
 var import_fs = __toESM(require("fs"), 1);
 var import_crypto = require("crypto");
-var VERBOSE = process.argv.includes("-v") || process.argv.includes("--verbose");
-var vlog = (...args) => {
-  if (VERBOSE) console.log(...args);
-};
 function getLanIPs() {
   const ips = [];
   for (const iface of Object.values(import_os.default.networkInterfaces())) {
@@ -57200,1010 +57563,512 @@ async function loadOrGenerateCert(dataDir) {
   console.log(`[TLS] Certificate saved to ${dataDir}`);
   return { key: pems.private, cert: pems.cert };
 }
-var electronWin = null;
-function setElectronWindow(win) {
-  electronWin = win;
+
+// server.ts
+init_vlog();
+
+// server/context.ts
+function createInitialContext(io2, baseDir, dataDir) {
+  return {
+    io: io2,
+    baseDir,
+    dataDir,
+    rigctldSettings: {
+      rigNumber: "",
+      serialPort: "",
+      portNumber: "4532",
+      ipAddress: "127.0.0.1",
+      serialPortSpeed: "38400",
+      preampCapabilities: [],
+      attenuatorCapabilities: [],
+      agcCapabilities: [],
+      nbSupported: false,
+      nbLevelRange: { min: 0, max: 1, step: 0.1 },
+      nrSupported: false,
+      nrLevelRange: { min: 0, max: 1, step: 0.1 },
+      rfPowerRange: { min: 0, max: 1, step: 0.01 },
+      anfSupported: false
+    },
+    audioSettings: {
+      inputDevice: "",
+      outputDevice: "",
+      inboundEnabled: false,
+      outboundEnabled: false
+    },
+    videoSettings: {
+      device: "",
+      videoWidth: 640,
+      videoHeight: 480,
+      framerate: ""
+    },
+    cwSettings: {
+      enabled: false,
+      keyerPort: "",
+      keyingMethod: "dtr",
+      serialKeyPolarity: "high",
+      mode: "iambic-a",
+      wpm: 18,
+      sidetoneHz: 700,
+      sidetoneVolume: 0.5,
+      sidetoneEnabled: true,
+      ditKey: "ControlLeft",
+      dahKey: "ControlRight",
+      straightKey: "Space"
+    },
+    potaSettings: { enabled: false, pollRate: 5, maxAge: 15 },
+    sotaSettings: { enabled: false, pollRate: 5, maxAge: 15 },
+    pollRate: 2e3,
+    autoStartEnabled: false,
+    videoAutoStart: false,
+    autoconnectEligible: false,
+    clientHost: "127.0.0.1",
+    clientPort: 4532,
+    rigSocket: null,
+    isConnected: false,
+    vfoSupported: true,
+    rigConfig: { host: "", port: 0 },
+    lastStatus: {
+      frequency: "14074000",
+      mode: "USB",
+      bandwidth: "2400",
+      ptt: false,
+      smeter: -54,
+      swr: 1,
+      alc: 0,
+      powerMeter: 0,
+      rfpower: 0.5,
+      rfLevel: 0,
+      agc: 6,
+      vdd: 13.8,
+      vfo: "VFOA",
+      isSplit: false,
+      txVFO: "VFOB",
+      attenuation: 0,
+      preamp: 0,
+      nb: false,
+      nbLevel: 0,
+      nr: false,
+      nrLevel: 8 / 15,
+      anf: false,
+      tuner: false
+    },
+    visibleMeters: ["swr", "alc"],
+    pollCycleCount: 0,
+    pollingTimeout: null,
+    rigCommandQueue: [],
+    isRigBusy: false,
+    rigctldProcess: null,
+    rigctldStatus: "stopped",
+    rigctldVersion: null,
+    isRigctldVersionSupported: true,
+    rigctldLogs: [],
+    portAudio: null,
+    libopus: null,
+    audioInputProcess: null,
+    audioOutputProcess: null,
+    opusEncoder: null,
+    opusDecoder: null,
+    audioStatus: "stopped",
+    activeMicClientId: null,
+    isAudioEngineReady: false,
+    audioEngineError: null,
+    outboundTimer: null,
+    outboundJitterBuffer: [],
+    videoSourceSocketId: null,
+    lastKeyframe: null,
+    videoStatus: "stopped",
+    videoDeviceList: [],
+    cwKeyerProcess: null,
+    activeCwClientId: null,
+    cwKeyLockedOut: false,
+    cwStuckKeyTimer: null,
+    cwIsKeying: false,
+    cwIdleTimer: null,
+    cwPaddleBuffer: [],
+    cwPlayheadDit: false,
+    cwPlayheadDah: false,
+    cwPlayheadStraight: false,
+    cwMachine: "IDLE",
+    cwPendingElement: null,
+    cwElementEndMs: 0,
+    cwKeyIsDown: false,
+    cwBufferReady: false,
+    cwTickTimer: null,
+    cwClaimIdleTimer: null,
+    socketConnectTimes: /* @__PURE__ */ new Map(),
+    saveSettings: () => {
+    },
+    sendToRig: () => Promise.reject("sendToRig not yet initialized")
+  };
 }
-var _shutdown = null;
-async function shutdown() {
-  if (_shutdown) await _shutdown();
+
+// server/settings.ts
+var import_fs2 = __toESM(require("fs"), 1);
+init_vlog();
+function loadSettings(ctx, settingsFile) {
+  if (!import_fs2.default.existsSync(settingsFile)) return;
+  try {
+    const data = JSON.parse(import_fs2.default.readFileSync(settingsFile, "utf-8"));
+    ctx.rigctldSettings = { ...ctx.rigctldSettings, ...data.settings };
+    ctx.autoStartEnabled = data.autoStart || false;
+    ctx.videoAutoStart = data.videoAutoStart || false;
+    ctx.pollRate = Number(data.pollRate) || 2e3;
+    ctx.autoconnectEligible = data.autoconnectEligible || false;
+    ctx.clientHost = data.clientHost || "127.0.0.1";
+    ctx.clientPort = Number(data.clientPort) || 4532;
+    if (data.videoSettings) {
+      const vs = data.videoSettings;
+      if (vs.resolution && !vs.videoWidth) {
+        const parts = vs.resolution.split("x");
+        vs.videoWidth = parseInt(parts[0]) || 640;
+        vs.videoHeight = parseInt(parts[1]) || 480;
+      }
+      ctx.videoSettings = { ...ctx.videoSettings, ...vs };
+    }
+    if (data.audioSettings) {
+      ctx.audioSettings = { ...ctx.audioSettings, ...data.audioSettings };
+    }
+    if (data.potaSettings) {
+      ctx.potaSettings = { ...ctx.potaSettings, ...data.potaSettings };
+    }
+    if (data.sotaSettings) {
+      ctx.sotaSettings = { ...ctx.sotaSettings, ...data.sotaSettings };
+    }
+    if (data.cwSettings) {
+      ctx.cwSettings = { ...ctx.cwSettings, ...data.cwSettings };
+    }
+  } catch (e) {
+    console.error("Failed to load settings:", e);
+  }
 }
-async function startServer(appPath, userDataPath) {
-  const app2 = (0, import_express.default)();
-  const PORT = 3e3;
-  const baseDir = appPath || process.cwd();
-  const dataDir = userDataPath || (process.env.NODE_ENV === "production" ? "/tmp" : process.cwd());
-  const SETTINGS_FILE = import_path.default.join(dataDir, "settings.json");
-  const RADIOS_FILE = import_path.default.join(baseDir, "radios.json");
-  vlog(`Server initializing. Base directory (assets): ${baseDir}`);
-  vlog(`Data directory (settings): ${dataDir}`);
-  vlog(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
-  const { key: tlsKey, cert: tlsCert } = await loadOrGenerateCert(dataDir);
-  const httpServer = import_https.default.createServer({ key: tlsKey, cert: tlsCert }, app2);
-  const io2 = new Server(httpServer, {
-    perMessageDeflate: false
+function saveSettings(ctx, settingsFile) {
+  vlog(`[SETTINGS] Saving settings to ${settingsFile}...`);
+  try {
+    import_fs2.default.writeFileSync(settingsFile, JSON.stringify({
+      settings: ctx.rigctldSettings,
+      autoStart: ctx.autoStartEnabled,
+      videoAutoStart: ctx.videoAutoStart,
+      videoSettings: ctx.videoSettings,
+      audioSettings: ctx.audioSettings,
+      pollRate: Number(ctx.pollRate),
+      autoconnectEligible: ctx.autoconnectEligible,
+      clientHost: ctx.clientHost,
+      clientPort: Number(ctx.clientPort),
+      potaSettings: ctx.potaSettings,
+      sotaSettings: ctx.sotaSettings,
+      cwSettings: ctx.cwSettings
+    }, null, 2));
+  } catch (e) {
+    console.error("[SETTINGS] Failed to save settings:", e);
+  }
+}
+function registerSettingsHandlers(socket, ctx, radiosFile, onRigNumberChanged, startPolling2, syncKeyerPort2) {
+  socket.on("save-settings", (data) => {
+    const oldRigNumber = ctx.rigctldSettings.rigNumber;
+    if (data.settings) {
+      ctx.rigctldSettings = { ...ctx.rigctldSettings, ...data.settings };
+    } else {
+      const { pollRate: pr, clientHost: ch, clientPort: cp, ...rest } = data;
+      ctx.rigctldSettings = { ...ctx.rigctldSettings, ...rest };
+    }
+    if (data.pollRate !== void 0) {
+      ctx.pollRate = Number(data.pollRate);
+      startPolling2();
+    }
+    if (data.clientHost !== void 0) ctx.clientHost = data.clientHost;
+    if (data.clientPort !== void 0) ctx.clientPort = Number(data.clientPort);
+    if (data.potaSettings !== void 0) ctx.potaSettings = { ...ctx.potaSettings, ...data.potaSettings };
+    if (data.sotaSettings !== void 0) ctx.sotaSettings = { ...ctx.sotaSettings, ...data.sotaSettings };
+    if (data.cwSettings !== void 0) {
+      const oldPolarity = ctx.cwSettings.serialKeyPolarity;
+      ctx.cwSettings = { ...ctx.cwSettings, ...data.cwSettings };
+      const polarityChanged = data.cwSettings.serialKeyPolarity !== void 0 && data.cwSettings.serialKeyPolarity !== oldPolarity;
+      syncKeyerPort2(polarityChanged);
+    }
+    ctx.saveSettings();
+    if (oldRigNumber !== ctx.rigctldSettings.rigNumber) {
+      onRigNumberChanged(ctx.rigctldSettings.rigNumber);
+    }
   });
-  let rigctldProcess = null;
-  let rigctldStatus = "stopped";
-  let rigctldVersion = null;
-  let isRigctldVersionSupported = true;
-  let rigctldLogs = [];
-  let autoStartEnabled = false;
-  let videoAutoStart = false;
-  let videoSourceSocketId = null;
-  let lastKeyframe = null;
-  let pollRate = 2e3;
-  let autoconnectEligible = false;
-  let clientHost = "127.0.0.1";
-  let clientPort = 4532;
-  let potaSettings = { enabled: false, pollRate: 5, maxAge: 15 };
-  let sotaSettings = { enabled: false, pollRate: 5, maxAge: 15 };
-  let cwSettings = {
-    enabled: false,
-    keyerPort: "",
-    keyingMethod: "dtr",
-    serialKeyPolarity: "high",
-    mode: "iambic-a",
-    wpm: 18,
-    sidetoneHz: 700,
-    sidetoneVolume: 0.5,
-    sidetoneEnabled: true,
-    ditKey: "ControlLeft",
-    dahKey: "ControlRight",
-    straightKey: "Space"
-  };
-  const getRigctldPath = () => {
-    let platformDir = "";
-    if (process.platform === "win32") platformDir = "windows";
-    else if (process.platform === "linux") platformDir = "linux";
-    else if (process.platform === "darwin") platformDir = "mac";
-    const binaryName = process.platform === "win32" ? "rigctld.exe" : "rigctld";
-    let binBase = baseDir;
-    if (baseDir.endsWith(".asar")) {
-      binBase = baseDir.replace(".asar", ".asar.unpacked");
-    }
-    const localPath = platformDir ? import_path.default.join(binBase, "bin", platformDir, binaryName) : "";
-    if (localPath && import_fs.default.existsSync(localPath)) {
-      console.log(`[HAMLIB] Using bundled rigctld at: ${localPath}`);
-      return localPath;
-    }
-    console.log(`[HAMLIB] Bundled rigctld not found at ${localPath || "unsupported platform"}, falling back to system PATH`);
-    return "rigctld";
-  };
-  let videoSettings = {
-    device: "",
-    videoWidth: 640,
-    videoHeight: 480,
-    framerate: ""
-  };
-  let videoStatus = "stopped";
-  let videoDeviceList = [];
-  let audioSettings = {
-    inputDevice: "",
-    outputDevice: "",
-    inboundEnabled: false,
-    outboundEnabled: false
-  };
-  let audioStatus = "stopped";
-  let activeMicClientId = null;
-  let isAudioEngineReady = false;
-  let audioEngineError = null;
-  let portAudio = null;
-  let libopus = null;
-  let audioInputProcess = null;
-  let audioOutputProcess = null;
-  let opusEncoder = null;
-  let opusDecoder = null;
-  const OUTBOUND_SILENCE = Buffer.alloc(960 * 2);
-  const OUTBOUND_PRE_FILL = 3;
-  const OUTBOUND_JITTER_MAX = 8;
-  let outboundTimer = null;
-  let outboundJitterBuffer = [];
-  const initAudioEngine = async () => {
-    try {
-      const dynamicImport = new Function("modulePath", "return import(modulePath)");
-      console.log("[AUDIO-INIT] Attempting to load libopus-node...");
-      libopus = await dynamicImport("libopus-node");
-      console.log("[AUDIO-INIT] libopus-node loaded successfully.");
-      console.log("[AUDIO-INIT] Attempting to load naudiodon...");
+  socket.on("get-radios", () => {
+    if (import_fs2.default.existsSync(radiosFile)) {
       try {
-        portAudio = await dynamicImport("naudiodon");
-        console.log("[AUDIO-INIT] naudiodon loaded successfully.");
-        try {
-          const hostAPIInfo = portAudio.getHostAPIs();
-          vlog("[AUDIO-INIT] Host APIs:", JSON.stringify(hostAPIInfo, null, 2));
-        } catch (e) {
-          console.warn("[AUDIO-INIT] Could not enumerate host APIs:", e.message);
-        }
-        isAudioEngineReady = true;
-      } catch (naudioErr) {
-        console.error("[AUDIO-INIT] Failed to load naudiodon. Audio I/O will be disabled.", naudioErr.message);
-        audioEngineError = "naudiodon missing (build tools required)";
+        const radios = JSON.parse(import_fs2.default.readFileSync(radiosFile, "utf-8"));
+        socket.emit("radios-list", radios);
+      } catch (e) {
+        console.error("Failed to load radios:", e);
+        socket.emit("radios-list", []);
       }
-    } catch (err) {
-      console.error("[AUDIO-INIT] Failed to load audio engine:", err);
-      audioEngineError = err.message;
-    } finally {
-      if (io2) {
-        io2.emit("audio-engine-state", { isReady: isAudioEngineReady, error: audioEngineError });
-      }
+    } else {
+      socket.emit("radios-list", []);
     }
-  };
-  initAudioEngine();
-  let rigctldSettings = {
-    rigNumber: "",
-    serialPort: "",
-    portNumber: "4532",
-    ipAddress: "127.0.0.1",
-    serialPortSpeed: "38400",
-    preampCapabilities: [],
-    attenuatorCapabilities: [],
-    agcCapabilities: [],
-    nbSupported: false,
-    nbLevelRange: { min: 0, max: 1, step: 0.1 },
-    nrSupported: false,
-    nrLevelRange: { min: 0, max: 1, step: 0.1 },
-    rfPowerRange: { min: 0, max: 1, step: 0.01 },
-    anfSupported: false
-  };
-  if (import_fs.default.existsSync(SETTINGS_FILE)) {
-    try {
-      const data = JSON.parse(import_fs.default.readFileSync(SETTINGS_FILE, "utf-8"));
-      rigctldSettings = { ...rigctldSettings, ...data.settings };
-      autoStartEnabled = data.autoStart || false;
-      videoAutoStart = data.videoAutoStart || false;
-      pollRate = Number(data.pollRate) || 2e3;
-      autoconnectEligible = data.autoconnectEligible || false;
-      clientHost = data.clientHost || "127.0.0.1";
-      clientPort = Number(data.clientPort) || 4532;
-      if (data.videoSettings) {
-        const vs = data.videoSettings;
-        if (vs.resolution && !vs.videoWidth) {
-          const parts = vs.resolution.split("x");
-          vs.videoWidth = parseInt(parts[0]) || 640;
-          vs.videoHeight = parseInt(parts[1]) || 480;
-        }
-        videoSettings = { ...videoSettings, ...vs };
-      }
-      if (data.audioSettings) {
-        audioSettings = { ...audioSettings, ...data.audioSettings };
-      }
-      if (data.potaSettings) {
-        potaSettings = { ...potaSettings, ...data.potaSettings };
-      }
-      if (data.sotaSettings) {
-        sotaSettings = { ...sotaSettings, ...data.sotaSettings };
-      }
-      if (data.cwSettings) {
-        cwSettings = { ...cwSettings, ...data.cwSettings };
-      }
-    } catch (e) {
-      console.error("Failed to load settings:", e);
+  });
+}
+
+// server.ts
+init_rigctld();
+
+// server/rigComm.ts
+var import_net = __toESM(require("net"), 1);
+init_vlog();
+function formatExtendedCommand(cmd) {
+  const trimmed = cmd.trim();
+  const parts = trimmed.split(/\s+/);
+  if (parts[0].length === 1) {
+    return `+${trimmed}`;
+  }
+  return `+\\${trimmed}`;
+}
+function parseExtendedResponse(resp) {
+  const lines = resp.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 3) return resp;
+  const lastLine = lines[lines.length - 1];
+  if (lastLine.includes("RPRT 1")) {
+    throw new Error("Rig command error (RPRT 1)");
+  }
+  const values = [];
+  for (let i = 1; i < lines.length - 1; i++) {
+    const line = lines[i];
+    const colonIndex = line.indexOf(":");
+    if (colonIndex !== -1) {
+      values.push(line.substring(colonIndex + 1).trim());
+    } else {
+      values.push(line);
     }
   }
-  const saveSettings = () => {
-    vlog(`[SETTINGS] Saving settings to ${SETTINGS_FILE}...`);
-    try {
-      import_fs.default.writeFileSync(SETTINGS_FILE, JSON.stringify({
-        settings: rigctldSettings,
-        autoStart: autoStartEnabled,
-        videoAutoStart,
-        videoSettings,
-        audioSettings,
-        pollRate: Number(pollRate),
-        autoconnectEligible,
-        clientHost,
-        clientPort: Number(clientPort),
-        potaSettings,
-        sotaSettings,
-        cwSettings
-      }, null, 2));
-    } catch (e) {
-      console.error("[SETTINGS] Failed to save settings:", e);
+  return values.join("\n");
+}
+function executeRigCommand(ctx, cmd, useExtended = false) {
+  const finalCmd = useExtended ? formatExtendedCommand(cmd) : cmd;
+  return new Promise((resolve, reject) => {
+    if (!ctx.rigSocket || ctx.rigSocket.destroyed) {
+      console.error(`[RIG] Command rejected (not connected): "${cmd}"`);
+      return reject("Not connected to rig");
     }
-  };
-  const getRigctldVersion = () => {
-    return new Promise((resolve) => {
-      const proc = (0, import_child_process.spawn)(getRigctldPath(), ["-V"]);
-      let output = "";
-      proc.stdout?.on("data", (d) => output += d.toString());
-      proc.stderr?.on("data", (d) => output += d.toString());
-      proc.on("close", () => {
-        const match = output.match(/hamlib\s+([\d.]+)/i);
-        resolve(match ? match[1] : null);
-      });
-      proc.on("error", () => resolve(null));
-    });
-  };
-  const checkVersionSupported = (version) => {
-    if (!version) return true;
-    const parts = version.split(".").map(Number);
-    const min = [4, 7, 0];
-    for (let i = 0; i < Math.max(parts.length, min.length); i++) {
-      const v = parts[i] || 0;
-      const m = min[i] || 0;
-      if (v > m) return true;
-      if (v < m) return false;
-    }
-    return true;
-  };
-  const emitRigctldStatus = () => {
-    io2.emit("rigctld-status", {
-      status: rigctldStatus,
-      logs: rigctldLogs,
-      version: rigctldVersion,
-      isVersionSupported: isRigctldVersionSupported
-    });
-  };
-  getRigctldVersion().then((v) => {
-    rigctldVersion = v;
-    isRigctldVersionSupported = checkVersionSupported(v);
-    vlog(`[HAMLIB] Detected rigctld version: ${v || "unknown"}`);
-    emitRigctldStatus();
-  });
-  const fetchRadioCapabilities = async (rigNumber) => {
-    if (!rigNumber || rigNumber === "" || rigNumber === "1") {
-      rigctldSettings.preampCapabilities = [];
-      rigctldSettings.attenuatorCapabilities = [];
-      rigctldSettings.agcCapabilities = [];
-      saveSettings();
-      io2.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
-      io2.emit("attenuator-capabilities", rigctldSettings.attenuatorCapabilities);
-      io2.emit("agc-capabilities", rigctldSettings.agcCapabilities);
-      io2.emit("anf-capabilities", rigctldSettings.anfSupported);
-      return;
-    }
-    const rigctldPath = getRigctldPath();
-    vlog(`[HAMLIB] Fetching radio capabilities for rig ${rigNumber}...`);
-    (0, import_child_process.exec)(`"${rigctldPath}" -m ${rigNumber} -u`, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`[HAMLIB] Error getting radio capabilities: ${error.message}`);
-        rigctldSettings.preampCapabilities = [];
-        rigctldSettings.attenuatorCapabilities = [];
-        rigctldSettings.agcCapabilities = [];
-        rigctldSettings.nbSupported = false;
-        rigctldSettings.nrSupported = false;
-        rigctldSettings.anfSupported = false;
-      } else {
-        const lines = stdout.split("\n");
-        const preampLine = lines.find((line) => line.trim().startsWith("Preamp:"));
-        if (preampLine) {
-          const levels = preampLine.replace("Preamp:", "").trim().split(/\s+/).filter(Boolean);
-          rigctldSettings.preampCapabilities = levels;
-          vlog(`[HAMLIB] Found preamp capabilities for rig ${rigNumber}: ${rigctldSettings.preampCapabilities.join(", ")}`);
-        } else {
-          rigctldSettings.preampCapabilities = [];
-          vlog(`[HAMLIB] No preamp capabilities found for rig ${rigNumber}`);
-        }
-        const attenuatorLine = lines.find((line) => line.trim().startsWith("Attenuator:"));
-        if (attenuatorLine) {
-          const levels = attenuatorLine.replace("Attenuator:", "").trim().split(/\s+/).filter(Boolean);
-          rigctldSettings.attenuatorCapabilities = levels;
-          vlog(`[HAMLIB] Found attenuator capabilities for rig ${rigNumber}: ${rigctldSettings.attenuatorCapabilities.join(", ")}`);
-        } else {
-          rigctldSettings.attenuatorCapabilities = [];
-          vlog(`[HAMLIB] No attenuator capabilities found for rig ${rigNumber}`);
-        }
-        const agcLine = lines.find((line) => line.trim().startsWith("AGC levels:"));
-        if (agcLine) {
-          const levels = agcLine.replace("AGC levels:", "").trim().split(/\s+/).filter(Boolean);
-          rigctldSettings.agcCapabilities = levels;
-          vlog(`[HAMLIB] Found AGC capabilities for rig ${rigNumber}: ${rigctldSettings.agcCapabilities.join(", ")}`);
-        } else {
-          rigctldSettings.agcCapabilities = [];
-          vlog(`[HAMLIB] No AGC capabilities found for rig ${rigNumber}`);
-        }
-        const setFunctionsLine = lines.find((line) => line.trim().startsWith("Set functions:"));
-        if (setFunctionsLine) {
-          const functions = setFunctionsLine.replace("Set functions:", "").trim().split(/\s+/);
-          rigctldSettings.nbSupported = functions.includes("NB");
-          rigctldSettings.nrSupported = functions.includes("NR");
-          rigctldSettings.anfSupported = functions.includes("ANF");
-          vlog(`[HAMLIB] NB supported for rig ${rigNumber}: ${rigctldSettings.nbSupported}`);
-          vlog(`[HAMLIB] NR supported for rig ${rigNumber}: ${rigctldSettings.nrSupported}`);
-          vlog(`[HAMLIB] ANF supported for rig ${rigNumber}: ${rigctldSettings.anfSupported}`);
-        } else {
-          rigctldSettings.nbSupported = false;
-          rigctldSettings.nrSupported = false;
-          rigctldSettings.anfSupported = false;
-          vlog(`[HAMLIB] NB/NR/ANF not supported for rig ${rigNumber}`);
-        }
-        const getLevelLine = lines.find((line) => line.trim().startsWith("Get level:"));
-        if (getLevelLine) {
-          const nbMatch = getLevelLine.match(/NB\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
-          if (nbMatch) {
-            rigctldSettings.nbLevelRange = {
-              min: parseFloat(nbMatch[1]),
-              max: parseFloat(nbMatch[2]),
-              step: parseFloat(nbMatch[3])
-            };
-            vlog(`[HAMLIB] NB level range for rig ${rigNumber}: min=${rigctldSettings.nbLevelRange.min}, max=${rigctldSettings.nbLevelRange.max}, step=${rigctldSettings.nbLevelRange.step}`);
-          } else {
-            rigctldSettings.nbLevelRange = { min: 0, max: 1, step: 0.1 };
-          }
-          const nrMatch = getLevelLine.match(/NR\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
-          if (nrMatch) {
-            rigctldSettings.nrLevelRange = {
-              min: parseFloat(nrMatch[1]),
-              max: parseFloat(nrMatch[2]),
-              step: parseFloat(nrMatch[3])
-            };
-            vlog(`[HAMLIB] NR level range for rig ${rigNumber}: min=${rigctldSettings.nrLevelRange.min}, max=${rigctldSettings.nrLevelRange.max}, step=${rigctldSettings.nrLevelRange.step}`);
-          } else {
-            rigctldSettings.nrLevelRange = { min: 0, max: 1, step: 0.1 };
-          }
-          const rfPowerMatch = getLevelLine.match(/RFPOWER\(([\d.-]+)\.\.([\d.-]+)\/([\d.-]+)\)/);
-          if (rfPowerMatch) {
-            rigctldSettings.rfPowerRange = {
-              min: parseFloat(rfPowerMatch[1]),
-              max: parseFloat(rfPowerMatch[2]),
-              step: parseFloat(rfPowerMatch[3])
-            };
-            vlog(`[HAMLIB] RF Power range for rig ${rigNumber}: min=${rigctldSettings.rfPowerRange.min}, max=${rigctldSettings.rfPowerRange.max}, step=${rigctldSettings.rfPowerRange.step}`);
-          } else {
-            rigctldSettings.rfPowerRange = { min: 0, max: 1, step: 0.01 };
-          }
-        }
+    let responseBuffer = "";
+    const timeout = setTimeout(() => {
+      ctx.rigSocket?.removeListener("data", onData);
+      ctx.rigSocket?.removeListener("error", onError);
+      console.warn(`[RIG] Command timed out: "${cmd}" (extended=${useExtended}) \u2014 destroying socket to reset state`);
+      if (ctx.rigSocket) {
+        ctx.rigSocket.destroy();
+        ctx.isConnected = false;
       }
-      saveSettings();
-      io2.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
-      io2.emit("attenuator-capabilities", rigctldSettings.attenuatorCapabilities);
-      io2.emit("agc-capabilities", rigctldSettings.agcCapabilities);
-      io2.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
-      io2.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
-      io2.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
-      io2.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
-    });
-  };
-  const addLog = (data) => {
-    const lines = data.split("\n").filter((l) => l.trim());
-    rigctldLogs = [...rigctldLogs, ...lines].slice(-100);
-    io2.emit("rigctld-log", lines);
-  };
-  const stopRigctld = () => {
-    if (rigctldProcess) {
-      console.log("Stopping rigctld...");
-      rigctldProcess.kill();
-      rigctldProcess = null;
-      rigctldStatus = "stopped";
-      emitRigctldStatus();
-    }
-  };
-  const checkExistingRigctld = () => {
-    return new Promise((resolve) => {
-      const cmd = process.platform === "win32" ? 'tasklist /FI "IMAGENAME eq rigctld.exe"' : "pgrep rigctld";
-      (0, import_child_process.exec)(cmd, (err, stdout) => {
-        if (process.platform === "win32") {
-          resolve(stdout.toLowerCase().includes("rigctld.exe"));
-        } else {
-          resolve(!err && !!stdout.trim());
-        }
-      });
-    });
-  };
-  const listAudioDevices = async () => {
-    if (!portAudio) {
-      return { inputs: [], outputs: [], error: audioEngineError || "Audio engine not ready" };
-    }
-    try {
-      const devices = portAudio.getDevices();
-      const inputs = devices.filter((d) => d.maxInputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "", defaultSampleRate: d.defaultSampleRate || 0 }));
-      const outputs = devices.filter((d) => d.maxOutputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "", defaultSampleRate: d.defaultSampleRate || 0 }));
-      return { inputs, outputs };
-    } catch (err) {
-      console.error("[AUDIO] Failed to list devices:", err);
-      return { inputs: [], outputs: [], error: err.message };
-    }
-  };
-  const stopAudio = async () => {
-    console.log("[AUDIO] Stopping audio streaming...");
-    if (outboundTimer) {
-      clearInterval(outboundTimer);
-      outboundTimer = null;
-    }
-    outboundJitterBuffer = [];
-    if (audioInputProcess) {
-      try {
-        await audioInputProcess.quit();
-      } catch (e) {
-      }
-      audioInputProcess = null;
-    }
-    if (audioOutputProcess) {
-      try {
-        await audioOutputProcess.quit();
-      } catch (e) {
-      }
-      audioOutputProcess = null;
-    }
-    opusEncoder = null;
-    opusDecoder = null;
-    audioStatus = "stopped";
-    io2.emit("audio-status", audioStatus);
-  };
-  let cwKeyerProcess = null;
-  let activeCwClientId = null;
-  let cwKeyLockedOut = false;
-  let cwStuckKeyTimer = null;
-  let cwIsKeying = false;
-  let cwIdleTimer = null;
-  const CW_BUFFER_DEPTH_MS = 60;
-  const CW_BUFFER_MAX_MS = 240;
-  const socketConnectTimes = /* @__PURE__ */ new Map();
-  let cwPaddleBuffer = [];
-  let cwPlayheadDit = false;
-  let cwPlayheadDah = false;
-  let cwPlayheadStraight = false;
-  let cwMachine = "IDLE";
-  let cwPendingElement = null;
-  let cwElementEndMs = 0;
-  let cwKeyIsDown = false;
-  let cwBufferReady = false;
-  let cwTickTimer = null;
-  let cwClaimIdleTimer = null;
-  const getCwHelperPath = () => {
-    let base = baseDir;
-    if (base.endsWith(".asar")) base = base.replace(".asar", ".asar.unpacked");
-    return import_path.default.join(base, "cw-key-helper.py");
-  };
-  const setSerialKey = (active) => {
-    if (!cwKeyerProcess || cwKeyerProcess.killed) return Promise.resolve();
-    return new Promise((resolve) => {
-      try {
-        cwKeyerProcess.stdin.write(active ? "1\n" : "0\n", () => resolve());
-      } catch (_) {
-        resolve();
-      }
-    });
-  };
-  const sendCwCatPtt = (state, clientId) => {
-    sendToRig(`T ${state ? 1 : 0}`, false, true).catch((err) => {
-      console.error("[CW] CAT PTT error:", err);
-      if (cwStuckKeyTimer) {
-        clearTimeout(cwStuckKeyTimer);
-        cwStuckKeyTimer = null;
-      }
-      cwKeyLockedOut = false;
-      activeCwClientId = null;
-      cwIsKeying = false;
-      io2.to(clientId).emit("cw-stuck-key-alert");
-    });
-  };
-  const setCwKeyingActive = (active) => {
-    cwIsKeying = active;
-    if (!active) {
-      if (cwIdleTimer) clearTimeout(cwIdleTimer);
-      cwIdleTimer = setTimeout(() => {
-        cwIsKeying = false;
-        cwIdleTimer = null;
-      }, 500);
-    } else {
-      if (cwIdleTimer) {
-        clearTimeout(cwIdleTimer);
-        cwIdleTimer = null;
-      }
-    }
-  };
-  const cwSetKey = (active) => {
-    if (cwKeyIsDown === active) return;
-    cwKeyIsDown = active;
-    if (active) {
-      if (cwIdleTimer) {
-        clearTimeout(cwIdleTimer);
-        cwIdleTimer = null;
-      }
-      cwStuckKeyTimer = setTimeout(() => {
-        cwStuckKeyTimer = null;
-        if (cwSettings.keyingMethod === "rigctld-ptt") {
-          sendCwCatPtt(false, activeCwClientId ?? "");
-        } else {
-          setSerialKey(false).catch((err) => console.error("[CW] Watchdog key-up error:", err.message));
-        }
-        cwKeyIsDown = false;
-        cwKeyLockedOut = true;
-        const cid = activeCwClientId;
-        activeCwClientId = null;
-        stopCwTick();
-        setCwKeyingActive(false);
-        if (cid) io2.to(cid).emit("cw-stuck-key-alert");
-        console.warn("[CW] Stuck-key watchdog fired \u2014 key forced inactive");
-      }, 5e3);
-      setCwKeyingActive(true);
-    } else {
-      if (cwStuckKeyTimer) {
-        clearTimeout(cwStuckKeyTimer);
-        cwStuckKeyTimer = null;
-      }
-      setCwKeyingActive(false);
-    }
-    if (cwSettings.keyingMethod === "rigctld-ptt") {
-      sendCwCatPtt(active, activeCwClientId ?? "");
-    } else {
-      setSerialKey(active).catch((err) => console.error("[CW] Key set error:", err.message));
-    }
-  };
-  const stopCwTick = () => {
-    if (cwTickTimer) {
-      clearTimeout(cwTickTimer);
-      cwTickTimer = null;
-    }
-  };
-  const cwTick = () => {
-    cwTickTimer = null;
-    if (!activeCwClientId) return;
-    const connectMs = socketConnectTimes.get(activeCwClientId) ?? Date.now();
-    const nowClientMs = Date.now() - connectMs;
-    const playheadMs = nowClientMs - CW_BUFFER_DEPTH_MS;
-    while (cwPaddleBuffer.length > 0 && cwPaddleBuffer[0].t <= playheadMs) {
-      const evt = cwPaddleBuffer.shift();
-      cwPlayheadDit = evt.dit;
-      cwPlayheadDah = evt.dah;
-      cwPlayheadStraight = evt.straight;
-    }
-    if (!cwBufferReady) {
-      if (nowClientMs >= CW_BUFFER_DEPTH_MS) {
-        cwBufferReady = true;
-      } else {
-        cwTickTimer = setTimeout(cwTick, 4);
-        return;
-      }
-    }
-    if (cwKeyLockedOut) {
-      if (!cwPlayheadDit && !cwPlayheadDah && !cwPlayheadStraight) cwKeyLockedOut = false;
-      else {
-        cwTickTimer = setTimeout(cwTick, 4);
-        return;
-      }
-    }
-    const ditMs = 1.2 / cwSettings.wpm * 1e3;
-    const nowMs = Date.now();
-    if (cwSettings.mode === "straight") {
-      const wantDown = cwPlayheadStraight;
-      if (wantDown !== cwKeyIsDown) cwSetKey(wantDown);
-    } else {
-      if (cwMachine === "IDLE") {
-        if (cwPlayheadDit && !cwPlayheadDah) {
-          cwMachine = "SENDING_DIT";
-          cwElementEndMs = nowMs + ditMs;
-          cwPendingElement = null;
-          cwSetKey(true);
-        } else if (cwPlayheadDah && !cwPlayheadDit) {
-          cwMachine = "SENDING_DAH";
-          cwElementEndMs = nowMs + ditMs * 3;
-          cwPendingElement = null;
-          cwSetKey(true);
-        } else if (cwPlayheadDit && cwPlayheadDah) {
-          cwMachine = "SENDING_DIT";
-          cwElementEndMs = nowMs + ditMs;
-          cwPendingElement = "dah";
-          cwSetKey(true);
-        }
-      } else if (cwMachine === "SENDING_DIT" || cwMachine === "SENDING_DAH") {
-        if (cwSettings.mode === "iambic-b") {
-          if (cwMachine === "SENDING_DIT" && cwPlayheadDah && cwPendingElement !== "dah") cwPendingElement = "dah";
-          else if (cwMachine === "SENDING_DAH" && cwPlayheadDit && cwPendingElement !== "dit") cwPendingElement = "dit";
-        }
-        if (nowMs >= cwElementEndMs) {
-          cwSetKey(false);
-          cwMachine = "INTER_ELEMENT";
-          cwElementEndMs = nowMs + ditMs;
-        }
-      } else if (cwMachine === "INTER_ELEMENT") {
-        if (nowMs >= cwElementEndMs) {
-          let next = null;
-          if (cwSettings.mode === "iambic-b" && cwPendingElement) {
-            next = cwPendingElement;
-          } else if (cwPlayheadDit && cwPlayheadDah) {
-            next = cwPendingElement === "dah" ? "dah" : "dit";
-          } else if (cwPlayheadDit) {
-            next = "dit";
-          } else if (cwPlayheadDah) {
-            next = "dah";
-          }
-          cwPendingElement = null;
-          if (next === "dit") {
-            cwMachine = "SENDING_DIT";
-            cwElementEndMs = nowMs + ditMs;
-            if (cwSettings.mode === "iambic-b" && cwPlayheadDah) cwPendingElement = "dah";
-            cwSetKey(true);
-          } else if (next === "dah") {
-            cwMachine = "SENDING_DAH";
-            cwElementEndMs = nowMs + ditMs * 3;
-            if (cwSettings.mode === "iambic-b" && cwPlayheadDit) cwPendingElement = "dit";
-            cwSetKey(true);
-          } else {
-            cwMachine = "IDLE";
-          }
-        }
-      }
-    }
-    cwTickTimer = setTimeout(cwTick, Math.max(4, ditMs / 4));
-  };
-  const openKeyerPort = async (portPath) => {
-    await closeKeyerPort();
-    if (!portPath) return;
-    await new Promise((resolve) => {
-      let settled = false;
-      const settle = () => {
-        if (!settled) {
-          settled = true;
-          resolve();
-        }
-      };
-      const proc = (0, import_child_process.spawn)("python3", [
-        getCwHelperPath(),
-        portPath,
-        cwSettings.keyingMethod === "rts" ? "rts" : "dtr",
-        cwSettings.serialKeyPolarity
-      ]);
-      let buf = "";
-      proc.stdout.on("data", (chunk) => {
-        buf += chunk.toString();
-        let nl;
-        while ((nl = buf.indexOf("\n")) !== -1) {
-          const line = buf.slice(0, nl).trim();
-          buf = buf.slice(nl + 1);
-          if (line.startsWith("OPEN_OK")) {
-            cwKeyerProcess = proc;
-            proc.on("close", (code) => {
-              if (cwKeyerProcess === proc) {
-                cwKeyerProcess = null;
-                console.warn(`[CW] Keyer helper exited (code ${code})`);
-                io2.emit("cw-port-status", { open: false, port: portPath, error: "Helper process exited unexpectedly" });
-              }
-            });
-            console.log(`[CW] Keyer port opened: ${portPath}`);
-            io2.emit("cw-port-status", { open: true, port: portPath });
-            settle();
-          } else if (line.startsWith("OPEN_ERROR:")) {
-            const msg = line.slice("OPEN_ERROR:".length).trim();
-            console.error(`[CW] Failed to open keyer port ${portPath}: ${msg}`);
-            proc.kill();
-            io2.emit("cw-port-status", { open: false, port: portPath, error: msg });
-            settle();
-          }
-        }
-      });
-      proc.stderr.on("data", (chunk) => {
-        console.error("[CW] Helper stderr:", chunk.toString().trim());
-      });
-      proc.on("error", (err) => {
-        const msg = err.code === "ENOENT" ? "python3 not found \u2014 install Python 3 with pyserial" : err.message;
-        console.error(`[CW] Failed to spawn helper:`, msg);
-        io2.emit("cw-port-status", { open: false, port: portPath, error: msg });
-        settle();
-      });
-      setTimeout(() => {
-        if (!settled) {
-          proc.kill();
-          io2.emit("cw-port-status", { open: false, port: portPath, error: "Helper did not respond \u2014 check python3 and pyserial" });
-          settle();
-        }
-      }, 5e3);
-    });
-  };
-  const closeKeyerPort = async () => {
-    stopCwTick();
-    if (cwStuckKeyTimer) {
-      clearTimeout(cwStuckKeyTimer);
-      cwStuckKeyTimer = null;
-    }
-    if (cwIdleTimer) {
-      clearTimeout(cwIdleTimer);
-      cwIdleTimer = null;
-    }
-    if (cwClaimIdleTimer) {
-      clearTimeout(cwClaimIdleTimer);
-      cwClaimIdleTimer = null;
-    }
-    if (cwKeyerProcess && !cwKeyerProcess.killed) {
-      await setSerialKey(false);
-      cwKeyerProcess.kill();
-    }
-    cwKeyerProcess = null;
-    cwKeyLockedOut = false;
-    activeCwClientId = null;
-    cwIsKeying = false;
-    cwKeyIsDown = false;
-    cwMachine = "IDLE";
-    cwPaddleBuffer = [];
-  };
-  const syncKeyerPort = async (forceReopen = false) => {
-    const needsPort = cwSettings.enabled && cwSettings.keyingMethod !== "rigctld-ptt" && !!cwSettings.keyerPort;
-    if (needsPort) {
-      if (!cwKeyerProcess || cwKeyerProcess.killed || forceReopen) {
-        await openKeyerPort(cwSettings.keyerPort);
-      }
-    } else if (cwKeyerProcess && !cwKeyerProcess.killed) {
-      await closeKeyerPort();
-    }
-  };
-  const startAudio = async () => {
-    console.log("[AUDIO] Starting audio streaming...");
-    await stopAudio();
-    if (!isAudioEngineReady) {
-      console.warn("[AUDIO] Cannot start audio: Audio engine is not ready.");
-      return;
-    }
-    if (!audioSettings.inputDevice && !audioSettings.outputDevice) {
-      console.warn("[AUDIO] Cannot start audio: No devices selected.");
-      return;
-    }
-    try {
-      opusEncoder = new libopus.OpusEncoder(48e3, 1);
-      opusDecoder = new libopus.OpusEncoder(48e3, 1);
-      console.log("[AUDIO] Opus encoder/decoder initialized at 48000Hz Mono.");
-    } catch (err) {
-      console.error("[AUDIO] Failed to initialize Opus:", err);
-      return;
-    }
-    if (audioSettings.inputDevice) {
-      try {
-        const deviceId = parseInt(audioSettings.inputDevice, 10);
-        audioInputProcess = new portAudio.AudioIO({
-          inOptions: {
-            channelCount: 1,
-            sampleFormat: portAudio.SampleFormat16Bit,
-            sampleRate: 48e3,
-            deviceId: isNaN(deviceId) ? -1 : deviceId,
-            // -1 is default
-            closeOnError: true,
-            framesPerBuffer: 0,
-            // Let PortAudio choose native buffer size for the host API
-            maxQueue: 10,
-            highwaterMark: 256
-            // small value to keep read() requests tiny and data events firing as frequently as possible
-          }
-        });
-        const FRAME_SIZE_BYTES = 960 * 2;
-        let pcmBuffer = Buffer.alloc(0);
-        audioInputProcess.on("data", (data) => {
-          try {
-            if (activeMicClientId && lastStatus.ptt) return;
-            pcmBuffer = Buffer.concat([pcmBuffer, data]);
-            while (pcmBuffer.length >= FRAME_SIZE_BYTES) {
-              const frame = pcmBuffer.subarray(0, FRAME_SIZE_BYTES);
-              pcmBuffer = pcmBuffer.subarray(FRAME_SIZE_BYTES);
-              try {
-                const encodedPacket = opusEncoder.encode(frame);
-                io2.emit("audio-inbound", encodedPacket);
-              } catch (err) {
-                console.error("[AUDIO] Opus encode error:", err);
-              }
+      reject(`Rig command timeout: "${cmd}"`);
+    }, 1e4);
+    const onData = (data) => {
+      responseBuffer += data.toString();
+      if (useExtended) {
+        const rprtMatch = responseBuffer.match(/RPRT (-?\d+)/);
+        if (rprtMatch) {
+          clearTimeout(timeout);
+          ctx.rigSocket?.removeListener("data", onData);
+          ctx.rigSocket?.removeListener("error", onError);
+          vlog(`[RIG] Response for "${cmd}": ${responseBuffer.trim()}`);
+          const rprtCode = parseInt(rprtMatch[1], 10);
+          if (rprtCode === 0 || rprtCode === 1) {
+            try {
+              resolve(parseExtendedResponse(responseBuffer));
+            } catch (e) {
+              console.error(`[RIG] Parse error for "${cmd}":`, e);
+              reject(e);
             }
-          } catch (err) {
-            console.error("[AUDIO-IN] Unhandled exception in data handler:", err);
-          }
-        });
-        audioInputProcess.on("error", (err) => {
-          console.error("[AUDIO-IN] naudiodon error:", err);
-        });
-        audioInputProcess.start();
-        console.log(`[AUDIO-IN] Started capture from device ${audioSettings.inputDevice}`);
-      } catch (err) {
-        console.error("[AUDIO-IN] Failed to start capture:", err);
-      }
-    }
-    if (audioSettings.outputDevice) {
-      try {
-        const deviceId = parseInt(audioSettings.outputDevice, 10);
-        audioOutputProcess = new portAudio.AudioIO({
-          outOptions: {
-            channelCount: 1,
-            sampleFormat: portAudio.SampleFormat16Bit,
-            sampleRate: 48e3,
-            deviceId: isNaN(deviceId) ? -1 : deviceId,
-            closeOnError: false,
-            // Do not close on underflow — underflow is expected before first write
-            framesPerBuffer: 0,
-            // Let PortAudio choose native buffer size for the host API
-            maxQueue: 20
-          }
-        });
-        audioOutputProcess.on("error", (err) => {
-          console.error("[AUDIO-OUT] naudiodon error:", err);
-        });
-        audioOutputProcess.start();
-        for (let i = 0; i < OUTBOUND_PRE_FILL; i++) {
-          audioOutputProcess.write(OUTBOUND_SILENCE);
-        }
-        outboundTimer = setInterval(() => {
-          if (!audioOutputProcess) return;
-          let frame;
-          if (lastStatus.ptt && outboundJitterBuffer.length > 0) {
-            frame = outboundJitterBuffer.shift();
           } else {
-            outboundJitterBuffer = [];
-            frame = OUTBOUND_SILENCE;
+            reject(`RPRT ${rprtCode}: "${cmd}"`);
           }
-          audioOutputProcess.write(frame);
-        }, 20);
-        console.log(`[AUDIO-OUT] Started playback to device ${audioSettings.outputDevice}`);
-      } catch (err) {
-        console.error("[AUDIO-OUT] Failed to start playback:", err);
-      }
-    }
-    activeMicClientId = null;
-    io2.emit("mic-active-client", null);
-    io2.emit("mic-mute-forced");
-    audioStatus = "playing";
-    io2.emit("audio-status", audioStatus);
-  };
-  const killExistingRigctld = () => {
-    return new Promise((resolve) => {
-      const cmd = process.platform === "win32" ? "taskkill /F /IM rigctld.exe" : "pkill -9 rigctld";
-      (0, import_child_process.exec)(cmd, () => {
-        resolve();
-      });
-    });
-  };
-  const startRigctld = async () => {
-    if (rigctldProcess) {
-      stopRigctld();
-    }
-    rigctldVersion = await getRigctldVersion();
-    isRigctldVersionSupported = checkVersionSupported(rigctldVersion);
-    console.log(`[HAMLIB] rigctld version check: ${rigctldVersion || "unknown"}`);
-    addLog(`Hamlib (rigctld) version check: ${rigctldVersion || "unknown"}`);
-    if (!isRigctldVersionSupported) {
-      console.warn(`rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
-      addLog(`Warning: rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
-    }
-    const isAlreadyRunning = await checkExistingRigctld();
-    if (isAlreadyRunning) {
-      console.warn("rigctld is already running on the system");
-      rigctldStatus = "already_running";
-      emitRigctldStatus();
-      addLog("Error: rigctld is already running on the system. Please stop it or use the 'Kill and Restart' option.");
-      return;
-    }
-    const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = rigctldSettings;
-    if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
-      console.error("Cannot start rigctld: missing settings");
-      rigctldStatus = "error";
-      emitRigctldStatus();
-      return;
-    }
-    console.log(`Starting rigctld: ${getRigctldPath()} -m ${rigNumber} -r ${serialPort} -t ${portNumber} -T ${ipAddress} -s ${serialPortSpeed}`);
-    rigctldProcess = (0, import_child_process.spawn)(getRigctldPath(), [
-      "-m",
-      rigNumber,
-      "-r",
-      serialPort,
-      "-t",
-      portNumber,
-      "-T",
-      ipAddress,
-      "-s",
-      serialPortSpeed
-    ], { detached: false });
-    rigctldStatus = "running";
-    emitRigctldStatus();
-    addLog("rigctld started");
-    rigctldProcess.stdout?.on("data", (data) => {
-      const str = data.toString();
-      vlog(`rigctld stdout: ${str}`);
-      addLog(str);
-    });
-    rigctldProcess.stderr?.on("data", (data) => {
-      const str = data.toString();
-      console.error(`rigctld stderr: ${str}`);
-      addLog(str);
-    });
-    rigctldProcess.on("close", (code) => {
-      console.log(`rigctld process exited with code ${code}`);
-      addLog(`rigctld exited with code ${code}`);
-      rigctldProcess = null;
-      rigctldStatus = code === 0 ? "stopped" : "error";
-      emitRigctldStatus();
-    });
-    rigctldProcess.on("error", (err) => {
-      console.error("Failed to start rigctld:", err);
-      addLog(`Error: ${err.message}`);
-      rigctldProcess = null;
-      rigctldStatus = "error";
-      emitRigctldStatus();
-    });
-  };
-  if (autoStartEnabled) {
-    startRigctld();
-  }
-  await syncKeyerPort();
-  process.on("exit", stopRigctld);
-  process.on("SIGINT", () => {
-    closeKeyerPort();
-    stopRigctld();
-    process.exit();
-  });
-  process.on("SIGTERM", () => {
-    closeKeyerPort();
-    stopRigctld();
-    process.exit();
-  });
-  let rigSocket = null;
-  let pollingTimeout = null;
-  let rigConfig = { host: "", port: 0 };
-  let isConnected = false;
-  let vfoSupported = true;
-  const probeVfoCapability = async () => {
-    try {
-      const result = await sendToRig("v", false);
-      if (result.includes("RPRT -11")) {
-        vfoSupported = false;
-        console.log("VFO not supported by this radio (RPRT -11); disabling VFO B and split");
-        const freq = await sendToRig("f", false);
-        if (!freq || freq.includes("RPRT")) {
-          console.warn("get_freq also failed after VFO probe \u2014 rig may not be responding");
         }
       } else {
-        vfoSupported = true;
-        console.log(`VFO supported (reported: ${result})`);
+        clearTimeout(timeout);
+        ctx.rigSocket?.removeListener("data", onData);
+        ctx.rigSocket?.removeListener("error", onError);
+        vlog(`[RIG] Response for "${cmd}": ${responseBuffer.trim()}`);
+        resolve(responseBuffer.trim());
       }
-    } catch (err) {
-      vfoSupported = false;
-      console.log("VFO probe failed; disabling VFO B and split:", err);
+    };
+    const onError = (err) => {
+      clearTimeout(timeout);
+      ctx.rigSocket?.removeListener("data", onData);
+      console.error(`[RIG] Socket error during command "${cmd}":`, err.message);
+      reject(err);
+    };
+    vlog(`[RIG] Sending command: "${cmd}"`);
+    ctx.rigSocket.on("data", onData);
+    ctx.rigSocket.once("error", onError);
+    ctx.rigSocket.write(finalCmd + "\n");
+  });
+}
+var processRigQueue = async (ctx) => {
+  if (ctx.isRigBusy || ctx.rigCommandQueue.length === 0) return;
+  ctx.isRigBusy = true;
+  const { cmd, useExtended, resolve, reject } = ctx.rigCommandQueue.shift();
+  try {
+    const resp = await executeRigCommand(ctx, cmd, useExtended);
+    resolve(resp);
+  } catch (err) {
+    reject(err);
+  } finally {
+    ctx.isRigBusy = false;
+    setTimeout(() => processRigQueue(ctx), 10);
+  }
+};
+function sendToRig(ctx, cmd, useExtended = false, priority = false) {
+  return new Promise((resolve, reject) => {
+    if (priority) {
+      ctx.rigCommandQueue.unshift({ cmd, useExtended, resolve, reject });
+    } else {
+      ctx.rigCommandQueue.push({ cmd, useExtended, resolve, reject });
     }
-  };
-  const connectToRig = (host, port, socket) => {
-    if (isConnected && rigConfig.host === host && rigConfig.port === port) {
-      console.log(`Already connected to rigctld at ${host}:${port}. Informing client.`);
-      if (socket) {
-        socket.emit("rig-connected", { host, port });
-      } else {
-        io2.emit("rig-connected", { host, port });
+    processRigQueue(ctx);
+  });
+}
+async function probeVfoCapability(ctx) {
+  try {
+    const result = await sendToRig(ctx, "v", false);
+    if (result.includes("RPRT -11")) {
+      ctx.vfoSupported = false;
+      console.log("VFO not supported by this radio (RPRT -11); disabling VFO B and split");
+      const freq = await sendToRig(ctx, "f", false);
+      if (!freq || freq.includes("RPRT")) {
+        console.warn("get_freq also failed after VFO probe \u2014 rig may not be responding");
       }
+    } else {
+      ctx.vfoSupported = true;
+      console.log(`VFO supported (reported: ${result})`);
+    }
+  } catch (err) {
+    ctx.vfoSupported = false;
+    console.log("VFO probe failed; disabling VFO B and split:", err);
+  }
+}
+function stopPolling(ctx) {
+  if (ctx.pollingTimeout) {
+    clearTimeout(ctx.pollingTimeout);
+    ctx.pollingTimeout = null;
+  }
+}
+async function pollRig(ctx) {
+  if (!ctx.isConnected) {
+    if (ctx.rigConfig.host && ctx.rigConfig.host !== "mock") {
+      console.log("Attempting background reconnection...");
+      connectToRig(ctx, ctx.rigConfig.host, ctx.rigConfig.port);
+    }
+    return;
+  }
+  try {
+    const now = Date.now();
+    const isSlowPoll = ctx.pollCycleCount % 10 === 0;
+    ctx.pollCycleCount++;
+    const ptt = await sendToRig(ctx, "t", true);
+    const smeter = await sendToRig(ctx, "l STRENGTH", true);
+    const isPttActive = ptt === "1";
+    let alc = ctx.lastStatus.alc?.toString() || "0";
+    let powerMeter = ctx.lastStatus.powerMeter?.toString() || "0";
+    let swr = ctx.lastStatus.swr?.toString() || "1.0";
+    if (isPttActive) {
+      try {
+        alc = await sendToRig(ctx, "l ALC", true);
+        powerMeter = await sendToRig(ctx, "l RFPOWER_METER", true);
+        swr = await sendToRig(ctx, "l SWR", true);
+      } catch (e) {
+        console.warn("TX levels poll failed, might not be supported");
+      }
+    }
+    let frequency = ctx.lastStatus.frequency;
+    let mode = ctx.lastStatus.mode;
+    let bandwidth = ctx.lastStatus.bandwidth;
+    let rfpower = ctx.lastStatus.rfpower;
+    let rflevel = ctx.lastStatus.rfLevel;
+    let agc = ctx.lastStatus.agc;
+    let vfo = ctx.lastStatus.vfo;
+    let isSplit = ctx.lastStatus.isSplit;
+    let txVFO = ctx.lastStatus.txVFO;
+    let att = ctx.lastStatus.attenuation;
+    let preamp = ctx.lastStatus.preamp;
+    let nb = ctx.lastStatus.nb;
+    let nbLevel = ctx.lastStatus.nbLevel;
+    let nr = ctx.lastStatus.nr;
+    let nrLevel = ctx.lastStatus.nrLevel;
+    let anf = ctx.lastStatus.anf;
+    let tuner = ctx.lastStatus.tuner;
+    let vdd = ctx.lastStatus.vdd;
+    if (isSlowPoll) {
+      if (ctx.visibleMeters.includes("vdd")) {
+        vdd = parseFloat(await sendToRig(ctx, "l VD_METER", true).catch(() => "13.8"));
+      }
+      frequency = await sendToRig(ctx, "f", true);
+      const modeBw = await sendToRig(ctx, "m", true);
+      const [m, b] = modeBw.split("\n");
+      mode = m;
+      bandwidth = b;
+      rfpower = parseFloat(await sendToRig(ctx, "l RFPOWER", true));
+      rflevel = parseFloat(await sendToRig(ctx, "l RF", true).catch(() => "0"));
+      agc = parseInt(await sendToRig(ctx, "l AGC", true).catch(() => "6"));
+      if (ctx.vfoSupported) {
+        vfo = await sendToRig(ctx, "v", true);
+        const splitInfo = await sendToRig(ctx, "s", true);
+        const [isSplitStr, txVFOStr] = splitInfo.split("\n");
+        isSplit = isSplitStr === "1";
+        txVFO = txVFOStr || "VFOB";
+      }
+      att = parseInt(await sendToRig(ctx, "l ATT", true)) || 0;
+      preamp = parseInt(await sendToRig(ctx, "l PREAMP", true)) || 0;
+      nb = await sendToRig(ctx, "u NB", true).catch(() => "0") === "1";
+      nbLevel = parseFloat(await sendToRig(ctx, "l NB", true).catch(() => "0"));
+      nr = await sendToRig(ctx, "u NR", true).catch(() => "0") === "1";
+      nrLevel = parseFloat(await sendToRig(ctx, "l NR", true).catch(() => "0"));
+      anf = await sendToRig(ctx, "u ANF", true).catch(() => "0") === "1";
+      tuner = await sendToRig(ctx, "u TUNER", true).catch(() => "0") === "1";
+    }
+    ctx.lastStatus = {
+      frequency,
+      mode,
+      bandwidth,
+      ptt: isPttActive,
+      smeter: parseFloat(smeter),
+      swr: parseFloat(swr),
+      alc: parseFloat(alc),
+      powerMeter: parseFloat(powerMeter),
+      rfpower,
+      rfLevel: rflevel,
+      agc,
+      vdd: parseFloat(vdd),
+      vfo,
+      isSplit,
+      txVFO,
+      attenuation: att,
+      preamp,
+      nb,
+      nbLevel,
+      nr,
+      nrLevel,
+      anf,
+      tuner,
+      timestamp: now
+    };
+    ctx.io.emit("rig-status", ctx.lastStatus);
+  } catch (err) {
+    console.error(`[RIG] Poll cycle ${ctx.pollCycleCount} failed:`, err);
+  }
+}
+function startPolling(ctx) {
+  stopPolling(ctx);
+  const runPoll = async () => {
+    if (!ctx.isConnected) return;
+    if (ctx.cwIsKeying) {
+      ctx.pollingTimeout = setTimeout(runPoll, 200);
       return;
     }
-    if (rigSocket) {
-      rigSocket.destroy();
-      rigSocket = null;
-    }
-    rigConfig = { host, port };
-    rigSocket = new import_net.default.Socket();
-    rigSocket.connect(port, host, async () => {
-      console.log(`Connected to rigctld at ${host}:${port}`);
-      isConnected = true;
-      await probeVfoCapability();
-      io2.emit("rig-connected", { host, port, vfoSupported });
-      startPolling();
-    });
-    rigSocket.on("error", (err) => {
-      console.error("Rig socket error:", err);
-      isConnected = false;
-      io2.emit("rig-error", `Connection Error: ${err.message}`);
-    });
-    rigSocket.on("close", () => {
-      console.log("Rig connection closed");
-      isConnected = false;
-      io2.emit("rig-disconnected");
-      stopPolling();
-    });
+    const startTime = Date.now();
+    await pollRig(ctx);
+    const duration = Date.now() - startTime;
+    const nextDelay = Math.max(0, ctx.pollRate - duration);
+    ctx.pollingTimeout = setTimeout(runPoll, nextDelay);
   };
-  const startPolling = () => {
-    stopPolling();
-    const runPoll = async () => {
-      if (!isConnected) return;
-      if (cwIsKeying) {
-        pollingTimeout = setTimeout(runPoll, 200);
-        return;
-      }
-      const startTime = Date.now();
-      await pollRig();
-      const duration = Date.now() - startTime;
-      const nextDelay = Math.max(0, pollRate - duration);
-      pollingTimeout = setTimeout(runPoll, nextDelay);
-    };
-    pollingTimeout = setTimeout(runPoll, pollRate);
-  };
-  const stopPolling = () => {
-    if (pollingTimeout) {
-      clearTimeout(pollingTimeout);
-      pollingTimeout = null;
-    }
-  };
-  let visibleMeters = ["swr", "alc"];
-  let pollCycleCount = 0;
-  let lastStatus = {
+  ctx.pollingTimeout = setTimeout(runPoll, ctx.pollRate);
+}
+function resetRigState(ctx) {
+  ctx.vfoSupported = true;
+  ctx.lastStatus = {
     frequency: "14074000",
     mode: "USB",
     bandwidth: "2400",
@@ -58224,796 +58089,1013 @@ async function startServer(appPath, userDataPath) {
     nb: false,
     nbLevel: 0,
     nr: false,
-    anf: false,
     nrLevel: 8 / 15,
+    anf: false,
     tuner: false
   };
-  const resetRigState = () => {
-    vfoSupported = true;
-    lastStatus = {
-      frequency: "14074000",
-      mode: "USB",
-      bandwidth: "2400",
-      ptt: false,
-      smeter: -54,
-      swr: 1,
-      alc: 0,
-      powerMeter: 0,
-      rfpower: 0.5,
-      vdd: 13.8,
-      vfo: "VFOA",
-      isSplit: false,
-      txVFO: "VFOB",
-      rfLevel: 0,
-      agc: 6,
-      attenuation: 0,
-      preamp: 0,
-      nb: false,
-      nr: false,
-      anf: false,
-      nrLevel: 8 / 15,
-      tuner: false
-    };
-  };
-  const formatExtendedCommand = (cmd) => {
-    const trimmed = cmd.trim();
-    const parts = trimmed.split(/\s+/);
-    if (parts[0].length === 1) {
-      return `+${trimmed}`;
+}
+function connectToRig(ctx, host, port, socket) {
+  if (ctx.isConnected && ctx.rigConfig.host === host && ctx.rigConfig.port === port) {
+    console.log(`Already connected to rigctld at ${host}:${port}. Informing client.`);
+    if (socket) {
+      socket.emit("rig-connected", { host, port });
+    } else {
+      ctx.io.emit("rig-connected", { host, port });
     }
-    return `+\\${trimmed}`;
-  };
-  const parseExtendedResponse = (resp) => {
-    const lines = resp.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    if (lines.length < 3) return resp;
-    const lastLine = lines[lines.length - 1];
-    if (lastLine.includes("RPRT 1")) {
-      throw new Error("Rig command error (RPRT 1)");
+    return;
+  }
+  if (ctx.rigSocket) {
+    ctx.rigSocket.destroy();
+    ctx.rigSocket = null;
+  }
+  ctx.rigConfig = { host, port };
+  ctx.rigSocket = new import_net.default.Socket();
+  ctx.rigSocket.connect(port, host, async () => {
+    console.log(`Connected to rigctld at ${host}:${port}`);
+    ctx.isConnected = true;
+    await probeVfoCapability(ctx);
+    ctx.io.emit("rig-connected", { host, port, vfoSupported: ctx.vfoSupported });
+    startPolling(ctx);
+  });
+  ctx.rigSocket.on("error", (err) => {
+    console.error("Rig socket error:", err);
+    ctx.isConnected = false;
+    ctx.io.emit("rig-error", `Connection Error: ${err.message}`);
+  });
+  ctx.rigSocket.on("close", () => {
+    console.log("Rig connection closed");
+    ctx.isConnected = false;
+    ctx.io.emit("rig-disconnected");
+    stopPolling(ctx);
+  });
+}
+function registerRigCommHandlers(socket, ctx) {
+  socket.on("connect-rig", ({ host, port }) => {
+    resetRigState(ctx);
+    connectToRig(ctx, host, port, socket);
+  });
+  socket.on("disconnect-rig", () => {
+    resetRigState(ctx);
+    if (ctx.rigSocket) {
+      ctx.rigSocket.destroy();
+      ctx.rigSocket = null;
     }
-    const values = [];
-    for (let i = 1; i < lines.length - 1; i++) {
-      const line = lines[i];
-      const colonIndex = line.indexOf(":");
-      if (colonIndex !== -1) {
-        values.push(line.substring(colonIndex + 1).trim());
-      } else {
-        values.push(line);
-      }
-    }
-    return values.join("\n");
-  };
-  const rigCommandQueue = [];
-  let isRigBusy = false;
-  const processRigQueue = async () => {
-    if (isRigBusy || rigCommandQueue.length === 0) return;
-    isRigBusy = true;
-    const { cmd, useExtended, resolve, reject } = rigCommandQueue.shift();
+    ctx.isConnected = false;
+    stopPolling(ctx);
+    ctx.io.emit("rig-disconnected");
+    console.log("Rig manually disconnected");
+  });
+  socket.on("set-func", async ({ func, state }) => {
     try {
-      const resp = await executeRigCommand(cmd, useExtended);
-      resolve(resp);
+      await sendToRig(ctx, `U ${func} ${state ? "1" : "0"}`, false, true);
+      const confirmedState = await sendToRig(ctx, `u ${func}`, true, true) === "1";
+      const key = func.toLowerCase();
+      ctx.lastStatus = { ...ctx.lastStatus, [key]: confirmedState };
+      ctx.io.emit("rig-status", ctx.lastStatus);
     } catch (err) {
-      reject(err);
-    } finally {
-      isRigBusy = false;
-      setTimeout(processRigQueue, 10);
+      socket.emit("rig-error", `Failed to set ${func}`);
     }
-  };
-  const sendToRig = (cmd, useExtended = false, priority = false) => {
-    return new Promise((resolve, reject) => {
-      if (priority) {
-        rigCommandQueue.unshift({ cmd, useExtended, resolve, reject });
+  });
+  socket.on("set-level", async ({ level, val }) => {
+    try {
+      await sendToRig(ctx, `L ${level} ${val}`, false, true);
+      const confirmedVal = parseFloat(await sendToRig(ctx, `l ${level}`, true, true));
+      const key = level.toLowerCase() === "rfpower" ? "rfpower" : level.toLowerCase() === "rf" ? "rfLevel" : level.toLowerCase() === "agc" ? "agc" : level.toLowerCase() === "att" ? "attenuation" : level.toLowerCase() === "preamp" ? "preamp" : level.toLowerCase() === "nr" ? "nrLevel" : level.toLowerCase() === "nb" ? "nbLevel" : null;
+      if (key) {
+        ctx.lastStatus = { ...ctx.lastStatus, [key]: confirmedVal };
+        ctx.io.emit("rig-status", ctx.lastStatus);
+      }
+    } catch (err) {
+      socket.emit("rig-error", `Failed to set ${level}`);
+    }
+  });
+  socket.on("tune-to-spot", async ({ freqHz, mode, modeChanged }) => {
+    try {
+      await sendToRig(ctx, `F ${freqHz}`, false, true);
+      if (modeChanged) {
+        await sendToRig(ctx, `M ${mode} -1`, false, true);
+        const modeBw = await sendToRig(ctx, "m", true, true);
+        const [confirmedMode, confirmedBw] = modeBw.split("\n");
+        ctx.lastStatus = { ...ctx.lastStatus, mode: confirmedMode, bandwidth: confirmedBw };
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await sendToRig(ctx, `F ${freqHz}`, false, true);
+      }
+      const confirmedFreq = await sendToRig(ctx, "f", true, true);
+      ctx.lastStatus = { ...ctx.lastStatus, frequency: confirmedFreq };
+      ctx.io.emit("rig-status", ctx.lastStatus);
+    } catch (err) {
+      socket.emit("rig-error", "Failed to tune to spot");
+    }
+  });
+  socket.on("set-frequency", async (freq) => {
+    try {
+      await sendToRig(ctx, `F ${freq}`, false, true);
+      const confirmedFreq = await sendToRig(ctx, "f", true, true);
+      ctx.lastStatus = { ...ctx.lastStatus, frequency: confirmedFreq };
+      ctx.io.emit("rig-status", ctx.lastStatus);
+    } catch (err) {
+      socket.emit("rig-error", "Failed to set frequency");
+    }
+  });
+  socket.on("set-mode", async ({ mode, bandwidth }) => {
+    try {
+      await sendToRig(ctx, `M ${mode} ${bandwidth}`, false, true);
+      const modeBw = await sendToRig(ctx, "m", true, true);
+      const [confirmedMode, confirmedBw] = modeBw.split("\n");
+      ctx.lastStatus = { ...ctx.lastStatus, mode: confirmedMode, bandwidth: confirmedBw };
+      ctx.io.emit("rig-status", ctx.lastStatus);
+    } catch (err) {
+      socket.emit("rig-error", "Failed to set mode/bandwidth");
+    }
+  });
+  socket.on("get-modes", async () => {
+    try {
+      const modes = await sendToRig(ctx, "M ?", false, true);
+      const modeList = modes.split(/[\s\n]+/).filter((m) => Boolean(m) && m !== "RPRT" && !/^\d+$/.test(m));
+      socket.emit("available-modes", modeList);
+    } catch (err) {
+      console.error("Failed to get modes:", err);
+    }
+  });
+  socket.on("set-ptt", async (ptt) => {
+    try {
+      await sendToRig(ctx, `T ${ptt ? "1" : "0"}`, false, true);
+      const confirmedPtt = await sendToRig(ctx, "t", true, true) === "1";
+      ctx.lastStatus = { ...ctx.lastStatus, ptt: confirmedPtt };
+      ctx.io.emit("rig-status", ctx.lastStatus);
+    } catch (err) {
+      socket.emit("rig-error", "Failed to set PTT");
+    }
+  });
+  socket.on("set-vfo", async (vfo) => {
+    if (!ctx.vfoSupported) return;
+    try {
+      await sendToRig(ctx, `V ${vfo}`, false, true);
+      const confirmedVfo = await sendToRig(ctx, "v", true, true);
+      ctx.lastStatus = { ...ctx.lastStatus, vfo: confirmedVfo };
+      ctx.io.emit("rig-status", ctx.lastStatus);
+    } catch (err) {
+      socket.emit("rig-error", "Failed to set VFO");
+    }
+  });
+  socket.on("set-split-vfo", async ({ split, txVFO }) => {
+    if (!ctx.vfoSupported) return;
+    try {
+      await sendToRig(ctx, `S ${split} ${txVFO}`, false, true);
+      const splitInfo = await sendToRig(ctx, "s", true, true);
+      const [isSplitStr, confirmedTxVFO] = splitInfo.split("\n");
+      ctx.lastStatus = { ...ctx.lastStatus, isSplit: isSplitStr === "1", txVFO: confirmedTxVFO || "VFOB" };
+      ctx.io.emit("rig-status", ctx.lastStatus);
+    } catch (err) {
+      socket.emit("rig-error", "Failed to set split VFO");
+    }
+  });
+  socket.on("vfo-op", async (op) => {
+    try {
+      await sendToRig(ctx, `G ${op}`, false, true);
+      const frequency = await sendToRig(ctx, "f", true, true);
+      const modeBw = await sendToRig(ctx, "m", true, true);
+      const [mode, bandwidth] = modeBw.split("\n");
+      if (ctx.vfoSupported) {
+        const vfo = await sendToRig(ctx, "v", true, true);
+        ctx.lastStatus = { ...ctx.lastStatus, frequency, mode, bandwidth, vfo };
       } else {
-        rigCommandQueue.push({ cmd, useExtended, resolve, reject });
+        ctx.lastStatus = { ...ctx.lastStatus, frequency, mode, bandwidth };
       }
-      processRigQueue();
-    });
-  };
-  const executeRigCommand = (cmd, useExtended = false) => {
-    const finalCmd = useExtended ? formatExtendedCommand(cmd) : cmd;
-    return new Promise((resolve, reject) => {
-      if (!rigSocket || rigSocket.destroyed) {
-        console.error(`[RIG] Command rejected (not connected): "${cmd}"`);
-        return reject("Not connected to rig");
+      ctx.io.emit("rig-status", ctx.lastStatus);
+    } catch (err) {
+      socket.emit("rig-error", `Failed to execute VFO operation: ${op}`);
+    }
+  });
+  socket.on("set-visible-meters", (meters) => {
+    ctx.visibleMeters = meters;
+  });
+  socket.on("set-poll-rate", (rate) => {
+    ctx.pollRate = rate;
+    ctx.saveSettings();
+    startPolling(ctx);
+  });
+  socket.on("set-autoconnect-eligible", (eligible) => {
+    ctx.autoconnectEligible = eligible;
+    ctx.saveSettings();
+  });
+  socket.on("set-client-config", ({ host, port }) => {
+    ctx.clientHost = host;
+    ctx.clientPort = port;
+    ctx.saveSettings();
+  });
+  socket.on("send-raw", async (cmd) => {
+    try {
+      const resp = await sendToRig(ctx, cmd, false, true);
+      socket.emit("raw-response", { cmd, resp });
+    } catch (err) {
+      socket.emit("raw-response", { cmd, resp: `Error: ${err}` });
+    }
+  });
+}
+
+// server/audio.ts
+init_vlog();
+var OUTBOUND_SILENCE = Buffer.alloc(960 * 2);
+var OUTBOUND_PRE_FILL = 3;
+var OUTBOUND_JITTER_MAX = 8;
+async function initAudioEngine(ctx) {
+  try {
+    const dynamicImport = new Function("modulePath", "return import(modulePath)");
+    console.log("[AUDIO-INIT] Attempting to load libopus-node...");
+    ctx.libopus = await dynamicImport("libopus-node");
+    console.log("[AUDIO-INIT] libopus-node loaded successfully.");
+    console.log("[AUDIO-INIT] Attempting to load naudiodon...");
+    try {
+      ctx.portAudio = await dynamicImport("naudiodon");
+      console.log("[AUDIO-INIT] naudiodon loaded successfully.");
+      try {
+        const hostAPIInfo = ctx.portAudio.getHostAPIs();
+        vlog("[AUDIO-INIT] Host APIs:", JSON.stringify(hostAPIInfo, null, 2));
+      } catch (e) {
+        console.warn("[AUDIO-INIT] Could not enumerate host APIs:", e.message);
       }
-      let responseBuffer = "";
-      const timeout = setTimeout(() => {
-        rigSocket?.removeListener("data", onData);
-        rigSocket?.removeListener("error", onError);
-        console.warn(`[RIG] Command timed out: "${cmd}" (extended=${useExtended}) \u2014 destroying socket to reset state`);
-        if (rigSocket) {
-          rigSocket.destroy();
-          isConnected = false;
+      ctx.isAudioEngineReady = true;
+    } catch (naudioErr) {
+      console.error("[AUDIO-INIT] Failed to load naudiodon. Audio I/O will be disabled.", naudioErr.message);
+      ctx.audioEngineError = "naudiodon missing (build tools required)";
+    }
+  } catch (err) {
+    console.error("[AUDIO-INIT] Failed to load audio engine:", err);
+    ctx.audioEngineError = err.message;
+  } finally {
+    ctx.io.emit("audio-engine-state", { isReady: ctx.isAudioEngineReady, error: ctx.audioEngineError });
+  }
+}
+async function listAudioDevices(ctx) {
+  if (!ctx.portAudio) {
+    return { inputs: [], outputs: [], error: ctx.audioEngineError || "Audio engine not ready" };
+  }
+  try {
+    const devices = ctx.portAudio.getDevices();
+    const inputs = devices.filter((d) => d.maxInputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "", defaultSampleRate: d.defaultSampleRate || 0 }));
+    const outputs = devices.filter((d) => d.maxOutputChannels > 0).map((d) => ({ name: d.name, altName: d.id.toString(), hostAPIName: d.hostAPIName || "", defaultSampleRate: d.defaultSampleRate || 0 }));
+    return { inputs, outputs };
+  } catch (err) {
+    console.error("[AUDIO] Failed to list devices:", err);
+    return { inputs: [], outputs: [], error: err.message };
+  }
+}
+async function stopAudio(ctx) {
+  console.log("[AUDIO] Stopping audio streaming...");
+  if (ctx.outboundTimer) {
+    clearInterval(ctx.outboundTimer);
+    ctx.outboundTimer = null;
+  }
+  ctx.outboundJitterBuffer = [];
+  if (ctx.audioInputProcess) {
+    try {
+      await ctx.audioInputProcess.quit();
+    } catch (e) {
+    }
+    ctx.audioInputProcess = null;
+  }
+  if (ctx.audioOutputProcess) {
+    try {
+      await ctx.audioOutputProcess.quit();
+    } catch (e) {
+    }
+    ctx.audioOutputProcess = null;
+  }
+  ctx.opusEncoder = null;
+  ctx.opusDecoder = null;
+  ctx.audioStatus = "stopped";
+  ctx.io.emit("audio-status", ctx.audioStatus);
+}
+async function startAudio(ctx) {
+  console.log("[AUDIO] Starting audio streaming...");
+  await stopAudio(ctx);
+  if (!ctx.isAudioEngineReady) {
+    console.warn("[AUDIO] Cannot start audio: Audio engine is not ready.");
+    return;
+  }
+  if (!ctx.audioSettings.inputDevice && !ctx.audioSettings.outputDevice) {
+    console.warn("[AUDIO] Cannot start audio: No devices selected.");
+    return;
+  }
+  try {
+    ctx.opusEncoder = new ctx.libopus.OpusEncoder(48e3, 1);
+    ctx.opusDecoder = new ctx.libopus.OpusEncoder(48e3, 1);
+    console.log("[AUDIO] Opus encoder/decoder initialized at 48000Hz Mono.");
+  } catch (err) {
+    console.error("[AUDIO] Failed to initialize Opus:", err);
+    return;
+  }
+  if (ctx.audioSettings.inputDevice) {
+    try {
+      const deviceId = parseInt(ctx.audioSettings.inputDevice, 10);
+      ctx.audioInputProcess = new ctx.portAudio.AudioIO({
+        inOptions: {
+          channelCount: 1,
+          sampleFormat: ctx.portAudio.SampleFormat16Bit,
+          sampleRate: 48e3,
+          deviceId: isNaN(deviceId) ? -1 : deviceId,
+          closeOnError: true,
+          framesPerBuffer: 0,
+          maxQueue: 10,
+          highwaterMark: 256
         }
-        reject(`Rig command timeout: "${cmd}"`);
-      }, 1e4);
-      const onData = (data) => {
-        responseBuffer += data.toString();
-        if (useExtended) {
-          const rprtMatch = responseBuffer.match(/RPRT (-?\d+)/);
-          if (rprtMatch) {
-            clearTimeout(timeout);
-            rigSocket?.removeListener("data", onData);
-            rigSocket?.removeListener("error", onError);
-            vlog(`[RIG] Response for "${cmd}": ${responseBuffer.trim()}`);
-            const rprtCode = parseInt(rprtMatch[1], 10);
-            if (rprtCode === 0 || rprtCode === 1) {
-              try {
-                resolve(parseExtendedResponse(responseBuffer));
-              } catch (e) {
-                console.error(`[RIG] Parse error for "${cmd}":`, e);
-                reject(e);
-              }
-            } else {
-              reject(`RPRT ${rprtCode}: "${cmd}"`);
+      });
+      const FRAME_SIZE_BYTES = 960 * 2;
+      let pcmBuffer = Buffer.alloc(0);
+      ctx.audioInputProcess.on("data", (data) => {
+        try {
+          if (ctx.activeMicClientId && ctx.lastStatus.ptt) return;
+          pcmBuffer = Buffer.concat([pcmBuffer, data]);
+          while (pcmBuffer.length >= FRAME_SIZE_BYTES) {
+            const frame = pcmBuffer.subarray(0, FRAME_SIZE_BYTES);
+            pcmBuffer = pcmBuffer.subarray(FRAME_SIZE_BYTES);
+            try {
+              const encodedPacket = ctx.opusEncoder.encode(frame);
+              ctx.io.emit("audio-inbound", encodedPacket);
+            } catch (err) {
+              console.error("[AUDIO] Opus encode error:", err);
             }
           }
-        } else {
-          clearTimeout(timeout);
-          rigSocket?.removeListener("data", onData);
-          rigSocket?.removeListener("error", onError);
-          vlog(`[RIG] Response for "${cmd}": ${responseBuffer.trim()}`);
-          resolve(responseBuffer.trim());
+        } catch (err) {
+          console.error("[AUDIO-IN] Unhandled exception in data handler:", err);
         }
-      };
-      const onError = (err) => {
-        clearTimeout(timeout);
-        rigSocket?.removeListener("data", onData);
-        console.error(`[RIG] Socket error during command "${cmd}":`, err.message);
-        reject(err);
-      };
-      vlog(`[RIG] Sending command: "${cmd}"`);
-      rigSocket.on("data", onData);
-      rigSocket.once("error", onError);
-      rigSocket.write(finalCmd + "\n");
-    });
-  };
-  const pollRig = async () => {
-    if (!isConnected) {
-      if (rigConfig.host && rigConfig.host !== "mock") {
-        console.log("Attempting background reconnection...");
-        connectToRig(rigConfig.host, rigConfig.port);
+      });
+      ctx.audioInputProcess.on("error", (err) => {
+        console.error("[AUDIO-IN] naudiodon error:", err);
+      });
+      ctx.audioInputProcess.start();
+      console.log(`[AUDIO-IN] Started capture from device ${ctx.audioSettings.inputDevice}`);
+    } catch (err) {
+      console.error("[AUDIO-IN] Failed to start capture:", err);
+    }
+  }
+  if (ctx.audioSettings.outputDevice) {
+    try {
+      const deviceId = parseInt(ctx.audioSettings.outputDevice, 10);
+      ctx.audioOutputProcess = new ctx.portAudio.AudioIO({
+        outOptions: {
+          channelCount: 1,
+          sampleFormat: ctx.portAudio.SampleFormat16Bit,
+          sampleRate: 48e3,
+          deviceId: isNaN(deviceId) ? -1 : deviceId,
+          closeOnError: false,
+          framesPerBuffer: 0,
+          maxQueue: 20
+        }
+      });
+      ctx.audioOutputProcess.on("error", (err) => {
+        console.error("[AUDIO-OUT] naudiodon error:", err);
+      });
+      ctx.audioOutputProcess.start();
+      for (let i = 0; i < OUTBOUND_PRE_FILL; i++) {
+        ctx.audioOutputProcess.write(OUTBOUND_SILENCE);
       }
+      ctx.outboundTimer = setInterval(() => {
+        if (!ctx.audioOutputProcess) return;
+        let frame;
+        if (ctx.lastStatus.ptt && ctx.outboundJitterBuffer.length > 0) {
+          frame = ctx.outboundJitterBuffer.shift();
+        } else {
+          ctx.outboundJitterBuffer = [];
+          frame = OUTBOUND_SILENCE;
+        }
+        ctx.audioOutputProcess.write(frame);
+      }, 20);
+      console.log(`[AUDIO-OUT] Started playback to device ${ctx.audioSettings.outputDevice}`);
+    } catch (err) {
+      console.error("[AUDIO-OUT] Failed to start playback:", err);
+    }
+  }
+  ctx.activeMicClientId = null;
+  ctx.io.emit("mic-active-client", null);
+  ctx.io.emit("mic-mute-forced");
+  ctx.audioStatus = "playing";
+  ctx.io.emit("audio-status", ctx.audioStatus);
+}
+function registerAudioHandlers(socket, ctx, clientId) {
+  socket.on("get-audio-devices", async () => {
+    vlog("[AUDIO] Client requested audio devices list");
+    const { inputs, outputs, error } = await listAudioDevices(ctx);
+    socket.emit("audio-devices-list", { inputs, outputs });
+  });
+  socket.on("update-audio-settings", async (settings) => {
+    vlog("[AUDIO] Updating audio settings:", settings);
+    const wasPlaying = ctx.audioStatus === "playing";
+    ctx.audioSettings = { ...ctx.audioSettings, ...settings };
+    ctx.saveSettings();
+    ctx.io.emit("settings-data", { audioSettings: ctx.audioSettings });
+    if (wasPlaying) {
+      await startAudio(ctx);
+    }
+  });
+  socket.on("control-audio", async (action) => {
+    vlog(`[AUDIO] Control action received: ${action}`);
+    if (action === "start") {
+      await startAudio(ctx);
+    } else if (action === "stop") {
+      await stopAudio(ctx);
+    }
+  });
+  socket.on("mic-unmute-request", () => {
+    ctx.activeMicClientId = clientId;
+    console.log(`[AUDIO] Mic claimed by client: ${clientId}`);
+    socket.broadcast.emit("mic-mute-forced");
+    ctx.io.emit("mic-active-client", ctx.activeMicClientId);
+  });
+  socket.on("mic-mute-notify", () => {
+    if (ctx.activeMicClientId === clientId) {
+      ctx.activeMicClientId = null;
+      ctx.io.emit("mic-active-client", null);
+    }
+  });
+  let outboundDiagCount = 0;
+  let outboundRecvCount = 0;
+  socket.on("audio-outbound", (data) => {
+    outboundRecvCount++;
+    if (outboundRecvCount <= 5 || outboundRecvCount % 50 === 0) {
+      vlog(`[AUDIO-DIAG] audio-outbound received #${outboundRecvCount} from clientId=${clientId}, bytes=${data.length}, activeMic=${ctx.activeMicClientId}, ptt=${ctx.lastStatus.ptt}`);
+    }
+    if (ctx.activeMicClientId !== clientId) return;
+    if (!ctx.audioOutputProcess || !ctx.opusDecoder) return;
+    if (!ctx.lastStatus.ptt) return;
+    try {
+      const pcmData = ctx.opusDecoder.decode(data);
+      if (outboundDiagCount < 5) {
+        vlog(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
+        outboundDiagCount++;
+      }
+      ctx.outboundJitterBuffer.push(pcmData);
+      while (ctx.outboundJitterBuffer.length > OUTBOUND_JITTER_MAX) {
+        ctx.outboundJitterBuffer.shift();
+      }
+    } catch (err) {
+      console.error("[AUDIO-OUT] Opus decode error:", err);
+    }
+  });
+}
+
+// server/cw.ts
+var import_path3 = __toESM(require("path"), 1);
+var import_child_process2 = require("child_process");
+var CW_BUFFER_DEPTH_MS = 60;
+var CW_BUFFER_MAX_MS = 240;
+function getCwHelperPath(baseDir) {
+  let base = baseDir;
+  if (base.endsWith(".asar")) base = base.replace(".asar", ".asar.unpacked");
+  return import_path3.default.join(base, "cw-key-helper.py");
+}
+var setSerialKey = (ctx, active) => {
+  if (!ctx.cwKeyerProcess || ctx.cwKeyerProcess.killed) return Promise.resolve();
+  return new Promise((resolve) => {
+    try {
+      ctx.cwKeyerProcess.stdin.write(active ? "1\n" : "0\n", () => resolve());
+    } catch (_) {
+      resolve();
+    }
+  });
+};
+var sendCwCatPtt = (ctx, state, clientId) => {
+  ctx.sendToRig(`T ${state ? 1 : 0}`, false, true).catch((err) => {
+    console.error("[CW] CAT PTT error:", err);
+    if (ctx.cwStuckKeyTimer) {
+      clearTimeout(ctx.cwStuckKeyTimer);
+      ctx.cwStuckKeyTimer = null;
+    }
+    ctx.cwKeyLockedOut = false;
+    ctx.activeCwClientId = null;
+    ctx.cwIsKeying = false;
+    ctx.io.to(clientId).emit("cw-stuck-key-alert");
+  });
+};
+var setCwKeyingActive = (ctx, active) => {
+  ctx.cwIsKeying = active;
+  if (!active) {
+    if (ctx.cwIdleTimer) clearTimeout(ctx.cwIdleTimer);
+    ctx.cwIdleTimer = setTimeout(() => {
+      ctx.cwIsKeying = false;
+      ctx.cwIdleTimer = null;
+    }, 500);
+  } else {
+    if (ctx.cwIdleTimer) {
+      clearTimeout(ctx.cwIdleTimer);
+      ctx.cwIdleTimer = null;
+    }
+  }
+};
+function cwSetKey(ctx, active) {
+  if (ctx.cwKeyIsDown === active) return;
+  ctx.cwKeyIsDown = active;
+  if (active) {
+    if (ctx.cwIdleTimer) {
+      clearTimeout(ctx.cwIdleTimer);
+      ctx.cwIdleTimer = null;
+    }
+    ctx.cwStuckKeyTimer = setTimeout(() => {
+      ctx.cwStuckKeyTimer = null;
+      if (ctx.cwSettings.keyingMethod === "rigctld-ptt") {
+        sendCwCatPtt(ctx, false, ctx.activeCwClientId ?? "");
+      } else {
+        setSerialKey(ctx, false).catch((err) => console.error("[CW] Watchdog key-up error:", err.message));
+      }
+      ctx.cwKeyIsDown = false;
+      ctx.cwKeyLockedOut = true;
+      const cid = ctx.activeCwClientId;
+      ctx.activeCwClientId = null;
+      stopCwTick(ctx);
+      setCwKeyingActive(ctx, false);
+      if (cid) ctx.io.to(cid).emit("cw-stuck-key-alert");
+      console.warn("[CW] Stuck-key watchdog fired \u2014 key forced inactive");
+    }, 5e3);
+    setCwKeyingActive(ctx, true);
+  } else {
+    if (ctx.cwStuckKeyTimer) {
+      clearTimeout(ctx.cwStuckKeyTimer);
+      ctx.cwStuckKeyTimer = null;
+    }
+    setCwKeyingActive(ctx, false);
+  }
+  if (ctx.cwSettings.keyingMethod === "rigctld-ptt") {
+    sendCwCatPtt(ctx, active, ctx.activeCwClientId ?? "");
+  } else {
+    setSerialKey(ctx, active).catch((err) => console.error("[CW] Key set error:", err.message));
+  }
+}
+function stopCwTick(ctx) {
+  if (ctx.cwTickTimer) {
+    clearTimeout(ctx.cwTickTimer);
+    ctx.cwTickTimer = null;
+  }
+}
+function cwTick(ctx) {
+  ctx.cwTickTimer = null;
+  if (!ctx.activeCwClientId) return;
+  const connectMs = ctx.socketConnectTimes.get(ctx.activeCwClientId) ?? Date.now();
+  const nowClientMs = Date.now() - connectMs;
+  const playheadMs = nowClientMs - CW_BUFFER_DEPTH_MS;
+  while (ctx.cwPaddleBuffer.length > 0 && ctx.cwPaddleBuffer[0].t <= playheadMs) {
+    const evt = ctx.cwPaddleBuffer.shift();
+    ctx.cwPlayheadDit = evt.dit;
+    ctx.cwPlayheadDah = evt.dah;
+    ctx.cwPlayheadStraight = evt.straight;
+  }
+  if (!ctx.cwBufferReady) {
+    if (nowClientMs >= CW_BUFFER_DEPTH_MS) {
+      ctx.cwBufferReady = true;
+    } else {
+      ctx.cwTickTimer = setTimeout(() => cwTick(ctx), 4);
       return;
     }
-    try {
-      const now = Date.now();
-      const isSlowPoll = pollCycleCount % 10 === 0;
-      pollCycleCount++;
-      const ptt = await sendToRig("t", true);
-      const smeter = await sendToRig("l STRENGTH", true);
-      const isPttActive = ptt === "1";
-      let alc = lastStatus.alc?.toString() || "0";
-      let powerMeter = lastStatus.powerMeter?.toString() || "0";
-      let swr = lastStatus.swr?.toString() || "1.0";
-      if (isPttActive) {
-        try {
-          alc = await sendToRig("l ALC", true);
-          powerMeter = await sendToRig("l RFPOWER_METER", true);
-          swr = await sendToRig("l SWR", true);
-        } catch (e) {
-          console.warn("TX levels poll failed, might not be supported");
-        }
-      }
-      let frequency = lastStatus.frequency;
-      let mode = lastStatus.mode;
-      let bandwidth = lastStatus.bandwidth;
-      let rfpower = lastStatus.rfpower;
-      let rflevel = lastStatus.rfLevel;
-      let agc = lastStatus.agc;
-      let vfo = lastStatus.vfo;
-      let isSplit = lastStatus.isSplit;
-      let txVFO = lastStatus.txVFO;
-      let att = lastStatus.attenuation;
-      let preamp = lastStatus.preamp;
-      let nb = lastStatus.nb;
-      let nbLevel = lastStatus.nbLevel;
-      let nr = lastStatus.nr;
-      let nrLevel = lastStatus.nrLevel;
-      let anf = lastStatus.anf;
-      let tuner = lastStatus.tuner;
-      let vdd = lastStatus.vdd;
-      if (isSlowPoll) {
-        if (visibleMeters.includes("vdd")) {
-          vdd = parseFloat(await sendToRig("l VD_METER", true).catch(() => "13.8"));
-        }
-        frequency = await sendToRig("f", true);
-        const modeBw = await sendToRig("m", true);
-        const [m, b] = modeBw.split("\n");
-        mode = m;
-        bandwidth = b;
-        rfpower = parseFloat(await sendToRig("l RFPOWER", true));
-        rflevel = parseFloat(await sendToRig("l RF", true).catch(() => "0"));
-        agc = parseInt(await sendToRig("l AGC", true).catch(() => "6"));
-        if (vfoSupported) {
-          vfo = await sendToRig("v", true);
-          const splitInfo = await sendToRig("s", true);
-          const [isSplitStr, txVFOStr] = splitInfo.split("\n");
-          isSplit = isSplitStr === "1";
-          txVFO = txVFOStr || "VFOB";
-        }
-        att = parseInt(await sendToRig("l ATT", true)) || 0;
-        preamp = parseInt(await sendToRig("l PREAMP", true)) || 0;
-        nb = await sendToRig("u NB", true).catch(() => "0") === "1";
-        nbLevel = parseFloat(await sendToRig("l NB", true).catch(() => "0"));
-        nr = await sendToRig("u NR", true).catch(() => "0") === "1";
-        nrLevel = parseFloat(await sendToRig("l NR", true).catch(() => "0"));
-        anf = await sendToRig("u ANF", true).catch(() => "0") === "1";
-        tuner = await sendToRig("u TUNER", true).catch(() => "0") === "1";
-      }
-      lastStatus = {
-        frequency,
-        mode,
-        bandwidth,
-        ptt: isPttActive,
-        smeter: parseFloat(smeter),
-        swr: parseFloat(swr),
-        alc: parseFloat(alc),
-        powerMeter: parseFloat(powerMeter),
-        rfpower,
-        rfLevel: rflevel,
-        agc,
-        vdd: parseFloat(vdd),
-        vfo,
-        isSplit,
-        txVFO,
-        attenuation: att,
-        preamp,
-        nb,
-        nbLevel,
-        nr,
-        nrLevel,
-        anf,
-        tuner,
-        timestamp: now
-      };
-      io2.emit("rig-status", lastStatus);
-    } catch (err) {
-      console.error(`[RIG] Poll cycle ${pollCycleCount} failed:`, err);
+  }
+  if (ctx.cwKeyLockedOut) {
+    if (!ctx.cwPlayheadDit && !ctx.cwPlayheadDah && !ctx.cwPlayheadStraight) ctx.cwKeyLockedOut = false;
+    else {
+      ctx.cwTickTimer = setTimeout(() => cwTick(ctx), 4);
+      return;
     }
-  };
+  }
+  const ditMs = 1.2 / ctx.cwSettings.wpm * 1e3;
+  const nowMs = Date.now();
+  if (ctx.cwSettings.mode === "straight") {
+    const wantDown = ctx.cwPlayheadStraight;
+    if (wantDown !== ctx.cwKeyIsDown) cwSetKey(ctx, wantDown);
+  } else {
+    if (ctx.cwMachine === "IDLE") {
+      if (ctx.cwPlayheadDit && !ctx.cwPlayheadDah) {
+        ctx.cwMachine = "SENDING_DIT";
+        ctx.cwElementEndMs = nowMs + ditMs;
+        ctx.cwPendingElement = null;
+        cwSetKey(ctx, true);
+      } else if (ctx.cwPlayheadDah && !ctx.cwPlayheadDit) {
+        ctx.cwMachine = "SENDING_DAH";
+        ctx.cwElementEndMs = nowMs + ditMs * 3;
+        ctx.cwPendingElement = null;
+        cwSetKey(ctx, true);
+      } else if (ctx.cwPlayheadDit && ctx.cwPlayheadDah) {
+        ctx.cwMachine = "SENDING_DIT";
+        ctx.cwElementEndMs = nowMs + ditMs;
+        ctx.cwPendingElement = "dah";
+        cwSetKey(ctx, true);
+      }
+    } else if (ctx.cwMachine === "SENDING_DIT" || ctx.cwMachine === "SENDING_DAH") {
+      if (ctx.cwSettings.mode === "iambic-b") {
+        if (ctx.cwMachine === "SENDING_DIT" && ctx.cwPlayheadDah && ctx.cwPendingElement !== "dah") ctx.cwPendingElement = "dah";
+        else if (ctx.cwMachine === "SENDING_DAH" && ctx.cwPlayheadDit && ctx.cwPendingElement !== "dit") ctx.cwPendingElement = "dit";
+      }
+      if (nowMs >= ctx.cwElementEndMs) {
+        cwSetKey(ctx, false);
+        ctx.cwMachine = "INTER_ELEMENT";
+        ctx.cwElementEndMs = nowMs + ditMs;
+      }
+    } else if (ctx.cwMachine === "INTER_ELEMENT") {
+      if (nowMs >= ctx.cwElementEndMs) {
+        let next = null;
+        if (ctx.cwSettings.mode === "iambic-b" && ctx.cwPendingElement) {
+          next = ctx.cwPendingElement;
+        } else if (ctx.cwPlayheadDit && ctx.cwPlayheadDah) {
+          next = ctx.cwPendingElement === "dah" ? "dah" : "dit";
+        } else if (ctx.cwPlayheadDit) {
+          next = "dit";
+        } else if (ctx.cwPlayheadDah) {
+          next = "dah";
+        }
+        ctx.cwPendingElement = null;
+        if (next === "dit") {
+          ctx.cwMachine = "SENDING_DIT";
+          ctx.cwElementEndMs = nowMs + ditMs;
+          if (ctx.cwSettings.mode === "iambic-b" && ctx.cwPlayheadDah) ctx.cwPendingElement = "dah";
+          cwSetKey(ctx, true);
+        } else if (next === "dah") {
+          ctx.cwMachine = "SENDING_DAH";
+          ctx.cwElementEndMs = nowMs + ditMs * 3;
+          if (ctx.cwSettings.mode === "iambic-b" && ctx.cwPlayheadDit) ctx.cwPendingElement = "dit";
+          cwSetKey(ctx, true);
+        } else {
+          ctx.cwMachine = "IDLE";
+        }
+      }
+    }
+  }
+  ctx.cwTickTimer = setTimeout(() => cwTick(ctx), Math.max(4, ditMs / 4));
+}
+async function openKeyerPort(ctx, portPath) {
+  await closeKeyerPort(ctx);
+  if (!portPath) return;
+  await new Promise((resolve) => {
+    let settled = false;
+    const settle = () => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    };
+    const proc = (0, import_child_process2.spawn)("python3", [
+      getCwHelperPath(ctx.baseDir),
+      portPath,
+      ctx.cwSettings.keyingMethod === "rts" ? "rts" : "dtr",
+      ctx.cwSettings.serialKeyPolarity
+    ]);
+    let buf = "";
+    proc.stdout.on("data", (chunk) => {
+      buf += chunk.toString();
+      let nl;
+      while ((nl = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line.startsWith("OPEN_OK")) {
+          ctx.cwKeyerProcess = proc;
+          proc.on("close", (code) => {
+            if (ctx.cwKeyerProcess === proc) {
+              ctx.cwKeyerProcess = null;
+              console.warn(`[CW] Keyer helper exited (code ${code})`);
+              ctx.io.emit("cw-port-status", { open: false, port: portPath, error: "Helper process exited unexpectedly" });
+            }
+          });
+          console.log(`[CW] Keyer port opened: ${portPath}`);
+          ctx.io.emit("cw-port-status", { open: true, port: portPath });
+          settle();
+        } else if (line.startsWith("OPEN_ERROR:")) {
+          const msg = line.slice("OPEN_ERROR:".length).trim();
+          console.error(`[CW] Failed to open keyer port ${portPath}: ${msg}`);
+          proc.kill();
+          ctx.io.emit("cw-port-status", { open: false, port: portPath, error: msg });
+          settle();
+        }
+      }
+    });
+    proc.stderr.on("data", (chunk) => {
+      console.error("[CW] Helper stderr:", chunk.toString().trim());
+    });
+    proc.on("error", (err) => {
+      const msg = err.code === "ENOENT" ? "python3 not found \u2014 install Python 3 with pyserial" : err.message;
+      console.error(`[CW] Failed to spawn helper:`, msg);
+      ctx.io.emit("cw-port-status", { open: false, port: portPath, error: msg });
+      settle();
+    });
+    setTimeout(() => {
+      if (!settled) {
+        proc.kill();
+        ctx.io.emit("cw-port-status", { open: false, port: portPath, error: "Helper did not respond \u2014 check python3 and pyserial" });
+        settle();
+      }
+    }, 5e3);
+  });
+}
+async function closeKeyerPort(ctx) {
+  stopCwTick(ctx);
+  if (ctx.cwStuckKeyTimer) {
+    clearTimeout(ctx.cwStuckKeyTimer);
+    ctx.cwStuckKeyTimer = null;
+  }
+  if (ctx.cwIdleTimer) {
+    clearTimeout(ctx.cwIdleTimer);
+    ctx.cwIdleTimer = null;
+  }
+  if (ctx.cwClaimIdleTimer) {
+    clearTimeout(ctx.cwClaimIdleTimer);
+    ctx.cwClaimIdleTimer = null;
+  }
+  if (ctx.cwKeyerProcess && !ctx.cwKeyerProcess.killed) {
+    await setSerialKey(ctx, false);
+    ctx.cwKeyerProcess.kill();
+  }
+  ctx.cwKeyerProcess = null;
+  ctx.cwKeyLockedOut = false;
+  ctx.activeCwClientId = null;
+  ctx.cwIsKeying = false;
+  ctx.cwKeyIsDown = false;
+  ctx.cwMachine = "IDLE";
+  ctx.cwPaddleBuffer = [];
+}
+async function syncKeyerPort(ctx, forceReopen = false) {
+  const needsPort = ctx.cwSettings.enabled && ctx.cwSettings.keyingMethod !== "rigctld-ptt" && !!ctx.cwSettings.keyerPort;
+  if (needsPort) {
+    if (!ctx.cwKeyerProcess || ctx.cwKeyerProcess.killed || forceReopen) {
+      await openKeyerPort(ctx, ctx.cwSettings.keyerPort);
+    }
+  } else if (ctx.cwKeyerProcess && !ctx.cwKeyerProcess.killed) {
+    await closeKeyerPort(ctx);
+  }
+}
+function registerCwHandlers(socket, ctx) {
+  socket.on("cw-paddle", ({ dit, dah, straight, t }) => {
+    const anyActive = dit || dah || straight;
+    if (anyActive) {
+      if (ctx.cwKeyLockedOut) return;
+      if (ctx.activeCwClientId && ctx.activeCwClientId !== socket.id) return;
+      if (!ctx.activeCwClientId) {
+        ctx.activeCwClientId = socket.id;
+        ctx.cwPaddleBuffer = [];
+        ctx.cwPlayheadDit = false;
+        ctx.cwPlayheadDah = false;
+        ctx.cwPlayheadStraight = false;
+        ctx.cwMachine = "IDLE";
+        ctx.cwPendingElement = null;
+        ctx.cwElementEndMs = 0;
+        ctx.cwKeyIsDown = false;
+        ctx.cwBufferReady = false;
+        ctx.cwTickTimer = setTimeout(() => cwTick(ctx), 4);
+      }
+    }
+    if (ctx.activeCwClientId !== socket.id) return;
+    if (ctx.cwClaimIdleTimer) clearTimeout(ctx.cwClaimIdleTimer);
+    ctx.cwClaimIdleTimer = setTimeout(() => {
+      ctx.cwClaimIdleTimer = null;
+      if (!ctx.cwKeyIsDown) {
+        ctx.activeCwClientId = null;
+        stopCwTick(ctx);
+        ctx.cwMachine = "IDLE";
+        ctx.cwPaddleBuffer = [];
+      }
+    }, 3e3);
+    const evt = { t, dit, dah, straight };
+    let i = ctx.cwPaddleBuffer.length;
+    while (i > 0 && ctx.cwPaddleBuffer[i - 1].t > t) i--;
+    ctx.cwPaddleBuffer.splice(i, 0, evt);
+    const connectMs = ctx.socketConnectTimes.get(socket.id) ?? Date.now();
+    const ceilingT = Date.now() - connectMs - CW_BUFFER_MAX_MS;
+    while (ctx.cwPaddleBuffer.length > 0 && ctx.cwPaddleBuffer[0].t < ceilingT) ctx.cwPaddleBuffer.shift();
+  });
+  socket.on("update-cw-settings", async (partial) => {
+    const oldPolarity = ctx.cwSettings.serialKeyPolarity;
+    ctx.cwSettings = { ...ctx.cwSettings, ...partial };
+    const polarityChanged = partial.serialKeyPolarity !== void 0 && partial.serialKeyPolarity !== oldPolarity;
+    await syncKeyerPort(ctx, polarityChanged);
+    ctx.saveSettings();
+    ctx.io.emit("settings-data", {
+      cwSettings: ctx.cwSettings,
+      cwPortStatus: ctx.cwKeyerProcess && !ctx.cwKeyerProcess.killed ? { open: true, port: ctx.cwSettings.keyerPort } : { open: false, port: ctx.cwSettings.keyerPort }
+    });
+  });
+}
+
+// server/video.ts
+init_vlog();
+function registerVideoHandlers(socket, ctx) {
+  socket.on("get-video-devices", () => {
+    socket.emit("video-devices-list", ctx.videoDeviceList);
+  });
+  socket.on("video-devices-update", (devices) => {
+    vlog(`[VIDEO] Device list updated by source (${devices.length} devices):`, devices.map((d) => d.label));
+    ctx.videoDeviceList = devices;
+    ctx.io.emit("video-devices-list", ctx.videoDeviceList);
+  });
+  socket.on("update-video-settings", (settings) => {
+    vlog("[VIDEO] Updating video settings:", settings);
+    ctx.videoSettings = { ...ctx.videoSettings, ...settings };
+    ctx.saveSettings();
+    ctx.io.emit("video-settings-updated", ctx.videoSettings);
+  });
+  socket.on("request-video-start", () => {
+    vlog(`[VIDEO] Start requested by socket=${socket.id}`);
+    ctx.videoAutoStart = true;
+    ctx.saveSettings();
+    ctx.io.emit("video-start-requested");
+  });
+  socket.on("request-video-stop", () => {
+    vlog(`[VIDEO] Stop requested by socket=${socket.id}`);
+    ctx.videoAutoStart = false;
+    ctx.saveSettings();
+    ctx.io.emit("video-stop-requested");
+  });
+  socket.on("video-source-start", (config) => {
+    vlog(`[VIDEO] Source started: socket=${socket.id}`, config);
+    ctx.videoSourceSocketId = socket.id;
+    ctx.lastKeyframe = null;
+    ctx.videoSettings = { ...ctx.videoSettings, ...config };
+    ctx.videoStatus = "streaming";
+    ctx.videoAutoStart = true;
+    ctx.saveSettings();
+    ctx.io.emit("video-source-status", {
+      status: "streaming",
+      videoWidth: config.videoWidth,
+      videoHeight: config.videoHeight,
+      framerate: config.framerate
+    });
+  });
+  let videoFrameRelayCount = 0;
+  socket.on("video-frame", (chunk) => {
+    if (socket.id !== ctx.videoSourceSocketId) return;
+    if (chunk.type === "key") {
+      ctx.lastKeyframe = chunk;
+    }
+    videoFrameRelayCount++;
+    if (chunk.type === "key" || videoFrameRelayCount <= 5) {
+      vlog(`[VIDEO] Relaying frame #${videoFrameRelayCount} type=${chunk.type} dataBytes=${chunk.data.byteLength} connectedClients=${ctx.io.engine.clientsCount}`);
+    }
+    socket.broadcast.emit("video-frame", chunk);
+  });
+  socket.on("video-source-stop", () => {
+    if (socket.id !== ctx.videoSourceSocketId) return;
+    vlog("[VIDEO] Source stopped.");
+    ctx.videoSourceSocketId = null;
+    ctx.lastKeyframe = null;
+    ctx.videoStatus = "stopped";
+    ctx.videoAutoStart = false;
+    ctx.saveSettings();
+    ctx.io.emit("video-source-status", { status: "stopped" });
+  });
+}
+
+// server.ts
+var electronWin = null;
+function setElectronWindow(win) {
+  electronWin = win;
+}
+var _shutdown = null;
+async function shutdown() {
+  if (_shutdown) await _shutdown();
+}
+async function startServer(appPath, userDataPath) {
+  const app2 = (0, import_express.default)();
+  const PORT = 3e3;
+  const baseDir = appPath || process.cwd();
+  const dataDir = userDataPath || (process.env.NODE_ENV === "production" ? "/tmp" : process.cwd());
+  const SETTINGS_FILE = import_path4.default.join(dataDir, "settings.json");
+  const RADIOS_FILE = import_path4.default.join(baseDir, "radios.json");
+  vlog(`Server initializing. Base directory (assets): ${baseDir}`);
+  vlog(`Data directory (settings): ${dataDir}`);
+  vlog(`NODE_ENV: ${process.env.NODE_ENV}, Electron: ${!!process.versions.electron}`);
+  const { key: tlsKey, cert: tlsCert } = await loadOrGenerateCert(dataDir);
+  const httpServer = import_https.default.createServer({ key: tlsKey, cert: tlsCert }, app2);
+  const io2 = new Server(httpServer, { perMessageDeflate: false });
+  const ctx = createInitialContext(io2, baseDir, dataDir);
+  ctx.saveSettings = () => saveSettings(ctx, SETTINGS_FILE);
+  ctx.sendToRig = (cmd, ext, pri) => sendToRig(ctx, cmd, ext, pri);
+  loadSettings(ctx, SETTINGS_FILE);
+  initAudioEngine(ctx);
+  getRigctldVersion(baseDir).then((v) => {
+    ctx.rigctldVersion = v;
+    ctx.isRigctldVersionSupported = checkVersionSupported(v);
+    vlog(`[HAMLIB] Detected rigctld version: ${v || "unknown"}`);
+    emitRigctldStatus(ctx);
+  });
+  if (ctx.autoStartEnabled) {
+    startRigctld(ctx);
+  }
+  await syncKeyerPort(ctx);
+  process.on("exit", () => stopRigctld(ctx));
+  process.on("SIGINT", () => {
+    closeKeyerPort(ctx);
+    stopRigctld(ctx);
+    process.exit();
+  });
+  process.on("SIGTERM", () => {
+    closeKeyerPort(ctx);
+    stopRigctld(ctx);
+    process.exit();
+  });
   io2.on("connection", (socket) => {
     const clientId = socket.handshake.auth.clientId || socket.id;
     console.log(`Client connected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
-    socketConnectTimes.set(socket.id, Date.now());
-    socket.emit("audio-engine-state", {
-      isReady: isAudioEngineReady,
-      error: audioEngineError
-    });
+    ctx.socketConnectTimes.set(socket.id, Date.now());
+    socket.emit("audio-engine-state", { isReady: ctx.isAudioEngineReady, error: ctx.audioEngineError });
     socket.emit("verbose-mode", VERBOSE);
-    socket.on("connect-rig", ({ host, port }) => {
-      resetRigState();
-      connectToRig(host, port, socket);
-    });
-    socket.on("disconnect-rig", () => {
-      resetRigState();
-      if (rigSocket) {
-        rigSocket.destroy();
-        rigSocket = null;
-      }
-      isConnected = false;
-      stopPolling();
-      io2.emit("rig-disconnected");
-      console.log("Rig manually disconnected");
-    });
-    socket.on("set-func", async ({ func, state }) => {
-      try {
-        await sendToRig(`U ${func} ${state ? "1" : "0"}`, false, true);
-        const confirmedState = await sendToRig(`u ${func}`, true, true) === "1";
-        const key = func.toLowerCase();
-        lastStatus = { ...lastStatus, [key]: confirmedState };
-        io2.emit("rig-status", lastStatus);
-      } catch (err) {
-        socket.emit("rig-error", `Failed to set ${func}`);
-      }
-    });
-    socket.on("set-level", async ({ level, val }) => {
-      try {
-        await sendToRig(`L ${level} ${val}`, false, true);
-        const confirmedVal = parseFloat(await sendToRig(`l ${level}`, true, true));
-        const key = level.toLowerCase() === "rfpower" ? "rfpower" : level.toLowerCase() === "rf" ? "rfLevel" : level.toLowerCase() === "agc" ? "agc" : level.toLowerCase() === "att" ? "attenuation" : level.toLowerCase() === "preamp" ? "preamp" : level.toLowerCase() === "nr" ? "nrLevel" : level.toLowerCase() === "nb" ? "nbLevel" : null;
-        if (key) {
-          lastStatus = { ...lastStatus, [key]: confirmedVal };
-          io2.emit("rig-status", lastStatus);
-        }
-      } catch (err) {
-        socket.emit("rig-error", `Failed to set ${level}`);
-      }
-    });
-    socket.on("tune-to-spot", async ({ freqHz, mode, modeChanged }) => {
-      try {
-        await sendToRig(`F ${freqHz}`, false, true);
-        if (modeChanged) {
-          await sendToRig(`M ${mode} -1`, false, true);
-          const modeBw = await sendToRig("m", true, true);
-          const [confirmedMode, confirmedBw] = modeBw.split("\n");
-          lastStatus = { ...lastStatus, mode: confirmedMode, bandwidth: confirmedBw };
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          await sendToRig(`F ${freqHz}`, false, true);
-        }
-        const confirmedFreq = await sendToRig("f", true, true);
-        lastStatus = { ...lastStatus, frequency: confirmedFreq };
-        io2.emit("rig-status", lastStatus);
-      } catch (err) {
-        socket.emit("rig-error", "Failed to tune to spot");
-      }
-    });
-    socket.on("set-frequency", async (freq) => {
-      try {
-        await sendToRig(`F ${freq}`, false, true);
-        const confirmedFreq = await sendToRig("f", true, true);
-        lastStatus = { ...lastStatus, frequency: confirmedFreq };
-        io2.emit("rig-status", lastStatus);
-      } catch (err) {
-        socket.emit("rig-error", "Failed to set frequency");
-      }
-    });
-    socket.on("set-mode", async ({ mode, bandwidth }) => {
-      try {
-        await sendToRig(`M ${mode} ${bandwidth}`, false, true);
-        const modeBw = await sendToRig("m", true, true);
-        const [confirmedMode, confirmedBw] = modeBw.split("\n");
-        lastStatus = { ...lastStatus, mode: confirmedMode, bandwidth: confirmedBw };
-        io2.emit("rig-status", lastStatus);
-      } catch (err) {
-        socket.emit("rig-error", "Failed to set mode/bandwidth");
-      }
-    });
-    socket.on("get-modes", async () => {
-      try {
-        const modes = await sendToRig("M ?", false, true);
-        const modeList = modes.split(/[\s\n]+/).filter((m) => Boolean(m) && m !== "RPRT" && !/^\d+$/.test(m));
-        socket.emit("available-modes", modeList);
-      } catch (err) {
-        console.error("Failed to get modes:", err);
-      }
-    });
-    socket.on("set-ptt", async (ptt) => {
-      try {
-        await sendToRig(`T ${ptt ? "1" : "0"}`, false, true);
-        const confirmedPtt = await sendToRig("t", true, true) === "1";
-        lastStatus = { ...lastStatus, ptt: confirmedPtt };
-        io2.emit("rig-status", lastStatus);
-      } catch (err) {
-        socket.emit("rig-error", "Failed to set PTT");
-      }
-    });
-    socket.on("set-vfo", async (vfo) => {
-      if (!vfoSupported) return;
-      try {
-        await sendToRig(`V ${vfo}`, false, true);
-        const confirmedVfo = await sendToRig("v", true, true);
-        lastStatus = { ...lastStatus, vfo: confirmedVfo };
-        io2.emit("rig-status", lastStatus);
-      } catch (err) {
-        socket.emit("rig-error", "Failed to set VFO");
-      }
-    });
-    socket.on("set-split-vfo", async ({ split, txVFO }) => {
-      if (!vfoSupported) return;
-      try {
-        await sendToRig(`S ${split} ${txVFO}`, false, true);
-        const splitInfo = await sendToRig("s", true, true);
-        const [isSplitStr, confirmedTxVFO] = splitInfo.split("\n");
-        lastStatus = { ...lastStatus, isSplit: isSplitStr === "1", txVFO: confirmedTxVFO || "VFOB" };
-        io2.emit("rig-status", lastStatus);
-      } catch (err) {
-        socket.emit("rig-error", "Failed to set split VFO");
-      }
-    });
-    socket.on("vfo-op", async (op) => {
-      try {
-        await sendToRig(`G ${op}`, false, true);
-        const frequency = await sendToRig("f", true, true);
-        const modeBw = await sendToRig("m", true, true);
-        const [mode, bandwidth] = modeBw.split("\n");
-        if (vfoSupported) {
-          const vfo = await sendToRig("v", true, true);
-          lastStatus = { ...lastStatus, frequency, mode, bandwidth, vfo };
-        } else {
-          lastStatus = { ...lastStatus, frequency, mode, bandwidth };
-        }
-        io2.emit("rig-status", lastStatus);
-      } catch (err) {
-        socket.emit("rig-error", `Failed to execute VFO operation: ${op}`);
-      }
-    });
-    socket.on("set-visible-meters", (meters) => {
-      visibleMeters = meters;
-    });
-    socket.on("set-poll-rate", (rate) => {
-      pollRate = rate;
-      saveSettings();
-      startPolling();
-    });
-    socket.on("set-autoconnect-eligible", (eligible) => {
-      autoconnectEligible = eligible;
-      saveSettings();
-    });
-    socket.on("set-client-config", ({ host, port }) => {
-      clientHost = host;
-      clientPort = port;
-      saveSettings();
-    });
+    registerRigCommHandlers(socket, ctx);
+    registerRigctldHandlers(socket, ctx);
+    registerAudioHandlers(socket, ctx, clientId);
+    registerCwHandlers(socket, ctx);
+    registerVideoHandlers(socket, ctx);
+    registerSettingsHandlers(
+      socket,
+      ctx,
+      RADIOS_FILE,
+      (rigNumber) => fetchRadioCapabilities(ctx, rigNumber),
+      () => startPolling(ctx),
+      (forceReopen) => syncKeyerPort(ctx, forceReopen)
+    );
     socket.on("get-settings", async () => {
-      if (rigctldStatus === "stopped" || rigctldStatus === "error") {
-        const isRunning = await checkExistingRigctld();
-        if (isRunning) {
-          rigctldStatus = "already_running";
-        }
+      const { checkExistingRigctld: checkExistingRigctld2 } = await Promise.resolve().then(() => (init_rigctld(), rigctld_exports));
+      if (ctx.rigctldStatus === "stopped" || ctx.rigctldStatus === "error") {
+        const isRunning = await checkExistingRigctld2();
+        if (isRunning) ctx.rigctldStatus = "already_running";
       }
       socket.emit("settings-data", {
-        settings: rigctldSettings,
-        autoStart: autoStartEnabled,
-        videoAutoStart,
-        videoSettings,
-        audioSettings,
-        pollRate,
-        autoconnectEligible,
-        clientHost,
-        clientPort,
-        isConnected,
-        potaSettings,
-        sotaSettings,
-        cwSettings,
-        cwPortStatus: cwKeyerProcess && !cwKeyerProcess.killed ? { open: true, port: cwSettings.keyerPort } : { open: false, port: cwSettings.keyerPort }
+        settings: ctx.rigctldSettings,
+        autoStart: ctx.autoStartEnabled,
+        videoAutoStart: ctx.videoAutoStart,
+        videoSettings: ctx.videoSettings,
+        audioSettings: ctx.audioSettings,
+        pollRate: ctx.pollRate,
+        autoconnectEligible: ctx.autoconnectEligible,
+        clientHost: ctx.clientHost,
+        clientPort: ctx.clientPort,
+        isConnected: ctx.isConnected,
+        potaSettings: ctx.potaSettings,
+        sotaSettings: ctx.sotaSettings,
+        cwSettings: ctx.cwSettings,
+        cwPortStatus: ctx.cwKeyerProcess && !ctx.cwKeyerProcess.killed ? { open: true, port: ctx.cwSettings.keyerPort } : { open: false, port: ctx.cwSettings.keyerPort }
       });
-      emitRigctldStatus();
-      socket.emit("rigctld-log", rigctldLogs);
-      vlog(`[VIDEO] New client ${socket.id} connected. videoStatus=${videoStatus} hasKeyframe=${!!lastKeyframe}`);
+      emitRigctldStatus(ctx);
+      socket.emit("rigctld-log", ctx.rigctldLogs);
+      vlog(`[VIDEO] New client ${socket.id} connected. videoStatus=${ctx.videoStatus} hasKeyframe=${!!ctx.lastKeyframe}`);
       socket.emit("video-source-status", {
-        status: videoStatus,
-        videoWidth: videoSettings.videoWidth,
-        videoHeight: videoSettings.videoHeight,
-        framerate: videoSettings.framerate
+        status: ctx.videoStatus,
+        videoWidth: ctx.videoSettings.videoWidth,
+        videoHeight: ctx.videoSettings.videoHeight,
+        framerate: ctx.videoSettings.framerate
       });
-      socket.emit("video-devices-list", videoDeviceList);
-      if (videoStatus === "streaming" && lastKeyframe) {
-        vlog(`[VIDEO] Sending buffered keyframe to ${socket.id}: type=${lastKeyframe.type} dataBytes=${lastKeyframe.data.byteLength} hasDescription=${!!lastKeyframe.description}`);
-        socket.emit("video-frame", lastKeyframe);
+      socket.emit("video-devices-list", ctx.videoDeviceList);
+      if (ctx.videoStatus === "streaming" && ctx.lastKeyframe) {
+        vlog(`[VIDEO] Sending buffered keyframe to ${socket.id}: type=${ctx.lastKeyframe.type} dataBytes=${ctx.lastKeyframe.data.byteLength} hasDescription=${!!ctx.lastKeyframe.description}`);
+        socket.emit("video-frame", ctx.lastKeyframe);
       }
-      socket.emit("audio-status", audioStatus);
-      socket.emit("preamp-capabilities", rigctldSettings.preampCapabilities);
-      socket.emit("nb-capabilities", { supported: rigctldSettings.nbSupported, range: rigctldSettings.nbLevelRange });
-      socket.emit("nr-capabilities", { supported: rigctldSettings.nrSupported, range: rigctldSettings.nrLevelRange });
-      socket.emit("mic-active-client", activeMicClientId);
-      socket.emit("rfpower-capabilities", { range: rigctldSettings.rfPowerRange });
-      socket.emit("anf-capabilities", { supported: rigctldSettings.anfSupported });
-      if (isConnected) {
-        socket.emit("rig-connected", { host: rigConfig.host, port: rigConfig.port });
-      }
-    });
-    socket.on("get-audio-devices", async () => {
-      vlog("[AUDIO] Client requested audio devices list");
-      const { inputs, outputs, error } = await listAudioDevices();
-      if (error) {
-        socket.emit("audio-error", error);
-      }
-      socket.emit("audio-devices-list", { inputs, outputs });
-    });
-    socket.on("update-audio-settings", async (settings) => {
-      vlog("[AUDIO] Updating audio settings:", settings);
-      const wasPlaying = audioStatus === "playing";
-      audioSettings = { ...audioSettings, ...settings };
-      saveSettings();
-      io2.emit("settings-data", { audioSettings });
-      if (wasPlaying) {
-        await startAudio();
-      }
-    });
-    socket.on("control-audio", async (action) => {
-      vlog(`[AUDIO] Control action received: ${action}`);
-      if (action === "start") {
-        await startAudio();
-      } else if (action === "stop") {
-        await stopAudio();
-      }
-    });
-    socket.on("mic-unmute-request", () => {
-      activeMicClientId = clientId;
-      console.log(`[AUDIO] Mic claimed by client: ${clientId}`);
-      socket.broadcast.emit("mic-mute-forced");
-      io2.emit("mic-active-client", activeMicClientId);
-    });
-    socket.on("mic-mute-notify", () => {
-      if (activeMicClientId === clientId) {
-        activeMicClientId = null;
-        io2.emit("mic-active-client", null);
-      }
-    });
-    let outboundDiagCount = 0;
-    let outboundRecvCount = 0;
-    socket.on("audio-outbound", (data) => {
-      outboundRecvCount++;
-      if (outboundRecvCount <= 5 || outboundRecvCount % 50 === 0) {
-        vlog(`[AUDIO-DIAG] audio-outbound received #${outboundRecvCount} from clientId=${clientId}, bytes=${data.length}, activeMic=${activeMicClientId}, ptt=${lastStatus.ptt}`);
-      }
-      if (activeMicClientId !== clientId) return;
-      if (!audioOutputProcess || !opusDecoder) return;
-      if (!lastStatus.ptt) return;
-      try {
-        const pcmData = opusDecoder.decode(data);
-        if (outboundDiagCount < 5) {
-          vlog(`[AUDIO-DIAG] encoded packet bytes=${data.length} decoded bytes=${pcmData.length} (expected 1920 for 48kHz/mono/20ms)`);
-          outboundDiagCount++;
-        }
-        outboundJitterBuffer.push(pcmData);
-        while (outboundJitterBuffer.length > OUTBOUND_JITTER_MAX) {
-          outboundJitterBuffer.shift();
-        }
-      } catch (err) {
-        console.error("[AUDIO-OUT] Opus decode error:", err);
-      }
-    });
-    socket.on("get-video-devices", () => {
-      socket.emit("video-devices-list", videoDeviceList);
-    });
-    socket.on("video-devices-update", (devices) => {
-      vlog(`[VIDEO] Device list updated by source (${devices.length} devices):`, devices.map((d) => d.label));
-      videoDeviceList = devices;
-      io2.emit("video-devices-list", videoDeviceList);
-    });
-    socket.on("update-video-settings", (settings) => {
-      vlog("[VIDEO] Updating video settings:", settings);
-      videoSettings = { ...videoSettings, ...settings };
-      saveSettings();
-      io2.emit("video-settings-updated", videoSettings);
-    });
-    socket.on("request-video-start", () => {
-      vlog(`[VIDEO] Start requested by socket=${socket.id}`);
-      videoAutoStart = true;
-      saveSettings();
-      io2.emit("video-start-requested");
-    });
-    socket.on("request-video-stop", () => {
-      vlog(`[VIDEO] Stop requested by socket=${socket.id}`);
-      videoAutoStart = false;
-      saveSettings();
-      io2.emit("video-stop-requested");
-    });
-    socket.on("video-source-start", (config) => {
-      vlog(`[VIDEO] Source started: socket=${socket.id}`, config);
-      videoSourceSocketId = socket.id;
-      lastKeyframe = null;
-      videoSettings = { ...videoSettings, ...config };
-      videoStatus = "streaming";
-      videoAutoStart = true;
-      saveSettings();
-      io2.emit("video-source-status", {
-        status: "streaming",
-        videoWidth: config.videoWidth,
-        videoHeight: config.videoHeight,
-        framerate: config.framerate
-      });
-    });
-    let videoFrameRelayCount = 0;
-    socket.on("video-frame", (chunk) => {
-      if (socket.id !== videoSourceSocketId) return;
-      if (chunk.type === "key") {
-        lastKeyframe = chunk;
-      }
-      videoFrameRelayCount++;
-      if (chunk.type === "key" || videoFrameRelayCount <= 5) {
-        vlog(`[VIDEO] Relaying frame #${videoFrameRelayCount} type=${chunk.type} dataBytes=${chunk.data.byteLength} connectedClients=${io2.engine.clientsCount}`);
-      }
-      socket.broadcast.emit("video-frame", chunk);
-    });
-    socket.on("video-source-stop", () => {
-      if (socket.id !== videoSourceSocketId) return;
-      vlog("[VIDEO] Source stopped.");
-      videoSourceSocketId = null;
-      lastKeyframe = null;
-      videoStatus = "stopped";
-      videoAutoStart = false;
-      saveSettings();
-      io2.emit("video-source-status", { status: "stopped" });
-    });
-    socket.on("save-settings", (data) => {
-      const oldRigNumber = rigctldSettings.rigNumber;
-      if (data.settings) {
-        rigctldSettings = { ...rigctldSettings, ...data.settings };
-      } else {
-        const { pollRate: pr, clientHost: ch, clientPort: cp, ...rest } = data;
-        rigctldSettings = { ...rigctldSettings, ...rest };
-      }
-      if (data.pollRate !== void 0) {
-        pollRate = Number(data.pollRate);
-        startPolling();
-      }
-      if (data.clientHost !== void 0) clientHost = data.clientHost;
-      if (data.clientPort !== void 0) clientPort = Number(data.clientPort);
-      if (data.potaSettings !== void 0) potaSettings = { ...potaSettings, ...data.potaSettings };
-      if (data.sotaSettings !== void 0) sotaSettings = { ...sotaSettings, ...data.sotaSettings };
-      if (data.cwSettings !== void 0) {
-        const oldPolarity = cwSettings.serialKeyPolarity;
-        cwSettings = { ...cwSettings, ...data.cwSettings };
-        const polarityChanged = data.cwSettings.serialKeyPolarity !== void 0 && data.cwSettings.serialKeyPolarity !== oldPolarity;
-        syncKeyerPort(polarityChanged);
-      }
-      saveSettings();
-      if (oldRigNumber !== rigctldSettings.rigNumber) {
-        fetchRadioCapabilities(rigctldSettings.rigNumber);
-      }
-    });
-    socket.on("toggle-auto-start", (enabled) => {
-      autoStartEnabled = enabled;
-      saveSettings();
-      if (enabled) {
-        startRigctld();
-      } else {
-        stopRigctld();
-      }
-    });
-    socket.on("start-rigctld", () => {
-      autoStartEnabled = true;
-      saveSettings();
-      startRigctld();
-    });
-    socket.on("kill-existing-rigctld", async () => {
-      addLog("Killing existing rigctld process...");
-      await killExistingRigctld();
-      addLog("Existing rigctld killed. Starting new process...");
-      startRigctld();
-    });
-    socket.on("stop-rigctld", () => {
-      autoStartEnabled = false;
-      saveSettings();
-      stopRigctld();
-    });
-    socket.on("test-rigctld", async (data) => {
-      const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = data;
-      addLog("Testing rigctld configuration...");
-      rigctldVersion = await getRigctldVersion();
-      isRigctldVersionSupported = checkVersionSupported(rigctldVersion);
-      console.log(`[HAMLIB] Test rigctld version check: ${rigctldVersion || "unknown"}`);
-      addLog(`Hamlib (rigctld) version check: ${rigctldVersion || "unknown"}`);
-      emitRigctldStatus();
-      if (!rigctldVersion) {
-        socket.emit("test-result", { success: false, message: "rigctld binary not found in system PATH or bin folder" });
-        addLog("Error: rigctld binary not found");
-        return;
-      }
-      if (!isRigctldVersionSupported) {
-        addLog(`Warning: rigctld version ${rigctldVersion} is less than 4.7.0 and is unsupported.`);
-      }
-      const testProc = (0, import_child_process.spawn)(getRigctldPath(), [
-        "-m",
-        rigNumber,
-        "-r",
-        serialPort,
-        "-t",
-        portNumber,
-        "-T",
-        ipAddress,
-        "-s",
-        serialPortSpeed
-      ]);
-      let errorMsg = "";
-      testProc.stderr?.on("data", (d) => errorMsg += d.toString());
-      const timeout = setTimeout(() => {
-        testProc.kill();
-        socket.emit("test-result", { success: true, message: "Configuration looks valid (process started successfully)" });
-        addLog("Test: Success");
-      }, 2e3);
-      testProc.on("error", (err) => {
-        clearTimeout(timeout);
-        socket.emit("test-result", { success: false, message: `Failed to start: ${err.message}` });
-        addLog(`Test Failed: ${err.message}`);
-      });
-      testProc.on("close", (c) => {
-        clearTimeout(timeout);
-        if (c !== null && c !== 0) {
-          socket.emit("test-result", { success: false, message: `Process exited with code ${c}. Error: ${errorMsg}` });
-          addLog(`Test Failed: ${errorMsg}`);
-        }
-      });
-    });
-    socket.on("get-radios", () => {
-      if (import_fs.default.existsSync(RADIOS_FILE)) {
-        try {
-          const radios = JSON.parse(import_fs.default.readFileSync(RADIOS_FILE, "utf-8"));
-          socket.emit("radios-list", radios);
-        } catch (e) {
-          console.error("Failed to load radios:", e);
-          socket.emit("radios-list", []);
-        }
-      } else {
-        socket.emit("radios-list", []);
-      }
-    });
-    socket.on("cw-paddle", ({ dit, dah, straight, t }) => {
-      const anyActive = dit || dah || straight;
-      if (anyActive) {
-        if (cwKeyLockedOut) return;
-        if (activeCwClientId && activeCwClientId !== socket.id) return;
-        if (!activeCwClientId) {
-          activeCwClientId = socket.id;
-          cwPaddleBuffer = [];
-          cwPlayheadDit = false;
-          cwPlayheadDah = false;
-          cwPlayheadStraight = false;
-          cwMachine = "IDLE";
-          cwPendingElement = null;
-          cwElementEndMs = 0;
-          cwKeyIsDown = false;
-          cwBufferReady = false;
-          cwTickTimer = setTimeout(cwTick, 4);
-        }
-      }
-      if (activeCwClientId !== socket.id) return;
-      if (cwClaimIdleTimer) clearTimeout(cwClaimIdleTimer);
-      cwClaimIdleTimer = setTimeout(() => {
-        cwClaimIdleTimer = null;
-        if (!cwKeyIsDown) {
-          activeCwClientId = null;
-          stopCwTick();
-          cwMachine = "IDLE";
-          cwPaddleBuffer = [];
-        }
-      }, 3e3);
-      const evt = { t, dit, dah, straight };
-      let i = cwPaddleBuffer.length;
-      while (i > 0 && cwPaddleBuffer[i - 1].t > t) i--;
-      cwPaddleBuffer.splice(i, 0, evt);
-      const connectMs = socketConnectTimes.get(socket.id) ?? Date.now();
-      const ceilingT = Date.now() - connectMs - CW_BUFFER_MAX_MS;
-      while (cwPaddleBuffer.length > 0 && cwPaddleBuffer[0].t < ceilingT) cwPaddleBuffer.shift();
-    });
-    socket.on("update-cw-settings", async (partial) => {
-      const oldPolarity = cwSettings.serialKeyPolarity;
-      cwSettings = { ...cwSettings, ...partial };
-      const polarityChanged = partial.serialKeyPolarity !== void 0 && partial.serialKeyPolarity !== oldPolarity;
-      await syncKeyerPort(polarityChanged);
-      saveSettings();
-      io2.emit("settings-data", {
-        cwSettings,
-        cwPortStatus: cwKeyerProcess && !cwKeyerProcess.killed ? { open: true, port: cwSettings.keyerPort } : { open: false, port: cwSettings.keyerPort }
-      });
-    });
-    socket.on("send-raw", async (cmd) => {
-      try {
-        const resp = await sendToRig(cmd, false, true);
-        socket.emit("raw-response", { cmd, resp });
-      } catch (err) {
-        socket.emit("raw-response", { cmd, resp: `Error: ${err}` });
+      socket.emit("audio-status", ctx.audioStatus);
+      socket.emit("preamp-capabilities", ctx.rigctldSettings.preampCapabilities);
+      socket.emit("nb-capabilities", { supported: ctx.rigctldSettings.nbSupported, range: ctx.rigctldSettings.nbLevelRange });
+      socket.emit("nr-capabilities", { supported: ctx.rigctldSettings.nrSupported, range: ctx.rigctldSettings.nrLevelRange });
+      socket.emit("mic-active-client", ctx.activeMicClientId);
+      socket.emit("rfpower-capabilities", { range: ctx.rigctldSettings.rfPowerRange });
+      socket.emit("anf-capabilities", { supported: ctx.rigctldSettings.anfSupported });
+      if (ctx.isConnected) {
+        socket.emit("rig-connected", { host: ctx.rigConfig.host, port: ctx.rigConfig.port });
       }
     });
     socket.on("disconnect", () => {
       console.log(`Client disconnected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
-      socketConnectTimes.delete(socket.id);
-      if (activeCwClientId === socket.id) {
-        stopCwTick();
-        if (cwClaimIdleTimer) {
-          clearTimeout(cwClaimIdleTimer);
-          cwClaimIdleTimer = null;
+      ctx.socketConnectTimes.delete(socket.id);
+      if (ctx.activeCwClientId === socket.id) {
+        stopCwTick(ctx);
+        if (ctx.cwClaimIdleTimer) {
+          clearTimeout(ctx.cwClaimIdleTimer);
+          ctx.cwClaimIdleTimer = null;
         }
-        cwSetKey(false);
-        cwKeyLockedOut = false;
-        cwMachine = "IDLE";
-        cwPaddleBuffer = [];
-        activeCwClientId = null;
-        setCwKeyingActive(false);
+        cwSetKey(ctx, false);
+        ctx.cwKeyLockedOut = false;
+        ctx.cwMachine = "IDLE";
+        ctx.cwPaddleBuffer = [];
+        ctx.activeCwClientId = null;
+        ctx.cwIsKeying = false;
+        if (ctx.cwIdleTimer) {
+          clearTimeout(ctx.cwIdleTimer);
+          ctx.cwIdleTimer = null;
+        }
+        if (ctx.cwStuckKeyTimer) {
+          clearTimeout(ctx.cwStuckKeyTimer);
+          ctx.cwStuckKeyTimer = null;
+        }
       }
-      if (socket.id === videoSourceSocketId) {
+      if (socket.id === ctx.videoSourceSocketId) {
         vlog("[VIDEO] Source client disconnected \u2014 stopping stream.");
-        videoSourceSocketId = null;
-        lastKeyframe = null;
-        videoStatus = "stopped";
-        videoAutoStart = false;
-        saveSettings();
-        io2.emit("video-source-status", { status: "stopped" });
+        ctx.videoSourceSocketId = null;
+        ctx.lastKeyframe = null;
+        ctx.videoStatus = "stopped";
+        ctx.videoAutoStart = false;
+        ctx.saveSettings();
+        ctx.io.emit("video-source-status", { status: "stopped" });
       }
-      if (activeMicClientId === clientId) {
+      if (ctx.activeMicClientId === clientId) {
         setTimeout(() => {
           let hasActiveSocket = false;
-          io2.sockets.sockets.forEach((s) => {
+          ctx.io.sockets.sockets.forEach((s) => {
             if ((s.handshake.auth.clientId || s.id) === clientId) {
               hasActiveSocket = true;
             }
           });
-          if (!hasActiveSocket && activeMicClientId === clientId) {
+          if (!hasActiveSocket && ctx.activeMicClientId === clientId) {
             vlog(`[AUDIO] Releasing mic for disconnected client: ${clientId}`);
-            activeMicClientId = null;
-            io2.emit("mic-active-client", null);
+            ctx.activeMicClientId = null;
+            ctx.io.emit("mic-active-client", null);
           }
         }, 5e3);
       }
@@ -59035,16 +59117,16 @@ async function startServer(appPath, userDataPath) {
   } else {
     let distPath;
     if (process.versions.electron && appPath) {
-      distPath = import_path.default.join(appPath, "dist");
+      distPath = import_path4.default.join(appPath, "dist");
     } else {
-      distPath = import_path.default.join(process.cwd(), "dist");
+      distPath = import_path4.default.join(process.cwd(), "dist");
     }
     console.log(`Serving static files from: ${distPath}`);
-    if (import_fs.default.existsSync(distPath)) {
+    if (import_fs4.default.existsSync(distPath)) {
       app2.use(import_express.default.static(distPath));
       app2.get("*", (req, res) => {
-        const indexPath = import_path.default.join(distPath, "index.html");
-        if (import_fs.default.existsSync(indexPath)) {
+        const indexPath = import_path4.default.join(distPath, "index.html");
+        if (import_fs4.default.existsSync(indexPath)) {
           res.sendFile(indexPath);
         } else {
           console.error(`File not found: ${indexPath}`);
@@ -59059,18 +59141,15 @@ async function startServer(appPath, userDataPath) {
     }
   }
   _shutdown = async () => {
-    await closeKeyerPort();
-    await stopAudio();
-    stopRigctld();
-    if (pollingTimeout) {
-      clearTimeout(pollingTimeout);
-      pollingTimeout = null;
+    await closeKeyerPort(ctx);
+    await stopAudio(ctx);
+    stopRigctld(ctx);
+    stopPolling(ctx);
+    if (ctx.rigSocket) {
+      ctx.rigSocket.destroy();
+      ctx.rigSocket = null;
     }
-    if (rigSocket) {
-      rigSocket.destroy();
-      rigSocket = null;
-    }
-    io2.disconnectSockets(true);
+    ctx.io.disconnectSockets(true);
     await new Promise((resolve) => httpServer.close(() => resolve()));
   };
   return new Promise((resolve) => {
@@ -59094,11 +59173,11 @@ if (!electron_is_dev_default) {
   process.env.NODE_ENV = "production";
 }
 console.log(`Electron starting. isDev: ${electron_is_dev_default}, NODE_ENV: ${process.env.NODE_ENV}`);
-var windowStatePath = import_path2.default.join(import_electron2.app.getPath("userData"), "window-state.json");
+var windowStatePath = import_path5.default.join(import_electron2.app.getPath("userData"), "window-state.json");
 function loadWindowState() {
   try {
-    if (import_fs2.default.existsSync(windowStatePath)) {
-      return JSON.parse(import_fs2.default.readFileSync(windowStatePath, "utf8"));
+    if (import_fs5.default.existsSync(windowStatePath)) {
+      return JSON.parse(import_fs5.default.readFileSync(windowStatePath, "utf8"));
     }
   } catch (e) {
     console.error("Failed to load window state:", e);
@@ -59107,7 +59186,7 @@ function loadWindowState() {
 }
 function saveWindowState(state) {
   try {
-    import_fs2.default.writeFileSync(windowStatePath, JSON.stringify(state));
+    import_fs5.default.writeFileSync(windowStatePath, JSON.stringify(state));
   } catch (e) {
     console.error("Failed to save window state:", e);
   }
@@ -59120,15 +59199,15 @@ function installDesktopIntegration() {
     process.exit(1);
   }
   const home = import_os2.default.homedir();
-  const hicolorDir = import_path2.default.join(home, ".local", "share", "icons", "hicolor");
-  const iconDir = import_path2.default.join(hicolorDir, "512x512", "apps");
-  const desktopDir = import_path2.default.join(home, ".local", "share", "applications");
-  const iconDest = import_path2.default.join(iconDir, "rigcontrol-web.png");
-  const desktopDest = import_path2.default.join(desktopDir, "rigcontrol-web.desktop");
-  import_fs2.default.mkdirSync(iconDir, { recursive: true });
-  import_fs2.default.mkdirSync(desktopDir, { recursive: true });
-  const iconSrc = import_path2.default.join(appDir, "resources", "app.asar", "assets", "icons", "rcw_512x512.png");
-  import_fs2.default.writeFileSync(iconDest, import_fs2.default.readFileSync(iconSrc));
+  const hicolorDir = import_path5.default.join(home, ".local", "share", "icons", "hicolor");
+  const iconDir = import_path5.default.join(hicolorDir, "512x512", "apps");
+  const desktopDir = import_path5.default.join(home, ".local", "share", "applications");
+  const iconDest = import_path5.default.join(iconDir, "rigcontrol-web.png");
+  const desktopDest = import_path5.default.join(desktopDir, "rigcontrol-web.desktop");
+  import_fs5.default.mkdirSync(iconDir, { recursive: true });
+  import_fs5.default.mkdirSync(desktopDir, { recursive: true });
+  const iconSrc = import_path5.default.join(appDir, "resources", "app.asar", "assets", "icons", "rcw_512x512.png");
+  import_fs5.default.writeFileSync(iconDest, import_fs5.default.readFileSync(iconSrc));
   const desktop = [
     "[Desktop Entry]",
     "Type=Application",
@@ -59140,13 +59219,13 @@ function installDesktopIntegration() {
     "Categories=HamRadio;Utility;",
     "Terminal=false"
   ].join("\n") + "\n";
-  import_fs2.default.writeFileSync(desktopDest, desktop);
+  import_fs5.default.writeFileSync(desktopDest, desktop);
   try {
-    (0, import_child_process2.execSync)(`update-desktop-database "${desktopDir}"`);
+    (0, import_child_process3.execSync)(`update-desktop-database "${desktopDir}"`);
   } catch {
   }
   try {
-    (0, import_child_process2.execSync)(`gtk-update-icon-cache -f -t "${hicolorDir}"`);
+    (0, import_child_process3.execSync)(`gtk-update-icon-cache -f -t "${hicolorDir}"`);
   } catch {
   }
   console.log("RigControl Web has been integrated into your desktop.");
@@ -59156,16 +59235,16 @@ function installDesktopIntegration() {
 }
 function uninstallDesktopIntegration() {
   const home = import_os2.default.homedir();
-  const hicolorDir = import_path2.default.join(home, ".local", "share", "icons", "hicolor");
-  const iconDest = import_path2.default.join(hicolorDir, "512x512", "apps", "rigcontrol-web.png");
-  const desktopDest = import_path2.default.join(home, ".local", "share", "applications", "rigcontrol-web.desktop");
+  const hicolorDir = import_path5.default.join(home, ".local", "share", "icons", "hicolor");
+  const iconDest = import_path5.default.join(hicolorDir, "512x512", "apps", "rigcontrol-web.png");
+  const desktopDest = import_path5.default.join(home, ".local", "share", "applications", "rigcontrol-web.desktop");
   let removed = false;
-  if (import_fs2.default.existsSync(iconDest)) {
-    import_fs2.default.rmSync(iconDest);
+  if (import_fs5.default.existsSync(iconDest)) {
+    import_fs5.default.rmSync(iconDest);
     removed = true;
   }
-  if (import_fs2.default.existsSync(desktopDest)) {
-    import_fs2.default.rmSync(desktopDest);
+  if (import_fs5.default.existsSync(desktopDest)) {
+    import_fs5.default.rmSync(desktopDest);
     removed = true;
   }
   if (!removed) {
@@ -59173,11 +59252,11 @@ function uninstallDesktopIntegration() {
     return;
   }
   try {
-    (0, import_child_process2.execSync)(`update-desktop-database "${import_path2.default.dirname(desktopDest)}"`);
+    (0, import_child_process3.execSync)(`update-desktop-database "${import_path5.default.dirname(desktopDest)}"`);
   } catch {
   }
   try {
-    (0, import_child_process2.execSync)(`gtk-update-icon-cache -f -t "${hicolorDir}"`);
+    (0, import_child_process3.execSync)(`gtk-update-icon-cache -f -t "${hicolorDir}"`);
   } catch {
   }
   console.log("RigControl Web desktop integration has been removed.");
@@ -59189,7 +59268,7 @@ async function createWindow() {
   const savedState = loadWindowState();
   const defaultWidth = 768;
   const defaultHeight = 600;
-  const iconPath = electron_is_dev_default ? import_path2.default.join(process.cwd(), "assets/icons/rcw_512x512.png") : import_path2.default.join(import_electron2.app.getAppPath(), "assets/icons/rcw_512x512.png");
+  const iconPath = electron_is_dev_default ? import_path5.default.join(process.cwd(), "assets/icons/rcw_512x512.png") : import_path5.default.join(import_electron2.app.getAppPath(), "assets/icons/rcw_512x512.png");
   const win = new import_electron2.BrowserWindow({
     width: savedState?.width || defaultWidth,
     height: savedState?.height || defaultHeight,
@@ -59198,7 +59277,7 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: electron_is_dev_default ? import_path2.default.join(process.cwd(), "dist-electron/preload.cjs") : import_path2.default.join(import_electron2.app.getAppPath(), "dist-electron/preload.cjs")
+      preload: electron_is_dev_default ? import_path5.default.join(process.cwd(), "dist-electron/preload.cjs") : import_path5.default.join(import_electron2.app.getAppPath(), "dist-electron/preload.cjs")
     },
     title: "RigControl Web",
     autoHideMenuBar: true,

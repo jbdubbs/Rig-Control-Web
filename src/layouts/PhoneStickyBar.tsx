@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Mic } from "lucide-react";
 import { cn } from "../utils";
 import type { RigStatus, CwSettings } from "../types";
+import CwDecodePanel from "../panels/CwDecodePanel";
 
 interface PhoneStickyBarProps {
   stickyBarRef: React.RefObject<HTMLDivElement>;
@@ -42,22 +43,13 @@ function PhoneStickyBar({
   return (
     <div ref={stickyBarRef} className="flex-shrink-0 px-3 py-3 bg-[#151619] border-t border-[#2a2b2e]">
       {cwDecodeEnabled && (
-        <div className="mb-2">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[0.625rem] uppercase text-emerald-500 font-bold tracking-wider">CW Decode</span>
-              {cwStats.pitch > 0 && (
-                <span className="text-[0.625rem] text-[#8e9299]">
-                  {Math.round(cwStats.pitch)}Hz&nbsp;{Math.round(cwStats.speed)}wpm
-                </span>
-              )}
-            </div>
-            <button onClick={() => setCwDecodedText('')} className="px-1.5 py-0.5 hover:bg-white/5 rounded text-[0.5rem] uppercase tracking-wider text-[#8e9299] hover:text-white/60">Clear</button>
-          </div>
-          <div ref={cwScrollContainerRef} className="bg-[#0a0a0a] rounded-lg border border-[#2a2b2e] p-2 h-14 overflow-y-auto cw-scroll font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all">
-            {cwDecodedText || <span className="text-[#4a4b4e]">waiting for CW…</span>}
-          </div>
-        </div>
+        <CwDecodePanel
+          variant="phone-embedded"
+          cwDecodedText={cwDecodedText}
+          setCwDecodedText={setCwDecodedText}
+          cwStats={cwStats}
+          cwScrollContainerRef={cwScrollContainerRef}
+        />
       )}
       {cwSettings.enabled && isCwMode ? (
         <div className="flex gap-3">

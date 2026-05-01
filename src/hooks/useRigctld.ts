@@ -26,7 +26,7 @@ export function useRigctld({ socket }: UseRigctldOptions) {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'spots' | 'display' | 'cw'>('rigctld');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'spots' | 'cw'>('rigctld');
   const [radios, setRadios] = useState<{ id: string; mfg: string; model: string }[]>([]);
   const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");
   const [preampLevels, setPreampLevels] = useState<string[]>([]);
