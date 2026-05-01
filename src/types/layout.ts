@@ -12,11 +12,6 @@ export type PanelType =
   | 'spots_pota'
   | 'spots_sota';
 
-export interface TabGroupConfig {
-  panels: PanelType[];
-  activeIndex: number;
-}
-
 export interface GridItem {
   i: string;
   x: number;
@@ -30,10 +25,8 @@ export interface GridItem {
   static?: boolean;
   isDraggable?: boolean;
   isResizable?: boolean;
-  // Custom fields (preserved through react-grid-layout, ignored by the library)
   panelType?: PanelType;
-  tabGroup?: TabGroupConfig;
-  isPlaceholder?: boolean; // edit-mode empty-cell sentinel, never persisted
+  isPlaceholder?: boolean;
 }
 
 export interface ViewLayout {
@@ -73,9 +66,6 @@ export interface GridLayoutCallbacks {
   addPanel: (panelType: PanelType) => void;
   removePanel: (itemId: string) => void;
   setGridSize: (cols: number, rows: number) => void;
-  mergeIntoTabGroup: (targetId: string, sourceId: string) => void;
-  removeFromTabGroup: (groupId: string, panelType: PanelType) => void;
-  setTabGroupActiveIndex: (itemId: string, index: number) => void;
   updateItemPositions: (positions: Array<{ i: string; x: number; y: number; w: number; h: number }>) => void;
   resetToDefault: () => void;
 }

@@ -14,7 +14,7 @@ import { cn } from "../utils";
 import type { AudioSettings } from "../types";
 
 export interface VideoAudioHeaderActionsProps {
-  variant: "phone" | "compact" | "desktop";
+  variant: "phone" | "compact";
   socket: Socket | null;
   videoStatus: "streaming" | "stopped";
   setIsVideoSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -48,10 +48,9 @@ export function VideoAudioHeaderActions({
   setOutboundMuted,
   handleJoinAudio,
 }: VideoAudioHeaderActionsProps) {
-  const isDesktop = variant === "desktop";
   const isPhone = variant === "phone";
-  const settingsIconSize = isDesktop ? 16 : isPhone ? 14 : 12;
-  const headerGap = isDesktop ? "gap-3" : "gap-2";
+  const settingsIconSize = isPhone ? 14 : 12;
+  const headerGap = "gap-2";
 
   const handleSettingsClick = () => {
     setIsVideoSettingsOpen(true);
@@ -133,7 +132,7 @@ export function VideoAudioHeaderActions({
         onClick={handleSettingsClick}
         className={cn(
           "hover:bg-[#2a2b2e] rounded-lg text-[#8e9299] transition-all",
-          isDesktop ? "p-1.5" : isPhone ? "p-1.5" : "p-1"
+          isPhone ? "p-1.5" : "p-1"
         )}
         title="Video & Audio Settings"
       >
@@ -144,7 +143,7 @@ export function VideoAudioHeaderActions({
 }
 
 export interface VideoAudioPanelProps {
-  variant: "phone" | "compact" | "desktop";
+  variant: "phone" | "compact";
   socket: Socket | null;
   videoStatus: "streaming" | "stopped";
   isElectronSource: boolean;
@@ -164,23 +163,15 @@ export default function VideoAudioPanel({
   videoPreviewCallbackRef,
   videoCanvasRef,
 }: VideoAudioPanelProps) {
-  const isDesktop = variant === "desktop";
   const isPhone = variant === "phone";
 
-  const stoppedMonitorSize = isDesktop ? 48 : isPhone ? 32 : 24;
-  const stoppedLabel =
-    isDesktop || isPhone ? "Stream Stopped" : "Stopped";
-  const stoppedLabelClass = isDesktop ? "text-[0.625rem]" : "text-[0.5rem]";
+  const stoppedMonitorSize = isPhone ? 32 : 24;
+  const stoppedLabel = isPhone ? "Stream Stopped" : "Stopped";
+  const stoppedLabelClass = "text-[0.5rem]";
 
-  const errorIconClass = isDesktop
-    ? "w-10 h-10"
-    : isPhone
-    ? "w-8 h-8"
-    : "w-6 h-6";
-  const errorTextClass = isDesktop ? "text-sm" : isPhone ? "text-xs" : "text-[10px]";
-  const errorRetryClass = isDesktop
-    ? "mt-4 px-4 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-xs transition-colors"
-    : isPhone
+  const errorIconClass = isPhone ? "w-8 h-8" : "w-6 h-6";
+  const errorTextClass = isPhone ? "text-xs" : "text-[10px]";
+  const errorRetryClass = isPhone
     ? "mt-3 px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-[10px] transition-colors"
     : "mt-2 px-2 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-500/30 rounded text-[9px] transition-colors";
 

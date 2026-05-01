@@ -5,7 +5,6 @@ import {
   Power,
   Settings,
   Mic,
-  MapPin,
   Server,
   Monitor,
   Zap,
@@ -15,7 +14,6 @@ import {
 import { cn } from "./utils";
 import PhoneLayout from "./layouts/PhoneLayout";
 import CompactLayout from "./layouts/CompactLayout";
-import DesktopLayout from "./layouts/DesktopLayout";
 import PhoneStickyBar from "./layouts/PhoneStickyBar";
 import SettingsModal from "./modals/SettingsModal";
 import VideoSettingsModal from "./modals/VideoSettingsModal";
@@ -77,8 +75,7 @@ export default function App() {
     compactLayout, setCompactLayout,
     phoneLayout, setPhoneLayout,
     addPanel, removePanel, setGridSize,
-    mergeIntoTabGroup, removeFromTabGroup,
-    setTabGroupActiveIndex, updateItemPositions, resetToDefault,
+    updateItemPositions, resetToDefault,
   } = useLayoutConfig();
 
   const compactGridCallbacks = useMemo(() => ({
@@ -86,24 +83,18 @@ export default function App() {
     addPanel: (panelType: PanelType) => addPanel('compact', panelType),
     removePanel: (itemId: string) => removePanel('compact', itemId),
     setGridSize: (cols: number, rows: number) => setGridSize('compact', cols, rows),
-    mergeIntoTabGroup: (targetId: string, sourceId: string) => mergeIntoTabGroup('compact', targetId, sourceId),
-    removeFromTabGroup: (groupId: string, panelType: PanelType) => removeFromTabGroup('compact', groupId, panelType),
-    setTabGroupActiveIndex: (itemId: string, index: number) => setTabGroupActiveIndex('compact', itemId, index),
     updateItemPositions: (positions: Array<{ i: string; x: number; y: number; w: number; h: number }>) => updateItemPositions('compact', positions),
     resetToDefault: () => resetToDefault('compact'),
-  }), [addPanel, removePanel, setGridSize, mergeIntoTabGroup, removeFromTabGroup, setTabGroupActiveIndex, updateItemPositions, resetToDefault]);
+  }), [addPanel, removePanel, setGridSize, updateItemPositions, resetToDefault]);
 
   const phoneGridCallbacks = useMemo(() => ({
     onExitEditMode: () => setIsPhoneEditMode(false),
     addPanel: (panelType: PanelType) => addPanel('phone', panelType),
     removePanel: (itemId: string) => removePanel('phone', itemId),
     setGridSize: (cols: number, rows: number) => setGridSize('phone', cols, rows),
-    mergeIntoTabGroup: (targetId: string, sourceId: string) => mergeIntoTabGroup('phone', targetId, sourceId),
-    removeFromTabGroup: (groupId: string, panelType: PanelType) => removeFromTabGroup('phone', groupId, panelType),
-    setTabGroupActiveIndex: (itemId: string, index: number) => setTabGroupActiveIndex('phone', itemId, index),
     updateItemPositions: (positions: Array<{ i: string; x: number; y: number; w: number; h: number }>) => updateItemPositions('phone', positions),
     resetToDefault: () => resetToDefault('phone'),
-  }), [addPanel, removePanel, setGridSize, mergeIntoTabGroup, removeFromTabGroup, setTabGroupActiveIndex, updateItemPositions, resetToDefault]);
+  }), [addPanel, removePanel, setGridSize, updateItemPositions, resetToDefault]);
 
   const {
     showSetupModal, setShowSetupModal,
@@ -115,15 +106,7 @@ export default function App() {
     isCompactSMeterCollapsed, setIsCompactSMeterCollapsed,
     isCompactControlsCollapsed, setIsCompactControlsCollapsed,
     isCompactRFPowerCollapsed, setIsCompactRFPowerCollapsed,
-    isDesktopControlsCollapsed, setIsDesktopControlsCollapsed,
-    isDesktopModeCollapsed, setIsDesktopModeCollapsed,
-    isDesktopBwCollapsed, setIsDesktopBwCollapsed,
-    isDesktopRFPowerCollapsed, setIsDesktopRFPowerCollapsed,
-    isDesktopSMeterCollapsed, setIsDesktopSMeterCollapsed,
-    isDesktopSWRCollapsed, setIsDesktopSWRCollapsed,
-    isDesktopALCCollapsed, setIsDesktopALCCollapsed,
     isConsoleCollapsed, setIsConsoleCollapsed,
-    showCommandConsole, setShowCommandConsole,
   } = usePanelState();
 
   const {
@@ -290,7 +273,6 @@ export default function App() {
     sotaSpotsCollapsed, setSotaSpotsCollapsed,
     potaSpotsVisible,
     sotaSpotsVisible,
-    activeCompactPowerTab, setActiveCompactPowerTab,
     potaSpotsBoxRef,
     sotaSpotsBoxRef,
     filteredSpots,
@@ -391,7 +373,7 @@ export default function App() {
   return (
     <div className={cn(
       "bg-[#0a0a0a] text-[#e0e0e0] font-mono",
-      isPhone ? "h-[100dvh] flex flex-col overflow-hidden" : isCompact ? "p-2 min-h-screen" : "min-h-screen p-4 md:p-8"
+      isPhone ? "h-[100dvh] flex flex-col overflow-hidden" : "p-2 min-h-screen"
     )}>
       {/* CW stuck-key safety alert */}
       {cwStuckAlert && (
@@ -405,7 +387,7 @@ export default function App() {
         ref={containerRef}
         className={cn(
           isPhone ? "flex-1 overflow-y-auto p-2 w-full space-y-4" : "mx-auto space-y-4",
-          !isPhone && (isCompact ? "w-full" : "max-w-6xl space-y-6")
+          !isPhone && "w-full"
         )}
       >
         {/* Header / Connection */}
@@ -495,20 +477,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Phone SPOTS scroll pill */}
-        {isPhone && (potaEnabled || sotaEnabled) && !potaSpotsVisible && !sotaSpotsVisible && (
-          <button
-            onClick={() => {
-              const target = potaEnabled ? potaSpotsBoxRef.current : sotaSpotsBoxRef.current;
-              target?.scrollIntoView({ behavior: 'smooth' });
-            }}
-            style={{ bottom: stickyBarHeight + 8 }}
-            className="fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-[#151619] border border-emerald-500/50 text-emerald-400 rounded-full text-[0.625rem] font-bold uppercase tracking-wider shadow-lg backdrop-blur-sm"
-          >
-            <MapPin size={10} />
-            SPOTS ↓
-          </button>
-        )}
 
         {/* Main Interface */}
         {isPhone ? (
@@ -603,7 +571,6 @@ export default function App() {
             cwKeyActive={cwKeyActive}
             cwStuckAlert={cwStuckAlert}
             handleSetPTT={handleSetPTT}
-            showCommandConsole={showCommandConsole}
             isConsoleCollapsed={isConsoleCollapsed}
             consoleLogs={consoleLogs}
             rawCommand={rawCommand}
@@ -614,13 +581,15 @@ export default function App() {
             isEditMode={isPhoneEditMode}
             gridCallbacks={phoneGridCallbacks}
           />
-        ) : isCompact ? (
+        ) : (
           <CompactLayout
             status={status}
             connected={connected}
             availableModes={availableModes}
             socket={socket}
             vfoSupported={vfoSupported}
+            isPhoneVFOCollapsed={isPhoneVFOCollapsed}
+            setIsPhoneVFOCollapsed={setIsPhoneVFOCollapsed}
             vfoStep={vfoStep}
             inputVfoA={inputVfoA}
             inputVfoB={inputVfoB}
@@ -702,11 +671,8 @@ export default function App() {
             cwStuckAlert={cwStuckAlert}
             potaEnabled={potaEnabled}
             sotaEnabled={sotaEnabled}
-            activeCompactPowerTab={activeCompactPowerTab}
-            setActiveCompactPowerTab={setActiveCompactPowerTab}
             renderSpotsTable={renderSpotsTable}
             renderSotaSpotsTable={renderSotaSpotsTable}
-            showCommandConsole={showCommandConsole}
             isConsoleCollapsed={isConsoleCollapsed}
             consoleLogs={consoleLogs}
             rawCommand={rawCommand}
@@ -718,119 +684,6 @@ export default function App() {
             isEditMode={isCompactEditMode}
             gridCallbacks={compactGridCallbacks}
           />
-        ) : (
-          <DesktopLayout
-            status={status}
-            connected={connected}
-            availableModes={availableModes}
-            socket={socket}
-            vfoSupported={vfoSupported}
-            vfoStep={vfoStep}
-            inputVfoA={inputVfoA}
-            inputVfoB={inputVfoB}
-            localMode={localMode}
-            setVfoStep={setVfoStep}
-            setInputVfoA={setInputVfoA}
-            setInputVfoB={setInputVfoB}
-            adjustVfoFrequency={adjustVfoFrequency}
-            handleSetVFO={handleSetVFO}
-            handleToggleSplit={handleToggleSplit}
-            handleSetFreq={handleSetFreq}
-            handleSetMode={handleSetMode}
-            handleSetBw={handleSetBw}
-            isDesktopControlsCollapsed={isDesktopControlsCollapsed}
-            setIsDesktopControlsCollapsed={setIsDesktopControlsCollapsed}
-            isDesktopModeCollapsed={isDesktopModeCollapsed}
-            setIsDesktopModeCollapsed={setIsDesktopModeCollapsed}
-            isDesktopBwCollapsed={isDesktopBwCollapsed}
-            setIsDesktopBwCollapsed={setIsDesktopBwCollapsed}
-            isDesktopRFPowerCollapsed={isDesktopRFPowerCollapsed}
-            setIsDesktopRFPowerCollapsed={setIsDesktopRFPowerCollapsed}
-            isDesktopSMeterCollapsed={isDesktopSMeterCollapsed}
-            setIsDesktopSMeterCollapsed={setIsDesktopSMeterCollapsed}
-            isDesktopSWRCollapsed={isDesktopSWRCollapsed}
-            setIsDesktopSWRCollapsed={setIsDesktopSWRCollapsed}
-            isDesktopALCCollapsed={isDesktopALCCollapsed}
-            setIsDesktopALCCollapsed={setIsDesktopALCCollapsed}
-            videoStatus={videoStatus}
-            isVideoCollapsed={isVideoCollapsed}
-            isElectronSource={isElectronSource}
-            videoError={videoError}
-            videoPreviewCallbackRef={videoPreviewCallbackRef}
-            videoCanvasRef={videoCanvasRef}
-            setIsVideoCollapsed={setIsVideoCollapsed}
-            setIsVideoSettingsOpen={setIsVideoSettingsOpen}
-            setVideoError={setVideoError}
-            enumerateVideoDevices={enumerateVideoDevices}
-            audioStatus={audioStatus}
-            localAudioReady={localAudioReady}
-            inboundMuted={inboundMuted}
-            outboundMuted={outboundMuted}
-            audioSettings={audioSettings}
-            audioWasRestarted={audioWasRestarted}
-            setInboundMuted={setInboundMuted}
-            setOutboundMuted={setOutboundMuted}
-            handleJoinAudio={handleJoinAudio}
-            isTuning={isTuning}
-            tuneJustFinished={tuneJustFinished}
-            attenuatorLevels={attenuatorLevels}
-            preampLevels={preampLevels}
-            agcLevels={agcLevels}
-            nbCapabilities={nbCapabilities}
-            nrCapabilities={nrCapabilities}
-            anfCapabilities={anfCapabilities}
-            localRFPower={localRFPower}
-            rfPowerCapabilities={rfPowerCapabilities}
-            localRFLevel={localRFLevel}
-            localNRLevel={localNRLevel}
-            localNBLevel={localNBLevel}
-            isDraggingRF={isDraggingRF}
-            isDraggingRFLevel={isDraggingRFLevel}
-            isDraggingNR={isDraggingNR}
-            isDraggingNB={isDraggingNB}
-            setLocalRFPower={setLocalRFPower}
-            setLocalRFLevel={setLocalRFLevel}
-            setLocalNRLevel={setLocalNRLevel}
-            setLocalNBLevel={setLocalNBLevel}
-            handleSetPTT={handleSetPTT}
-            handleSetFunc={handleSetFunc}
-            handleVfoOp={handleVfoOp}
-            cycleAttenuator={cycleAttenuator}
-            cyclePreamp={cyclePreamp}
-            cycleAgc={cycleAgc}
-            getAttenuatorLabel={getAttenuatorLabel}
-            getPreampLabel={getPreampLabel}
-            getAgcLabel={getAgcLabel}
-            cwSettings={cwSettings}
-            cwKeyActive={cwKeyActive}
-            cwStuckAlert={cwStuckAlert}
-            history={history}
-            potaEnabled={potaEnabled}
-            sotaEnabled={sotaEnabled}
-            potaSpotsCollapsed={potaSpotsCollapsed}
-            sotaSpotsCollapsed={sotaSpotsCollapsed}
-            filteredSpots={filteredSpots}
-            filteredSotaSpots={filteredSotaSpots}
-            setPotaSpotsCollapsed={setPotaSpotsCollapsed}
-            setSotaSpotsCollapsed={setSotaSpotsCollapsed}
-            renderSpotsTable={renderSpotsTable}
-            renderSotaSpotsTable={renderSotaSpotsTable}
-          />
-        )}
-
-        {/* Footer Status Bar */}
-        {!isPhone && !isCompact && (
-          <footer className="bg-[#151619] px-6 py-3 rounded-xl border border-[#2a2b2e] flex justify-between items-center text-[0.625rem] uppercase tracking-widest text-[#8e9299]">
-            <div className="flex gap-6">
-              <span>Status: <span className={connected ? "text-emerald-500" : "text-red-500"}>{connected ? "Online" : "Offline"}</span></span>
-              <span>Server: {connected ? `${host}:${port}` : "None"}</span>
-            </div>
-            <div className="flex gap-6">
-              <span>Mode: <span className="text-white">{status.mode}</span></span>
-              <span>BW: <span className="text-white">{status.bandwidth} Hz</span></span>
-              <span>VFO: <span className="text-white">{status.vfo}</span></span>
-            </div>
-          </footer>
         )}
 
         {/* Portable Setup Modal */}
@@ -1019,8 +872,6 @@ export default function App() {
           sidetoneOscRef={sidetoneOscRef}
           rebindTarget={rebindTarget}
           setRebindTarget={setRebindTarget}
-          showCommandConsole={showCommandConsole}
-          setShowCommandConsole={setShowCommandConsole}
         />
       </div>
 

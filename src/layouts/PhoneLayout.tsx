@@ -148,7 +148,6 @@ export interface PhoneLayoutProps {
   cwStuckAlert: boolean;
 
   // Command console
-  showCommandConsole: boolean;
   isConsoleCollapsed: boolean;
   consoleLogs: ConsoleLog[];
   rawCommand: string;
@@ -253,7 +252,6 @@ function PhoneLayout({
   cwSettings,
   cwKeyActive,
   cwStuckAlert,
-  showCommandConsole,
   isConsoleCollapsed,
   consoleLogs,
   rawCommand,
@@ -271,7 +269,6 @@ function PhoneLayout({
     const types = new Set<PanelType>();
     phoneLayout.items.forEach(item => {
       if (item.panelType) types.add(item.panelType);
-      item.tabGroup?.panels.forEach(p => types.add(p));
     });
     return types;
   }, [phoneLayout.items]);
@@ -279,13 +276,12 @@ function PhoneLayout({
   const visibleItems = useMemo(() => {
     return [...phoneLayout.items]
       .filter(item => {
-        if (item.panelType === 'commandconsole' && !showCommandConsole) return false;
         if (item.panelType === 'spots_pota' && !potaEnabled) return false;
         if (item.panelType === 'spots_sota' && !sotaEnabled) return false;
         return true;
       })
       .sort((a, b) => a.y - b.y);
-  }, [phoneLayout.items, showCommandConsole, potaEnabled, sotaEnabled]);
+  }, [phoneLayout.items, potaEnabled, sotaEnabled]);
 
   function movePhonePanel(item: GridItem, direction: 'up' | 'down', idx: number) {
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -495,7 +491,6 @@ function PhoneLayout({
             headerSize="md"
           >
             <SpotsPanel
-              variant="phone"
               type="pota"
               renderTable={() => renderSpotsTable(false)}
             />
@@ -520,7 +515,6 @@ function PhoneLayout({
             headerSize="md"
           >
             <SpotsPanel
-              variant="phone"
               type="sota"
               renderTable={() => renderSotaSpotsTable()}
             />

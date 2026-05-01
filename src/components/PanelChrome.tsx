@@ -18,8 +18,8 @@ export interface PanelChromeProps {
   bodyClassName?: string;
   /** Applied to outer wrapper. */
   className?: string;
-  /** sm = compact (py-2 px-3), md = phone (p-3), lg = desktop (p-4). Defaults to "md". */
-  headerSize?: "sm" | "md" | "lg";
+  /** sm = compact (py-2 px-3), md = phone (p-3). Defaults to "md". */
+  headerSize?: "sm" | "md";
   /** Forwarded to outer div. Used by SpotsPanel for scroll-into-view. */
   outerRef?: React.RefObject<HTMLDivElement>;
   collapseTitle?: string;
@@ -28,16 +28,14 @@ export interface PanelChromeProps {
 const headerPaddingMap = {
   sm: "py-2 px-3",
   md: "p-3",
-  lg: "p-4",
 } as const;
 
 const headerTextMap = {
   sm: "text-[0.5625rem]",
   md: "text-[0.5625rem]",
-  lg: "text-[0.625rem]",
 } as const;
 
-const chevronSizeMap = { sm: 14, md: 16, lg: 18 } as const;
+const chevronSizeMap = { sm: 14, md: 16 } as const;
 
 export default function PanelChrome({
   title,

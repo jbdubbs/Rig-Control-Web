@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 export function usePanelState() {
   const [showSetupModal, setShowSetupModal] = useState(false);
@@ -13,37 +13,17 @@ export function usePanelState() {
   const [isCompactControlsCollapsed, setIsCompactControlsCollapsed] = useState(() => localStorage.getItem("is-compact-controls-collapsed") === "true");
   const [isCompactRFPowerCollapsed, setIsCompactRFPowerCollapsed] = useState(() => localStorage.getItem("is-compact-rfpower-collapsed") === "true");
 
-  const [isDesktopControlsCollapsed, setIsDesktopControlsCollapsed] = useState(() => localStorage.getItem("is-desktop-controls-collapsed") === "true");
-  const [isDesktopModeCollapsed, setIsDesktopModeCollapsed] = useState(false);
-  const [isDesktopBwCollapsed, setIsDesktopBwCollapsed] = useState(false);
-  const [isDesktopRFPowerCollapsed, setIsDesktopRFPowerCollapsed] = useState(false);
-  const [isDesktopSMeterCollapsed, setIsDesktopSMeterCollapsed] = useState(false);
-  const [isDesktopSWRCollapsed, setIsDesktopSWRCollapsed] = useState(false);
-  const [isDesktopALCCollapsed, setIsDesktopALCCollapsed] = useState(false);
-
   const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(() => localStorage.getItem("console-collapsed") === "true");
-  const [showCommandConsole, setShowCommandConsole] = useState(() => localStorage.getItem("show-command-console") === "true");
-
-  const prevShowCommandConsoleRef = useRef(localStorage.getItem("show-command-console") === "true");
 
   useEffect(() => {
     localStorage.setItem("console-collapsed", isConsoleCollapsed.toString());
   }, [isConsoleCollapsed]);
 
   useEffect(() => {
-    localStorage.setItem("show-command-console", showCommandConsole.toString());
-    if (showCommandConsole && !prevShowCommandConsoleRef.current) {
-      setIsConsoleCollapsed(false);
-    }
-    prevShowCommandConsoleRef.current = showCommandConsole;
-  }, [showCommandConsole]);
-
-  useEffect(() => {
     localStorage.setItem("is-compact-smeter-collapsed", isCompactSMeterCollapsed.toString());
     localStorage.setItem("is-compact-controls-collapsed", isCompactControlsCollapsed.toString());
     localStorage.setItem("is-compact-rfpower-collapsed", isCompactRFPowerCollapsed.toString());
-    localStorage.setItem("is-desktop-controls-collapsed", isDesktopControlsCollapsed.toString());
-  }, [isCompactSMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed, isDesktopControlsCollapsed]);
+  }, [isCompactSMeterCollapsed, isCompactControlsCollapsed, isCompactRFPowerCollapsed]);
 
   return {
     showSetupModal, setShowSetupModal,
@@ -55,14 +35,6 @@ export function usePanelState() {
     isCompactSMeterCollapsed, setIsCompactSMeterCollapsed,
     isCompactControlsCollapsed, setIsCompactControlsCollapsed,
     isCompactRFPowerCollapsed, setIsCompactRFPowerCollapsed,
-    isDesktopControlsCollapsed, setIsDesktopControlsCollapsed,
-    isDesktopModeCollapsed, setIsDesktopModeCollapsed,
-    isDesktopBwCollapsed, setIsDesktopBwCollapsed,
-    isDesktopRFPowerCollapsed, setIsDesktopRFPowerCollapsed,
-    isDesktopSMeterCollapsed, setIsDesktopSMeterCollapsed,
-    isDesktopSWRCollapsed, setIsDesktopSWRCollapsed,
-    isDesktopALCCollapsed, setIsDesktopALCCollapsed,
     isConsoleCollapsed, setIsConsoleCollapsed,
-    showCommandConsole, setShowCommandConsole,
   };
 }

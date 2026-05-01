@@ -1,12 +1,12 @@
 import React from "react";
-import { Activity, Pencil, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
+import { Pencil, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn, formatStep } from "../utils";
 import { VFO_STEPS } from "../constants";
 import type { RigStatus } from "../types";
 import ModeBwPanel from "./ModeBwPanel";
 
 export interface VfoPanelProps {
-  variant: "desktop" | "compact" | "phone";
+  variant: "compact" | "phone";
   vfo?: "A" | "B";
   connected: boolean;
   status: RigStatus;
@@ -140,119 +140,6 @@ export default function VfoPanel({
   handleSetBw,
   bandwidth,
 }: VfoPanelProps) {
-
-  // ─── Desktop: single VFO box (A or B) ────────────────────────────
-  if (variant === "desktop") {
-    const isA = vfo === "A";
-    const inputVal = isA ? inputVfoA : inputVfoB;
-    const setInputVal = isA ? setInputVfoA : setInputVfoB;
-    const vfoId = isA ? "VFOA" : "VFOB";
-    const isActive = status.vfo === vfoId || (status.isSplit && status.txVFO === vfoId);
-    const isTxVfo = status.isSplit && status.txVFO === vfoId;
-    const isRxActive = status.vfo === vfoId;
-
-    return (
-      <div className={cn(
-        "bg-[#151619] p-6 rounded-xl border transition-all",
-        status.isSplit
-          ? (isTxVfo ? "border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.1)]" : "border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.1)]")
-          : (isRxActive ? "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]" : "border-[#2a2b2e]")
-      )}>
-        <div className="flex justify-between items-center mb-2">
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              "text-[0.625rem] uppercase font-bold",
-              status.isSplit ? (isTxVfo ? "text-red-500" : "text-amber-500") : "text-[#8e9299]"
-            )}>VFO {vfo}</span>
-            {!isA && (
-              <button
-                onClick={handleToggleSplit}
-                disabled={!connected || !vfoSupported}
-                className={cn(
-                  "px-2 py-0.5 rounded text-[0.5rem] font-bold uppercase transition-all border",
-                  (!connected || !vfoSupported) && "opacity-50 cursor-not-allowed",
-                  status.isSplit
-                    ? "bg-red-500 text-white border-red-500"
-                    : "bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/20"
-                )}
-              >SPLIT</button>
-            )}
-            <div className="flex items-center gap-1">
-              <select
-                value={vfoStep}
-                onChange={(e) => setVfoStep(parseFloat(e.target.value))}
-                disabled={!connected}
-                className={cn(
-                  "bg-[#0a0a0a] border border-[#2a2b2e] rounded text-[0.5625rem] px-1 py-0.5 focus:outline-none focus:border-emerald-500 text-[#8e9299]",
-                  !connected && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                {VFO_STEPS.map(s => <option key={s} value={s}>{formatStep(s)}</option>)}
-              </select>
-              <div className="flex items-center gap-0.5">
-                <button
-                  onClick={() => adjustVfoFrequency(isA ? 'A' : 'B', 1)}
-                  disabled={!connected}
-                  className="p-0.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
-                  title="Frequency Up"
-                ><ChevronUp size={10} /></button>
-                <button
-                  onClick={() => adjustVfoFrequency(isA ? 'A' : 'B', -1)}
-                  disabled={!connected}
-                  className="p-0.5 bg-[#1a1b1e] border border-[#2a2b2e] rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
-                  title="Frequency Down"
-                ><ChevronDown size={10} /></button>
-              </div>
-            </div>
-          </div>
-          {isActive && (
-            <Activity size={12} className={cn(isTxVfo ? "text-red-500" : "text-emerald-500", "animate-pulse")} />
-          )}
-        </div>
-        <div className="relative group flex items-baseline gap-2">
-          <input
-            id={`vfo${vfo}-input`}
-            type="number"
-            step={vfoStep}
-            value={inputVal}
-            onChange={(e) => setInputVal(e.target.value)}
-            disabled={!connected}
-            onBlur={() => {
-              const val = parseFloat(inputVal);
-              if (!isNaN(val)) handleSetFreq(Math.round(val * 1000000).toString());
-            }}
-            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-            className={cn(
-              "w-full bg-white/5 text-4xl font-bold tracking-tighter font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none rounded-lg transition-all cursor-text py-1 px-2 border",
-              !connected && "opacity-50 cursor-not-allowed",
-              status.isSplit
-                ? (isTxVfo
-                  ? "text-red-500 hover:bg-red-500/10 focus:bg-red-500/10 border-red-500/30 focus:border-red-500/50"
-                  : "text-amber-500 hover:bg-amber-500/10 focus:bg-amber-500/10 border-amber-500/30 focus:border-amber-500/50")
-                : "text-emerald-500 hover:bg-emerald-500/10 focus:bg-emerald-500/10 border-[#2a2b2e] focus:border-emerald-500/50"
-            )}
-            title="Click to edit frequency"
-          />
-          <span className={cn(
-            "text-xs font-bold",
-            status.isSplit ? (isTxVfo ? "text-red-500/50" : "text-amber-500/50") : "text-emerald-500/50"
-          )}>MHz</span>
-          <Pencil size={14} className={cn(
-            "absolute right-12 top-1/2 -translate-y-1/2 transition-opacity pointer-events-none",
-            status.isSplit ? (isTxVfo ? "text-red-500/30" : "text-amber-500/30") : "text-emerald-500/30"
-          )} />
-        </div>
-        <button
-          onClick={() => handleSetVFO(vfoId)}
-          disabled={!connected || (!isA && !vfoSupported)}
-          className={cn(
-            "mt-4 w-full py-1 text-[0.625rem] uppercase border border-[#2a2b2e] rounded hover:bg-[#2a2b2e] transition-colors",
-            (!connected || (!isA && !vfoSupported)) && "opacity-50 cursor-not-allowed"
-          )}
-        >Select VFO {vfo}</button>
-      </div>
-    );
-  }
 
   // ─── Compact: combined VFO + Mode/BW row ─────────────────────────
   if (variant === "compact") {

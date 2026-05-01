@@ -39,7 +39,6 @@ export function usePotaSpots({
   const [potaSortCol, setPotaSortCol] = useState<string | null>('spotTime');
   const [potaSortDir, setPotaSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
   const [potaSpotsVisible, setPotaSpotsVisible] = useState(false);
-  const [activeCompactPowerTab, setActiveCompactPowerTab] = useState<'levels' | 'pota' | 'sota'>('levels');
   const [potaSpotsCollapsed, setPotaSpotsCollapsed] = useState(
     () => localStorage.getItem("pota-spots-collapsed") === "true"
   );
@@ -92,15 +91,6 @@ export function usePotaSpots({
     socket.on("settings-data", handler);
     return () => { socket.off("settings-data", handler); };
   }, [socket]);
-
-  // ── Tab collapse when spot type disabled ──────────────────────────────────
-  useEffect(() => {
-    if (!potaEnabled) setActiveCompactPowerTab('levels');
-  }, [potaEnabled]);
-
-  useEffect(() => {
-    if (!sotaEnabled) setActiveCompactPowerTab(prev => prev === 'sota' ? 'levels' : prev);
-  }, [sotaEnabled]);
 
   // ── POTA fetch interval ───────────────────────────────────────────────────
   useEffect(() => {
@@ -503,8 +493,6 @@ export function usePotaSpots({
     // Display state
     potaSpotsVisible,
     sotaSpotsVisible,
-    activeCompactPowerTab,
-    setActiveCompactPowerTab,
     // Refs
     potaSpotsBoxRef,
     sotaSpotsBoxRef,

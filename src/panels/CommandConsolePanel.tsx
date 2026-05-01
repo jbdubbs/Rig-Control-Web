@@ -3,7 +3,7 @@ import { cn } from "../utils";
 import type { ConsoleLog } from "../types";
 
 export interface CommandConsolePanelProps {
-  variant: "phone" | "compact" | "desktop";
+  variant: "phone" | "compact";
   connected: boolean;
   consoleLogs: ConsoleLog[];
   rawCommand: string;

@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import type { Socket } from "socket.io-client";
-import { Monitor, Settings, ChevronDown, ChevronUp, GripHorizontal } from "lucide-react";
+import { Monitor, Radio, Settings, ChevronDown, ChevronUp } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -22,14 +22,13 @@ import type {
   ConsoleLog,
 } from "../types";
 import type { GridItem, GridLayoutCallbacks, PanelType, ViewLayout } from "../types/layout";
-import AppGridLayout from "../components/AppGridLayout";
+import { PANEL_LABELS } from "../types/layout";
 import PanelChrome from "../components/PanelChrome";
 import EditToolbar from "../components/EditToolbar";
 import PanelPicker from "../components/PanelPicker";
-import TabGroupCell from "../components/TabGroupCell";
 import CommandConsolePanel from "../panels/CommandConsolePanel";
 import RfLevelsPanel from "../panels/RfLevelsPanel";
-import VfoPanel from "../panels/VfoPanel";
+import VfoPanel, { VfoCollapsedHeader } from "../panels/VfoPanel";
 import VideoAudioPanel, {
   VideoAudioHeaderActions,
 } from "../panels/VideoAudioPanel";
@@ -40,7 +39,7 @@ export type { GridLayoutCallbacks };
 
 const COMPACT_PANEL_TYPES: PanelType[] = [
   'vfo', 'smeter', 'videoaudio', 'controls', 'rflevels',
-  'commandconsole', 'spots_pota', 'spots_sota',
+  'cwdecode', 'commandconsole', 'spots_pota', 'spots_sota',
 ];
 
 export interface CompactLayoutProps {
@@ -52,6 +51,8 @@ export interface CompactLayoutProps {
   vfoSupported: boolean;
 
   // VFO
+  isPhoneVFOCollapsed: boolean;
+  setIsPhoneVFOCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   vfoStep: number;
   inputVfoA: string;
   inputVfoB: string;
@@ -149,15 +150,10 @@ export interface CompactLayoutProps {
   // POTA/SOTA spots
   potaEnabled: boolean;
   sotaEnabled: boolean;
-  activeCompactPowerTab: "levels" | "pota" | "sota";
-  setActiveCompactPowerTab: React.Dispatch<
-    React.SetStateAction<"levels" | "pota" | "sota">
-  >;
   renderSpotsTable: (showFullLocation: boolean) => React.ReactElement;
   renderSotaSpotsTable: () => React.ReactElement;
 
   // Command console
-  showCommandConsole: boolean;
   isConsoleCollapsed: boolean;
   consoleLogs: ConsoleLog[];
   rawCommand: string;
@@ -178,6 +174,8 @@ function CompactLayout({
   availableModes,
   socket,
   vfoSupported,
+  isPhoneVFOCollapsed,
+  setIsPhoneVFOCollapsed,
   vfoStep,
   inputVfoA,
   inputVfoB,
@@ -259,11 +257,8 @@ function CompactLayout({
   cwStuckAlert,
   potaEnabled,
   sotaEnabled,
-  activeCompactPowerTab,
-  setActiveCompactPowerTab,
   renderSpotsTable,
   renderSotaSpotsTable,
-  showCommandConsole,
   isConsoleCollapsed,
   consoleLogs,
   rawCommand,
@@ -282,101 +277,62 @@ function CompactLayout({
     const types = new Set<PanelType>();
     compactLayout.items.forEach(item => {
       if (item.panelType) types.add(item.panelType);
-      item.tabGroup?.panels.forEach(p => types.add(p));
     });
     return types;
   }, [compactLayout.items]);
 
-  const renderPanel = useCallback((item: GridItem): React.ReactNode => {
-    function wrapPanel(content: React.ReactNode): React.ReactNode {
-      if (!isEditMode) return content;
-      return (
-        <div className="relative h-full flex flex-col">
-          <div className="grid-drag-handle flex items-center justify-between px-2 py-1 bg-[#0f1012] border-b border-[#2a2b2e] cursor-grab flex-shrink-0 rounded-t-xl select-none">
-            <GripHorizontal size={10} className="text-[#4a4b4e]" />
-            <button
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); gridCallbacks?.removePanel(item.i); }}
-              className="w-4 h-4 flex items-center justify-center bg-red-500/80 hover:bg-red-500 text-white rounded-full text-[10px] leading-none transition-colors"
-              title="Remove panel"
-            >
-              ×
-            </button>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            {content}
-          </div>
-        </div>
-      );
-    }
+  // ── Panel content renderer ────────────────────────────────────────────────
 
-    const type = item.panelType;
-
-    if (item.tabGroup) {
-      return wrapPanel(
-        <TabGroupCell
-          item={item}
-          isEditMode={isEditMode}
-          renderPanel={(activeItem) => renderPanelByType(activeItem.panelType, activeItem) ?? <></>}
-          onTabChange={(idx) => gridCallbacks?.setTabGroupActiveIndex(item.i, idx)}
-          onRemoveTab={isEditMode ? (idx) => {
-            const pt = item.tabGroup!.panels[idx];
-            gridCallbacks?.removeFromTabGroup(item.i, pt);
-          } : undefined}
-        />
-      );
-    }
-
-    if (!type) return null;
-    return wrapPanel(renderPanelByType(type, item));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    status, connected, availableModes, socket, vfoSupported,
-    vfoStep, inputVfoA, inputVfoB, localMode,
-    history, activeMeter, isCompactSMeterCollapsed, cwDecodeEnabled,
-    cwDecodedText, cwStats, cwScrollContainerRef,
-    videoStatus, isVideoCollapsed, isElectronSource, videoError,
-    audioStatus, localAudioReady, inboundMuted, outboundMuted, audioSettings, audioWasRestarted,
-    isCompactControlsCollapsed, isCompactRFPowerCollapsed,
-    isTuning, tuneJustFinished, attenuatorLevels, preampLevels, agcLevels,
-    nbCapabilities, nrCapabilities, anfCapabilities,
-    localRFPower, rfPowerCapabilities, localRFLevel, localNRLevel, localNBLevel,
-    cwSettings, cwKeyActive, cwStuckAlert,
-    potaEnabled, sotaEnabled, activeCompactPowerTab,
-    showCommandConsole, isConsoleCollapsed, consoleLogs, rawCommand,
-    compactLayout, isEditMode, gridCallbacks,
-  ]);
-
-  function renderPanelByType(type: GridItem['panelType'], item: GridItem): React.ReactNode {
+  function renderPanelByType(type: GridItem['panelType'], _item: GridItem): React.ReactNode {
     switch (type) {
-      case 'vfo':
-        return (
-          <VfoPanel
-            variant="compact"
-            connected={connected}
-            status={status}
-            vfoStep={vfoStep}
-            setVfoStep={setVfoStep}
-            inputVfoA={inputVfoA}
-            setInputVfoA={setInputVfoA}
-            inputVfoB={inputVfoB}
-            setInputVfoB={setInputVfoB}
-            vfoSupported={vfoSupported}
-            adjustVfoFrequency={adjustVfoFrequency}
-            handleSetVFO={handleSetVFO}
-            handleToggleSplit={handleToggleSplit}
-            handleSetFreq={handleSetFreq}
-            localMode={localMode}
-            availableModes={availableModes}
-            handleSetMode={handleSetMode}
-            handleSetBw={handleSetBw}
-            bandwidth={status?.bandwidth || "2400"}
-          />
-        );
+      case 'vfo': {
+        const isColumnVfo = _item.w < compactLayout.cols;
+        const vfoProps = {
+          connected, status, vfoStep, setVfoStep,
+          inputVfoA, setInputVfoA, inputVfoB, setInputVfoB,
+          vfoSupported, adjustVfoFrequency, handleSetVFO, handleToggleSplit,
+          handleSetFreq, localMode, availableModes, handleSetMode, handleSetBw,
+          bandwidth: status?.bandwidth || "2400",
+        };
+        if (isColumnVfo) {
+          return (
+            <PanelChrome
+              title="VFO"
+              icon={<Radio size={12} />}
+              isCollapsed={isPhoneVFOCollapsed}
+              setIsCollapsed={setIsPhoneVFOCollapsed}
+              collapsedContent={
+                <VfoCollapsedHeader
+                  status={status}
+                  inputVfoA={inputVfoA}
+                  inputVfoB={inputVfoB}
+                  localMode={localMode}
+                  vfoStep={vfoStep}
+                  connected={connected}
+                  adjustVfoFrequency={adjustVfoFrequency}
+                />
+              }
+              className={cn(
+                "shadow-lg",
+                status.isSplit
+                  ? "border-amber-500/30"
+                  : status.vfo === "VFOA"
+                  ? "border-emerald-500/30"
+                  : "border-blue-500/30"
+              )}
+              bodyClassName="p-3 space-y-2"
+              headerSize="sm"
+            >
+              <VfoPanel variant="phone" {...vfoProps} />
+            </PanelChrome>
+          );
+        }
+        return <VfoPanel variant="compact" {...vfoProps} />;
+      }
 
       case 'smeter':
         return (
-          <div className="h-full bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
             <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
               <div className="flex gap-1">
                 {(['signal', 'swr', 'alc', 'vdd'] as const).map((m) => (
@@ -394,97 +350,85 @@ function CompactLayout({
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-2">
-                <span className={cn(
-                  "text-xs font-mono font-bold",
-                  activeMeter === 'signal' ? (status.ptt ? "text-red-500" : "text-emerald-500") :
-                  activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500") :
-                  activeMeter === 'alc' ? "text-blue-500" : "text-emerald-500"
-                )}>
-                  {activeMeter === 'signal' ? (
-                    status.ptt
-                      ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
-                      : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`
-                  ) : activeMeter === 'swr' ? (
-                    (status.swr ?? 1).toFixed(2)
-                  ) : activeMeter === 'alc' ? (
-                    (status.alc ?? 0).toFixed(5)
-                  ) : (
-                    `${(status.vdd ?? 0).toFixed(1)}V`
-                  )}
+              <div className="flex items-center gap-1.5">
+                <span className={cn("text-[0.625rem] font-mono font-bold", status.ptt ? "text-red-500" : "text-emerald-500")}>
+                  {status.ptt
+                    ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
+                    : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
+                </span>
+                <span className="text-[#3a3b3e] text-[0.5rem]">·</span>
+                <span className={cn("text-[0.625rem] font-mono font-bold", (status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500")}>
+                  {(status.swr ?? 1).toFixed(2)}
+                </span>
+                <span className="text-[#3a3b3e] text-[0.5rem]">·</span>
+                <span className="text-[0.625rem] font-mono font-bold text-blue-400">
+                  {(status.alc ?? 0).toFixed(2)}
+                </span>
+                <span className="text-[#3a3b3e] text-[0.5rem]">·</span>
+                <span className="text-[0.625rem] font-mono font-bold text-emerald-400">
+                  {(status.vdd ?? 0).toFixed(1)}V
                 </span>
                 <button
                   onClick={() => setIsCompactSMeterCollapsed(!isCompactSMeterCollapsed)}
-                  className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
+                  className="p-0.5 hover:bg-white/5 rounded text-[#8e9299] ml-0.5"
                 >
                   {isCompactSMeterCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                 </button>
               </div>
             </div>
             {!isCompactSMeterCollapsed && (
-              <div className="flex-1 flex flex-col min-h-0">
-                <div className={cn("p-2 flex-1", cwDecodeEnabled ? "min-h-[60px]" : "min-h-[80px]")}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={history}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
-                      <XAxis dataKey="time" hide />
-                      <YAxis
-                        domain={
-                          activeMeter === 'signal' ? (status.ptt ? [0, 1] : [-54, 0]) :
-                          activeMeter === 'swr' ? [1, 4] :
-                          activeMeter === 'vdd' ? [11, 16] : [0, 1]
+              <div className="p-2 h-[120px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={history}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
+                    <XAxis dataKey="time" hide />
+                    <YAxis
+                      domain={
+                        activeMeter === 'signal' ? (status.ptt ? [0, 1] : [-54, 0]) :
+                        activeMeter === 'swr' ? [1, 4] :
+                        activeMeter === 'vdd' ? [11, 16] : [0, 1]
+                      }
+                      hide={activeMeter !== 'swr' && activeMeter !== 'vdd'}
+                      ticks={activeMeter === 'swr' ? [1, 2, 3, 4] : activeMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
+                      width={15}
+                      style={{ fontSize: '6px', fill: '#4a4b4e' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '8px' }}
+                      itemStyle={{
+                        color: activeMeter === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') :
+                               activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
+                               activeMeter === 'alc' ? '#3b82f6' : '#10b981'
+                      }}
+                      formatter={(val: number, _name: string, props: any) => {
+                        if (activeMeter === 'signal') {
+                          const rawVal = props.payload?.smeter ?? val;
+                          return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (rawVal > 0 ? `S9+${rawVal}dB` : `S${Math.round((rawVal + 54) / 6)}`), status.ptt ? "POWER" : "SIGNAL"];
                         }
-                        hide={activeMeter !== 'swr' && activeMeter !== 'vdd'}
-                        ticks={activeMeter === 'swr' ? [1, 2, 3, 4] : activeMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
-                        width={15}
-                        style={{ fontSize: '6px', fill: '#4a4b4e' }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '8px' }}
-                        itemStyle={{
-                          color: activeMeter === 'signal' ? (status.ptt ? '#ef4444' : '#10b981') :
-                                 activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
-                                 activeMeter === 'alc' ? '#3b82f6' : '#10b981'
-                        }}
-                        formatter={(val: number, _name: string, props: any) => {
-                          if (activeMeter === 'signal') {
-                            const rawVal = props.payload?.smeter ?? val;
-                            return [status.ptt ? `${Math.round((val ?? 0) * 100)}W` : (rawVal > 0 ? `S9+${rawVal}dB` : `S${Math.round((rawVal + 54) / 6)}`), status.ptt ? "POWER" : "SIGNAL"];
-                          }
-                          if (activeMeter === 'swr') return [(props.payload?.swr ?? 1).toFixed(2), 'SWR'];
-                          if (activeMeter === 'vdd') return [`${(val ?? 0).toFixed(1)}V`, 'VDD'];
-                          return [(val ?? 0).toFixed(activeMeter === 'alc' ? 5 : 2), activeMeter.toUpperCase()];
-                        }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey={
-                          activeMeter === 'signal' ? (status.ptt ? "powerMeter" : "smeterGraph") :
-                          activeMeter === 'swr' ? 'swrGraph' : activeMeter
-                        }
-                        stroke={
-                          activeMeter === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") :
-                          activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
-                          activeMeter === 'alc' ? '#3b82f6' : '#10b981'
-                        }
-                        strokeWidth={1.5}
-                        dot={false}
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                {cwDecodeEnabled && (
-                  <CwDecodePanel
-                    variant="compact-embedded"
-                    cwDecodedText={cwDecodedText}
-                    setCwDecodedText={setCwDecodedText}
-                    cwStats={cwStats}
-                    cwScrollContainerRef={cwScrollContainerRef}
-                  />
-                )}
+                        if (activeMeter === 'swr') return [(props.payload?.swr ?? 1).toFixed(2), 'SWR'];
+                        if (activeMeter === 'vdd') return [`${(val ?? 0).toFixed(1)}V`, 'VDD'];
+                        return [(val ?? 0).toFixed(activeMeter === 'alc' ? 5 : 2), activeMeter.toUpperCase()];
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey={
+                        activeMeter === 'signal' ? (status.ptt ? "powerMeter" : "smeterGraph") :
+                        activeMeter === 'swr' ? 'swrGraph' : activeMeter
+                      }
+                      stroke={
+                        activeMeter === 'signal' ? (status.ptt ? "#ef4444" : "#10b981") :
+                        activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
+                        activeMeter === 'alc' ? '#3b82f6' : '#10b981'
+                      }
+                      strokeWidth={1.5}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             )}
           </div>
@@ -516,8 +460,8 @@ function CompactLayout({
                 handleJoinAudio={handleJoinAudio}
               />
             }
-            className="h-full flex flex-col shadow-lg"
-            bodyClassName="p-0 flex-1"
+            className="shadow-lg"
+            bodyClassName="p-0"
             headerSize="sm"
           >
             <VideoAudioPanel
@@ -539,8 +483,8 @@ function CompactLayout({
             title="Controls"
             isCollapsed={isCompactControlsCollapsed}
             setIsCollapsed={setIsCompactControlsCollapsed}
-            className="h-full flex flex-col shadow-lg"
-            bodyClassName="p-2 flex-1"
+            className="shadow-lg"
+            bodyClassName="p-2"
             headerSize="sm"
           >
             <ControlsPanel
@@ -573,22 +517,9 @@ function CompactLayout({
 
       case 'rflevels':
         return (
-          <div className="h-full bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
             <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
-              <div className="flex items-center gap-1">
-                {(['levels', ...(potaEnabled ? ['pota'] : []), ...(sotaEnabled ? ['sota'] : [])] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveCompactPowerTab(tab as "levels" | "pota" | "sota")}
-                    className={cn(
-                      "px-2 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
-                      activeCompactPowerTab === tab ? "bg-emerald-500 text-white" : "text-[#8e9299] hover:bg-white/5"
-                    )}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
+              <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">RF Levels</span>
               <button
                 onClick={() => setIsCompactRFPowerCollapsed(!isCompactRFPowerCollapsed)}
                 className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
@@ -597,44 +528,40 @@ function CompactLayout({
               </button>
             </div>
             {!isCompactRFPowerCollapsed && (
-              <div className="relative flex-1 overflow-hidden">
-                <div className={cn(
-                  "p-2 flex flex-col justify-center gap-1 h-full",
-                  (activeCompactPowerTab === 'pota' || activeCompactPowerTab === 'sota') && "invisible"
-                )}>
-                  <RfLevelsPanel
-                    variant="compact"
-                    connected={connected}
-                    localRFPower={localRFPower}
-                    setLocalRFPower={setLocalRFPower}
-                    rfPowerCapabilities={rfPowerCapabilities}
-                    isDraggingRF={isDraggingRF}
-                    localRFLevel={localRFLevel}
-                    setLocalRFLevel={setLocalRFLevel}
-                    isDraggingRFLevel={isDraggingRFLevel}
-                    localNRLevel={localNRLevel}
-                    setLocalNRLevel={setLocalNRLevel}
-                    nrCapabilities={nrCapabilities}
-                    isDraggingNR={isDraggingNR}
-                    localNBLevel={localNBLevel}
-                    setLocalNBLevel={setLocalNBLevel}
-                    nbCapabilities={nbCapabilities}
-                    isDraggingNB={isDraggingNB}
-                  />
-                </div>
-                {potaEnabled && activeCompactPowerTab === 'pota' && (
-                  <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
-                    {renderSpotsTable(false)}
-                  </div>
-                )}
-                {sotaEnabled && activeCompactPowerTab === 'sota' && (
-                  <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
-                    {renderSotaSpotsTable()}
-                  </div>
-                )}
+              <div className="p-2 flex flex-col justify-center gap-1">
+                <RfLevelsPanel
+                  variant="compact"
+                  connected={connected}
+                  localRFPower={localRFPower}
+                  setLocalRFPower={setLocalRFPower}
+                  rfPowerCapabilities={rfPowerCapabilities}
+                  isDraggingRF={isDraggingRF}
+                  localRFLevel={localRFLevel}
+                  setLocalRFLevel={setLocalRFLevel}
+                  isDraggingRFLevel={isDraggingRFLevel}
+                  localNRLevel={localNRLevel}
+                  setLocalNRLevel={setLocalNRLevel}
+                  nrCapabilities={nrCapabilities}
+                  isDraggingNR={isDraggingNR}
+                  localNBLevel={localNBLevel}
+                  setLocalNBLevel={setLocalNBLevel}
+                  nbCapabilities={nbCapabilities}
+                  isDraggingNB={isDraggingNB}
+                />
               </div>
             )}
           </div>
+        );
+
+      case 'cwdecode':
+        return (
+          <CwDecodePanel
+            variant="standalone"
+            cwDecodedText={cwDecodedText}
+            setCwDecodedText={setCwDecodedText}
+            cwStats={cwStats}
+            cwScrollContainerRef={cwScrollContainerRef}
+          />
         );
 
       case 'commandconsole':
@@ -644,8 +571,8 @@ function CompactLayout({
             icon={<Settings size={12} />}
             isCollapsed={isConsoleCollapsed}
             setIsCollapsed={setIsConsoleCollapsed}
-            className="h-full flex flex-col shadow-lg"
-            bodyClassName="p-3 flex-1"
+            className="shadow-lg"
+            bodyClassName="p-3"
             headerSize="sm"
           >
             <CommandConsolePanel
@@ -661,11 +588,11 @@ function CompactLayout({
 
       case 'spots_pota':
         return (
-          <div className="h-full bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg">
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg">
             <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e]">
               <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">POTA Spots</span>
             </div>
-            <div className="h-full overflow-y-auto custom-scrollbar">
+            <div className="max-h-64 overflow-y-auto custom-scrollbar">
               {renderSpotsTable(false)}
             </div>
           </div>
@@ -673,11 +600,11 @@ function CompactLayout({
 
       case 'spots_sota':
         return (
-          <div className="h-full bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg">
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg">
             <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e]">
               <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">SOTA Spots</span>
             </div>
-            <div className="h-full overflow-y-auto custom-scrollbar">
+            <div className="max-h-64 overflow-y-auto custom-scrollbar">
               {renderSotaSpotsTable()}
             </div>
           </div>
@@ -688,32 +615,185 @@ function CompactLayout({
     }
   }
 
-  // Filter out commandconsole when showCommandConsole is false
-  const visibleLayout: ViewLayout = {
-    ...compactLayout,
-    items: compactLayout.items.filter(item => {
-      if ((item.panelType === 'commandconsole') && !showCommandConsole) return false;
-      return true;
-    }),
-  };
+  // ── Edit mode movement ────────────────────────────────────────────────────
+
+  function moveCompactPanel(item: GridItem, direction: 'up' | 'down') {
+    const cols = compactLayout.cols;
+    const isFullWidth = item.w >= cols;
+    const colItems = compactLayout.items
+      .filter(i => isFullWidth ? i.w >= cols : (i.x === item.x && i.w < cols))
+      .sort((a, b) => a.y - b.y);
+    const idx = colItems.findIndex(i => i.i === item.i);
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= colItems.length) return;
+    const a = item;
+    const b = colItems[targetIdx];
+    gridCallbacks?.updateItemPositions([
+      { i: a.i, x: a.x, y: b.y, w: a.w, h: a.h },
+      { i: b.i, x: b.x, y: a.y, w: b.w, h: b.h },
+    ]);
+  }
+
+  function moveCompactPanelColumn(item: GridItem, direction: 'left' | 'right') {
+    const newX = item.x + (direction === 'left' ? -1 : 1);
+    if (newX < 0 || newX >= compactLayout.cols) return;
+    const maxY = compactLayout.items
+      .filter(i => i.x === newX && i.w < compactLayout.cols)
+      .reduce((m, i) => Math.max(m, i.y + 1), 0);
+    gridCallbacks?.updateItemPositions([
+      { i: item.i, x: newX, y: maxY, w: item.w, h: item.h },
+    ]);
+  }
+
+  // ── Column layout renderer ────────────────────────────────────────────────
+
+  const renderPanel = useCallback((item: GridItem): React.ReactNode => {
+    return renderPanelByType(item.panelType, item);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    status, connected, availableModes, socket, vfoSupported,
+    isPhoneVFOCollapsed,
+    vfoStep, inputVfoA, inputVfoB, localMode,
+    history, activeMeter, isCompactSMeterCollapsed, cwDecodeEnabled,
+    cwDecodedText, cwStats, cwScrollContainerRef,
+    videoStatus, isVideoCollapsed, isElectronSource, videoError,
+    audioStatus, localAudioReady, inboundMuted, outboundMuted, audioSettings, audioWasRestarted,
+    isCompactControlsCollapsed, isCompactRFPowerCollapsed,
+    isTuning, tuneJustFinished, attenuatorLevels, preampLevels, agcLevels,
+    nbCapabilities, nrCapabilities, anfCapabilities,
+    localRFPower, rfPowerCapabilities, localRFLevel, localNRLevel, localNBLevel,
+    cwSettings, cwKeyActive, cwStuckAlert,
+    potaEnabled, sotaEnabled,
+    isConsoleCollapsed, consoleLogs, rawCommand,
+    compactLayout, isEditMode, gridCallbacks,
+  ]);
+
+  const columnLayout = useMemo(() => {
+    const cols = compactLayout.cols;
+    const sorted = [...compactLayout.items].sort((a, b) => a.y - b.y || a.x - b.x);
+
+    type Segment =
+      | { type: 'full'; item: GridItem }
+      | { type: 'cols'; items: GridItem[] };
+
+    const segments: Segment[] = [];
+    let i = 0;
+    while (i < sorted.length) {
+      if (sorted[i].w >= cols) {
+        segments.push({ type: 'full', item: sorted[i] });
+        i++;
+      } else {
+        const colItems: GridItem[] = [];
+        while (i < sorted.length && sorted[i].w < cols) {
+          colItems.push(sorted[i]);
+          i++;
+        }
+        segments.push({ type: 'cols', items: colItems });
+      }
+    }
+    return { cols, segments };
+  }, [compactLayout.items, compactLayout.cols]);
+
+  function wrapWithEditOverlay(item: GridItem, content: React.ReactNode, idx: number, siblings: GridItem[], isFullWidth: boolean): React.ReactNode {
+    if (!isEditMode) return content;
+    return (
+      <div className="relative">
+        {content}
+        <div className="absolute top-1.5 right-1.5 z-30 flex items-center gap-0.5">
+          <span className="text-[0.5rem] uppercase tracking-widest font-bold text-[#5a5b5e] mr-1 select-none">
+            {PANEL_LABELS[item.panelType!] ?? item.panelType}
+          </span>
+          <button
+            disabled={idx === 0}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); moveCompactPanel(item, 'up'); }}
+            className="w-6 h-6 flex items-center justify-center rounded bg-[#0a0a0a]/90 border border-[#3a3b3e] text-[#aaaaaa] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-[10px] transition-all"
+            title="Move up"
+          >▲</button>
+          <button
+            disabled={idx === siblings.length - 1}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); moveCompactPanel(item, 'down'); }}
+            className="w-6 h-6 flex items-center justify-center rounded bg-[#0a0a0a]/90 border border-[#3a3b3e] text-[#aaaaaa] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-[10px] transition-all"
+            title="Move down"
+          >▼</button>
+          {!isFullWidth && (
+            <>
+              <button
+                disabled={item.x === 0}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); moveCompactPanelColumn(item, 'left'); }}
+                className="w-6 h-6 flex items-center justify-center rounded bg-[#0a0a0a]/90 border border-[#3a3b3e] text-[#aaaaaa] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-[10px] transition-all"
+                title="Move to left column"
+              >◄</button>
+              <button
+                disabled={item.x >= compactLayout.cols - 1}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); moveCompactPanelColumn(item, 'right'); }}
+                className="w-6 h-6 flex items-center justify-center rounded bg-[#0a0a0a]/90 border border-[#3a3b3e] text-[#aaaaaa] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-[10px] transition-all"
+                title="Move to right column"
+              >►</button>
+            </>
+          )}
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); gridCallbacks?.removePanel(item.i); }}
+            className="w-6 h-6 flex items-center justify-center rounded bg-red-500/80 hover:bg-red-500 text-white text-[10px] ml-0.5 transition-all"
+            title={`Remove ${PANEL_LABELS[item.panelType!] ?? item.panelType}`}
+          >×</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("animate-in fade-in duration-300", isEditMode && "pb-16")}>
-      <AppGridLayout
-        viewLayout={visibleLayout}
-        isEditMode={isEditMode}
-        renderPanel={renderPanel}
-        onItemsChange={(updated) => setCompactLayout({ ...compactLayout, items: updated })}
-        onDropOnto={gridCallbacks ? (targetId, sourceId) => gridCallbacks.mergeIntoTabGroup(targetId, sourceId) : undefined}
-        rowHeight={180}
-      />
+      <div className="flex flex-col gap-2">
+        {columnLayout.segments.map((seg, si) => {
+          if (seg.type === 'full') {
+            const fullWidthPeers = columnLayout.segments
+              .filter((s): s is { type: 'full'; item: GridItem } => s.type === 'full')
+              .map(s => s.item);
+            const peerIdx = fullWidthPeers.findIndex(i => i.i === seg.item.i);
+            return (
+              <div key={seg.item.i}>
+                {wrapWithEditOverlay(seg.item, renderPanel(seg.item), peerIdx, fullWidthPeers, true)}
+              </div>
+            );
+          }
+
+          // cols segment: build per-column stacks
+          const { cols } = columnLayout;
+          const columns = Array.from({ length: cols }, (_, c) =>
+            seg.items.filter(item => item.x === c).sort((a, b) => a.y - b.y)
+          );
+
+          return (
+            <div
+              key={si}
+              className="grid gap-2"
+              style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+            >
+              {columns.map((colItems, c) => (
+                <div key={c} className="flex flex-col gap-2">
+                  {colItems.map((item, idx) =>
+                    wrapWithEditOverlay(item, renderPanel(item), idx, colItems, false)
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+
       {isEditMode && gridCallbacks && (
         <>
           <EditToolbar
             cols={compactLayout.cols}
             rows={compactLayout.rows}
+            showRowsControl={false}
             onColsChange={(c) => gridCallbacks.setGridSize(c, compactLayout.rows)}
-            onRowsChange={(r) => gridCallbacks.setGridSize(compactLayout.cols, r)}
+            onRowsChange={() => {}}
             onAddPanel={() => setShowPanelPicker(true)}
             onReset={() => gridCallbacks.resetToDefault()}
             onDone={() => gridCallbacks.onExitEditMode()}

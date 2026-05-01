@@ -17,9 +17,9 @@ export interface SettingsModalProps {
   socket: Socket | null;
 
   // Tab state
-  activeSettingsTab: "rigctld" | "spots" | "display" | "cw";
+  activeSettingsTab: "rigctld" | "spots" | "cw";
   setActiveSettingsTab: React.Dispatch<
-    React.SetStateAction<"rigctld" | "spots" | "display" | "cw">
+    React.SetStateAction<"rigctld" | "spots" | "cw">
   >;
 
   // Rigctld tab
@@ -75,9 +75,6 @@ export interface SettingsModalProps {
     React.SetStateAction<"ditKey" | "dahKey" | "straightKey" | null>
   >;
 
-  // Display tab
-  showCommandConsole: boolean;
-  setShowCommandConsole: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 function SettingsModal({
@@ -131,8 +128,6 @@ function SettingsModal({
   sidetoneOscRef,
   rebindTarget,
   setRebindTarget,
-  showCommandConsole,
-  setShowCommandConsole,
 }: SettingsModalProps) {
   if (!isOpen) return null;
   return (
@@ -155,7 +150,7 @@ function SettingsModal({
 
     {/* Tab Bar */}
     <div className="flex border-b border-[#2a2b2e] bg-[#1a1b1e]">
-      {(['rigctld', 'spots', 'display', 'cw'] as const).map((tab) => (
+      {(['rigctld', 'spots', 'cw'] as const).map((tab) => (
         <button
           key={tab}
           onClick={() => setActiveSettingsTab(tab)}
@@ -299,7 +294,7 @@ function SettingsModal({
       <div className="pt-4 space-y-3">
         <div className="flex items-center justify-between text-[0.5rem] text-[#8e9299] opacity-50 uppercase font-bold tracking-widest border-t border-[#2a2b2e] pt-4">
           <span>App Version</span>
-          <span>v04.14.2026-Alpha3</span>
+          <span>v05.01.2026-Beta8</span>
         </div>
 
         {rigctldProcessStatus === "already_running" && (
@@ -879,32 +874,6 @@ function SettingsModal({
         ))}
       </div>
 
-    </div>
-    )}
-
-    {activeSettingsTab === 'display' && (
-    <div className="p-6 space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">UI Options</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm text-[#e0e0e0] font-bold">Command Console</div>
-            <div className="text-[0.625rem] text-[#8e9299] mt-0.5">Show the Rigctld raw command console</div>
-          </div>
-          <button
-            onClick={() => setShowCommandConsole(!showCommandConsole)}
-            className={cn(
-              "relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0",
-              showCommandConsole ? "bg-emerald-500" : "bg-[#2a2b2e]"
-            )}
-          >
-            <span className={cn(
-              "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-              showCommandConsole ? "translate-x-6" : "translate-x-1"
-            )} />
-          </button>
-        </div>
-      </div>
     </div>
     )}
 

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import type { LayoutConfig, ViewLayout, GridItem, PanelType } from '../types/layout';
 import { PANEL_MIN_SIZES } from '../types/layout';
 
+
 const STORAGE_KEY = 'grid-layout-v1';
 
 export const DEFAULT_COMPACT_LAYOUT: ViewLayout = {
@@ -118,105 +119,6 @@ export function useLayoutConfig() {
     });
   }, []);
 
-  const mergeIntoTabGroup = useCallback((view: 'compact' | 'phone', targetId: string, sourceId: string) => {
-    setConfig(prev => {
-      const viewLayout = prev[view];
-      const target = viewLayout.items.find(item => item.i === targetId);
-      const source = viewLayout.items.find(item => item.i === sourceId);
-      if (!target || !source) return prev;
-
-      const targetPanels: PanelType[] = target.tabGroup?.panels ?? (target.panelType ? [target.panelType] : []);
-      const sourcePanels: PanelType[] = source.tabGroup?.panels ?? (source.panelType ? [source.panelType] : []);
-
-      const merged: GridItem = {
-        ...target,
-        panelType: undefined,
-        tabGroup: { panels: [...targetPanels, ...sourcePanels], activeIndex: 0 },
-      };
-
-      const next = {
-        ...prev,
-        [view]: {
-          ...viewLayout,
-          items: viewLayout.items
-            .filter(item => item.i !== sourceId)
-            .map(item => (item.i === targetId ? merged : item)),
-        },
-      };
-      saveToStorage(next);
-      return next;
-    });
-  }, []);
-
-  const removeFromTabGroup = useCallback((view: 'compact' | 'phone', groupId: string, panelType: PanelType) => {
-    setConfig(prev => {
-      const viewLayout = prev[view];
-      const group = viewLayout.items.find(item => item.i === groupId);
-      if (!group?.tabGroup) return prev;
-
-      const remaining = group.tabGroup.panels.filter(p => p !== panelType);
-      let updatedGroup: GridItem;
-      if (remaining.length === 1) {
-        // Unwrap single-panel group back to a standalone panel
-        updatedGroup = { ...group, panelType: remaining[0], tabGroup: undefined };
-      } else if (remaining.length === 0) {
-        // Remove the group entirely
-        const next = { ...prev, [view]: { ...viewLayout, items: viewLayout.items.filter(i => i.i !== groupId) } };
-        saveToStorage(next);
-        return next;
-      } else {
-        updatedGroup = {
-          ...group,
-          tabGroup: {
-            panels: remaining,
-            activeIndex: Math.min(group.tabGroup.activeIndex, remaining.length - 1),
-          },
-        };
-      }
-
-      const ejectedItem: GridItem = {
-        i: `${panelType}-${Date.now()}`,
-        x: (group.x + group.w) % viewLayout.cols,
-        y: group.y,
-        w: 1,
-        h: 1,
-        panelType,
-      };
-
-      const next = {
-        ...prev,
-        [view]: {
-          ...viewLayout,
-          items: [
-            ...viewLayout.items.map(item => (item.i === groupId ? updatedGroup : item)),
-            ejectedItem,
-          ],
-        },
-      };
-      saveToStorage(next);
-      return next;
-    });
-  }, []);
-
-  const setTabGroupActiveIndex = useCallback((view: 'compact' | 'phone', itemId: string, index: number) => {
-    setConfig(prev => {
-      const viewLayout = prev[view];
-      const next = {
-        ...prev,
-        [view]: {
-          ...viewLayout,
-          items: viewLayout.items.map(item =>
-            item.i === itemId && item.tabGroup
-              ? { ...item, tabGroup: { ...item.tabGroup, activeIndex: index } }
-              : item
-          ),
-        },
-      };
-      saveToStorage(next);
-      return next;
-    });
-  }, []);
-
   const updateItemPositions = useCallback((view: 'compact' | 'phone', updatedItems: Array<{ i: string; x: number; y: number; w: number; h: number }>) => {
     setConfig(prev => {
       const viewLayout = prev[view];
@@ -247,9 +149,6 @@ export function useLayoutConfig() {
     addPanel,
     removePanel,
     setGridSize,
-    mergeIntoTabGroup,
-    removeFromTabGroup,
-    setTabGroupActiveIndex,
     updateItemPositions,
     resetToDefault,
   };
