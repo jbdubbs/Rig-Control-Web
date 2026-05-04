@@ -10,7 +10,8 @@ export type PanelType =
   | 'cwdecode'
   | 'commandconsole'
   | 'spots_pota'
-  | 'spots_sota';
+  | 'spots_sota'
+  | 'solar';
 
 export interface GridItem {
   i: string;
@@ -53,6 +54,7 @@ export const PANEL_LABELS: Record<PanelType, string> = {
   commandconsole: 'Command Console',
   spots_pota: 'POTA Spots',
   spots_sota: 'SOTA Spots',
+  solar: 'Solar Conditions',
 };
 
 export const PANEL_MIN_SIZES: Partial<Record<PanelType, { minW: number; minH: number }>> = {

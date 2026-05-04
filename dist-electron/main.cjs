@@ -57617,6 +57617,7 @@ function createInitialContext(io2, baseDir, dataDir) {
     },
     potaSettings: { enabled: false, pollRate: 5, maxAge: 15 },
     sotaSettings: { enabled: false, pollRate: 5, maxAge: 15 },
+    solarData: null,
     pollRate: 2e3,
     autoStartEnabled: false,
     videoAutoStart: false,
@@ -58685,7 +58686,7 @@ function cwTick(ctx) {
       if (nowMs >= ctx.cwElementEndMs) {
         cwSetKey(ctx, false);
         ctx.cwMachine = "INTER_ELEMENT";
-        ctx.cwElementEndMs = nowMs + ditMs;
+        ctx.cwElementEndMs += ditMs;
       }
     } else if (ctx.cwMachine === "INTER_ELEMENT") {
       if (nowMs >= ctx.cwElementEndMs) {
@@ -58702,12 +58703,12 @@ function cwTick(ctx) {
         ctx.cwPendingElement = null;
         if (next === "dit") {
           ctx.cwMachine = "SENDING_DIT";
-          ctx.cwElementEndMs = nowMs + ditMs;
+          ctx.cwElementEndMs += ditMs;
           if (ctx.cwSettings.mode === "iambic-b" && ctx.cwPlayheadDah) ctx.cwPendingElement = "dah";
           cwSetKey(ctx, true);
         } else if (next === "dah") {
           ctx.cwMachine = "SENDING_DAH";
-          ctx.cwElementEndMs = nowMs + ditMs * 3;
+          ctx.cwElementEndMs += ditMs * 3;
           if (ctx.cwSettings.mode === "iambic-b" && ctx.cwPlayheadDit) ctx.cwPendingElement = "dit";
           cwSetKey(ctx, true);
         } else {
@@ -58716,7 +58717,7 @@ function cwTick(ctx) {
       }
     }
   }
-  ctx.cwTickTimer = setTimeout(() => cwTick(ctx), Math.max(4, ditMs / 4));
+  ctx.cwTickTimer = setTimeout(() => cwTick(ctx), 4);
 }
 async function openKeyerPort(ctx, portPath) {
   await closeKeyerPort(ctx);
@@ -58937,6 +58938,92 @@ function registerVideoHandlers(socket, ctx) {
   });
 }
 
+// server/solar.ts
+var ONE_HOUR = 36e5;
+var HF_ORDER = ["80m-40m", "30m-20m", "17m-15m", "12m-10m"];
+function getText(xml, tag) {
+  return xml.match(new RegExp(`<${tag}>\\s*([^<]+)<\\/${tag}>`))?.[1]?.trim() ?? "";
+}
+async function fetchHamqslData() {
+  const res = await fetch("https://www.hamqsl.com/solarxml.php", {
+    signal: AbortSignal.timeout(15e3),
+    headers: { "User-Agent": "RigControlWeb/1.0" }
+  });
+  const xml = await res.text();
+  const hfMap = {};
+  for (const m of xml.matchAll(/<band name="([^"]+)" time="([^"]+)"[^>]*>([^<]+)<\/band>/g)) {
+    const [, name, time, cond] = m;
+    if (!hfMap[name]) hfMap[name] = { name };
+    if (time === "day") hfMap[name].day = cond.trim();
+    else if (time === "night") hfMap[name].night = cond.trim();
+  }
+  const hfBands = HF_ORDER.filter((n) => hfMap[n]?.day && hfMap[n]?.night).map((n) => hfMap[n]);
+  const vhfConditions = [];
+  for (const m of xml.matchAll(/<phenomenon name="([^"]+)" location="([^"]+)"[^>]*>([^<]+)<\/phenomenon>/g)) {
+    const [, name, location, condition] = m;
+    vhfConditions.push({ name, location, condition: condition.trim() });
+  }
+  return {
+    updated: getText(xml, "updated"),
+    solarflux: parseFloat(getText(xml, "solarflux")) || 0,
+    sunspots: parseFloat(getText(xml, "sunspots")) || 0,
+    aindex: parseFloat(getText(xml, "aindex")) || 0,
+    kindex: parseFloat(getText(xml, "kindex")) || 0,
+    xray: getText(xml, "xray"),
+    signalnoise: getText(xml, "signalnoise"),
+    geomagfield: getText(xml, "geomagfield"),
+    solarwind: parseFloat(getText(xml, "solarwind")) || 0,
+    magneticfield: parseFloat(getText(xml, "magneticfield")) || 0,
+    aurora: parseFloat(getText(xml, "aurora")) || 0,
+    protonflux: parseFloat(getText(xml, "protonflux")) || 0,
+    electonflux: parseFloat(getText(xml, "electonflux")) || 0,
+    hfBands,
+    vhfConditions
+  };
+}
+async function fetchEssnData() {
+  const res = await fetch("https://prop.kc2g.com/api/essn.json", {
+    signal: AbortSignal.timeout(15e3),
+    headers: { "User-Agent": "RigControlWeb/1.0" }
+  });
+  const j = await res.json();
+  const series = j["24h"];
+  if (!Array.isArray(series) || series.length === 0) return { esfi: null, essn: null };
+  const last = series[series.length - 1];
+  const r1 = (n) => Math.round(n * 10) / 10;
+  return {
+    esfi: typeof last.sfi === "number" ? r1(last.sfi) : null,
+    essn: typeof last.ssn === "number" ? r1(last.ssn) : null
+  };
+}
+async function refreshSolarData(ctx) {
+  const [hamqsl, essn] = await Promise.allSettled([fetchHamqslData(), fetchEssnData()]);
+  if (hamqsl.status === "rejected") {
+    console.error("[Solar] hamqsl fetch failed:", hamqsl.reason);
+    return;
+  }
+  const essnResult = essn.status === "fulfilled" ? essn.value : { esfi: null, essn: null };
+  if (essn.status === "rejected") {
+    console.error("[Solar] kc2g essn fetch failed:", essn.reason);
+  }
+  ctx.solarData = {
+    ...hamqsl.value,
+    ...essnResult,
+    fetchedAt: Date.now()
+  };
+}
+function registerSolarHandlers(socket, ctx) {
+  socket.on("request-solar-data", async () => {
+    const age = ctx.solarData ? Date.now() - ctx.solarData.fetchedAt : Infinity;
+    if (age > ONE_HOUR) {
+      await refreshSolarData(ctx);
+    }
+    if (ctx.solarData) {
+      socket.emit("solar-data", ctx.solarData);
+    }
+  });
+}
+
 // server.ts
 var electronWin = null;
 function setElectronWindow(win) {
@@ -58996,6 +59083,7 @@ async function startServer(appPath, userDataPath) {
     registerAudioHandlers(socket, ctx, clientId);
     registerCwHandlers(socket, ctx);
     registerVideoHandlers(socket, ctx);
+    registerSolarHandlers(socket, ctx);
     registerSettingsHandlers(
       socket,
       ctx,

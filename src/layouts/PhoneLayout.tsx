@@ -14,16 +14,20 @@ import type {
 } from "../types";
 import type { GridItem, GridLayoutCallbacks, PanelType, ViewLayout } from "../types/layout";
 import { PANEL_LABELS } from "../types/layout";
+import type { SolarData } from "../types/solar";
+import SolarPanel from "../panels/SolarPanel";
 import PanelChrome from "../components/PanelChrome";
 import EditToolbar from "../components/EditToolbar";
 import PanelPicker from "../components/PanelPicker";
 import CommandConsolePanel from "../panels/CommandConsolePanel";
+import CwDecodePanel from "../panels/CwDecodePanel";
 import RfLevelsPanel from "../panels/RfLevelsPanel";
 import VfoPanel, { VfoCollapsedHeader } from "../panels/VfoPanel";
 import VideoAudioPanel, {
   VideoAudioHeaderActions,
 } from "../panels/VideoAudioPanel";
-import SpotsPanel from "../panels/SpotsPanel";
+import SpotsPanel, { SpotSettingsGear } from "../panels/SpotsPanel";
+import SpotSettingsModal from "../modals/SpotSettingsModal";
 import ControlsPanel from "../panels/ControlsPanel";
 import TabbedMeterPanel, {
   TabbedMeterHeaderContent,
@@ -31,7 +35,7 @@ import TabbedMeterPanel, {
 
 const PHONE_PANEL_TYPES: PanelType[] = [
   'vfo', 'videoaudio', 'smeter', 'controls',
-  'spots_pota', 'spots_sota', 'commandconsole',
+  'spots_pota', 'spots_sota', 'cwdecode', 'commandconsole', 'solar',
 ];
 
 export interface PhoneLayoutProps {
@@ -127,25 +131,43 @@ export interface PhoneLayoutProps {
   getAgcLabel: () => string;
 
   // POTA spots
-  potaEnabled: boolean;
   potaSpotsCollapsed: boolean;
   filteredSpots: any[];
   potaSpotsBoxRef: React.RefObject<HTMLDivElement>;
   setPotaSpotsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  potaPollRate: number;
+  setPotaPollRate: (v: number) => void;
+  potaMaxAge: number;
+  setPotaMaxAge: (v: number) => void;
+  potaModeFilter: string[];
+  setPotaModeFilter: (v: string[]) => void;
+  potaBandFilter: string[];
+  setPotaBandFilter: (v: string[]) => void;
   renderSpotsTable: (showFullLocation: boolean) => React.ReactElement;
 
   // SOTA spots
-  sotaEnabled: boolean;
   sotaSpotsCollapsed: boolean;
   filteredSotaSpots: any[];
   sotaSpotsBoxRef: React.RefObject<HTMLDivElement>;
   setSotaSpotsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  sotaPollRate: number;
+  setSotaPollRate: (v: number) => void;
+  sotaMaxAge: number;
+  setSotaMaxAge: (v: number) => void;
+  sotaModeFilter: string[];
+  setSotaModeFilter: (v: string[]) => void;
+  sotaBandFilter: string[];
+  setSotaBandFilter: (v: string[]) => void;
   renderSotaSpotsTable: () => React.ReactElement;
 
   // CW
   cwSettings: CwSettings;
   cwKeyActive: boolean;
   cwStuckAlert: boolean;
+  cwDecodedText: string;
+  setCwDecodedText: React.Dispatch<React.SetStateAction<string>>;
+  cwStats: { pitch: number; speed: number };
+  cwScrollContainerRef: React.RefObject<HTMLDivElement>;
 
   // Command console
   isConsoleCollapsed: boolean;
@@ -154,6 +176,10 @@ export interface PhoneLayoutProps {
   setIsConsoleCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   setRawCommand: React.Dispatch<React.SetStateAction<string>>;
   handleSendRaw: (e: React.FormEvent) => void;
+
+  // Solar conditions
+  solarData: SolarData | null;
+  requestSolarData: () => void;
 
   // Grid layout
   phoneLayout: ViewLayout;
@@ -237,33 +263,56 @@ function PhoneLayout({
   getAttenuatorLabel,
   getPreampLabel,
   getAgcLabel,
-  potaEnabled,
   potaSpotsCollapsed,
   filteredSpots,
   potaSpotsBoxRef,
   setPotaSpotsCollapsed,
+  potaPollRate,
+  setPotaPollRate,
+  potaMaxAge,
+  setPotaMaxAge,
+  potaModeFilter,
+  setPotaModeFilter,
+  potaBandFilter,
+  setPotaBandFilter,
   renderSpotsTable,
-  sotaEnabled,
   sotaSpotsCollapsed,
   filteredSotaSpots,
   sotaSpotsBoxRef,
   setSotaSpotsCollapsed,
+  sotaPollRate,
+  setSotaPollRate,
+  sotaMaxAge,
+  setSotaMaxAge,
+  sotaModeFilter,
+  setSotaModeFilter,
+  sotaBandFilter,
+  setSotaBandFilter,
   renderSotaSpotsTable,
   cwSettings,
   cwKeyActive,
   cwStuckAlert,
+  cwDecodedText,
+  setCwDecodedText,
+  cwStats,
+  cwScrollContainerRef,
   isConsoleCollapsed,
   consoleLogs,
   rawCommand,
   setIsConsoleCollapsed,
   setRawCommand,
   handleSendRaw,
+  solarData,
+  requestSolarData,
   phoneLayout,
   isEditMode,
   gridCallbacks,
 }: PhoneLayoutProps) {
 
   const [showPanelPicker, setShowPanelPicker] = useState(false);
+  const [showPotaSettings, setShowPotaSettings] = useState(false);
+  const [showSotaSettings, setShowSotaSettings] = useState(false);
+  const [isSolarCollapsed, setIsSolarCollapsed] = useState(false);
 
   const existingPhonePanelTypes = useMemo(() => {
     const types = new Set<PanelType>();
@@ -274,14 +323,8 @@ function PhoneLayout({
   }, [phoneLayout.items]);
 
   const visibleItems = useMemo(() => {
-    return [...phoneLayout.items]
-      .filter(item => {
-        if (item.panelType === 'spots_pota' && !potaEnabled) return false;
-        if (item.panelType === 'spots_sota' && !sotaEnabled) return false;
-        return true;
-      })
-      .sort((a, b) => a.y - b.y);
-  }, [phoneLayout.items, potaEnabled, sotaEnabled]);
+    return [...phoneLayout.items].sort((a, b) => a.y - b.y);
+  }, [phoneLayout.items]);
 
   function movePhonePanel(item: GridItem, direction: 'up' | 'down', idx: number) {
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -482,9 +525,12 @@ function PhoneLayout({
             isCollapsed={potaSpotsCollapsed}
             setIsCollapsed={setPotaSpotsCollapsed}
             headerActions={
-              <span className="text-[0.5rem] text-[#8e9299]">
-                {filteredSpots.length} spot{filteredSpots.length !== 1 ? "s" : ""}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[0.5rem] text-[#8e9299]">
+                  {filteredSpots.length} spot{filteredSpots.length !== 1 ? "s" : ""}
+                </span>
+                <SpotSettingsGear accent="emerald" onClick={() => setShowPotaSettings(true)} />
+              </div>
             }
             outerRef={potaSpotsBoxRef}
             bodyClassName="p-0"
@@ -505,10 +551,12 @@ function PhoneLayout({
             isCollapsed={sotaSpotsCollapsed}
             setIsCollapsed={setSotaSpotsCollapsed}
             headerActions={
-              <span className="text-[0.5rem] text-[#8e9299]">
-                {filteredSotaSpots.length} spot
-                {filteredSotaSpots.length !== 1 ? "s" : ""}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[0.5rem] text-[#8e9299]">
+                  {filteredSotaSpots.length} spot{filteredSotaSpots.length !== 1 ? "s" : ""}
+                </span>
+                <SpotSettingsGear accent="amber" onClick={() => setShowSotaSettings(true)} />
+              </div>
             }
             outerRef={sotaSpotsBoxRef}
             bodyClassName="p-0"
@@ -519,6 +567,17 @@ function PhoneLayout({
               renderTable={() => renderSotaSpotsTable()}
             />
           </PanelChrome>
+        );
+
+      case 'cwdecode':
+        return (
+          <CwDecodePanel
+            variant="standalone"
+            cwDecodedText={cwDecodedText}
+            setCwDecodedText={setCwDecodedText}
+            cwStats={cwStats}
+            cwScrollContainerRef={cwScrollContainerRef}
+          />
         );
 
       case 'commandconsole':
@@ -539,6 +598,20 @@ function PhoneLayout({
               setRawCommand={setRawCommand}
               handleSendRaw={handleSendRaw}
             />
+          </PanelChrome>
+        );
+
+      case 'solar':
+        return (
+          <PanelChrome
+            title="Solar Conditions"
+            icon={<span className="text-sky-400 text-[0.6rem]">☀</span>}
+            isCollapsed={isSolarCollapsed}
+            setIsCollapsed={setIsSolarCollapsed}
+            bodyClassName="p-0"
+            headerSize="md"
+          >
+            <SolarPanel solarData={solarData} onRefresh={requestSolarData} />
           </PanelChrome>
         );
 
@@ -614,6 +687,25 @@ function PhoneLayout({
           )}
         </>
       )}
+
+      <SpotSettingsModal
+        isOpen={showPotaSettings}
+        onClose={() => setShowPotaSettings(false)}
+        type="pota"
+        pollRate={potaPollRate} setPollRate={setPotaPollRate}
+        maxAge={potaMaxAge} setMaxAge={setPotaMaxAge}
+        modeFilter={potaModeFilter} setModeFilter={setPotaModeFilter}
+        bandFilter={potaBandFilter} setBandFilter={setPotaBandFilter}
+      />
+      <SpotSettingsModal
+        isOpen={showSotaSettings}
+        onClose={() => setShowSotaSettings(false)}
+        type="sota"
+        pollRate={sotaPollRate} setPollRate={setSotaPollRate}
+        maxAge={sotaMaxAge} setMaxAge={setSotaMaxAge}
+        modeFilter={sotaModeFilter} setModeFilter={setSotaModeFilter}
+        bandFilter={sotaBandFilter} setBandFilter={setSotaBandFilter}
+      />
     </div>
   );
 }

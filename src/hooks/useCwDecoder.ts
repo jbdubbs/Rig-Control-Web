@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { GGMorseDecoder } from '../ggmorseDecoder';
 
-export function useCwDecoder() {
-  const [cwDecodeEnabled, setCwDecodeEnabled] = useState(() => localStorage.getItem('cw-decode-enabled') === 'true');
+export function useCwDecoder(cwDecodeEnabled: boolean) {
   const [cwDecodedText, setCwDecodedText] = useState('');
-  const [cwWasmReady, setCwWasmReady] = useState(false);
   const [cwStats, setCwStats] = useState({ pitch: 0, speed: 0 });
 
   const cwDecoderRef = useRef<GGMorseDecoder | null>(null);
@@ -15,14 +13,12 @@ export function useCwDecoder() {
   useEffect(() => {
     cwDecodeEnabledRef.current = cwDecodeEnabled;
     if (cwDecodeEnabled && !cwDecoderRef.current) {
-      setCwWasmReady(false);
       const decoder = new GGMorseDecoder(
         (ch) => setCwDecodedText(prev => (prev + ch).slice(-2000)),
         (pitch, speed) => setCwStats({ pitch, speed }),
       );
       decoder.init().then(() => {
         cwDecoderRef.current = decoder;
-        setCwWasmReady(true);
       });
     } else if (!cwDecodeEnabled) {
       cwDecoderRef.current?.reset();
@@ -37,9 +33,7 @@ export function useCwDecoder() {
   }, [cwDecodedText]);
 
   return {
-    cwDecodeEnabled, setCwDecodeEnabled,
     cwDecodedText, setCwDecodedText,
-    cwWasmReady,
     cwStats,
     cwDecoderRef,
     cwDecodeEnabledRef,

@@ -2,6 +2,39 @@ import net from "net";
 import { Server } from "socket.io";
 import { ChildProcess } from "child_process";
 
+export interface HfBandCondition {
+  name: string;
+  day: string;
+  night: string;
+}
+
+export interface VhfCondition {
+  name: string;
+  location: string;
+  condition: string;
+}
+
+export interface SolarData {
+  updated: string;
+  solarflux: number;
+  sunspots: number;
+  aindex: number;
+  kindex: number;
+  xray: string;
+  signalnoise: string;
+  geomagfield: string;
+  solarwind: number;
+  magneticfield: number;
+  aurora: number;
+  protonflux: number;
+  electonflux: number;
+  esfi: number | null;
+  essn: number | null;
+  hfBands: HfBandCondition[];
+  vhfConditions: VhfCondition[];
+  fetchedAt: number;
+}
+
 export interface CwPaddleEvent {
   t: number;
   dit: boolean;
@@ -66,6 +99,7 @@ export interface ServerContext {
   };
   potaSettings: { enabled: boolean; pollRate: number; maxAge: number };
   sotaSettings: { enabled: boolean; pollRate: number; maxAge: number };
+  solarData: SolarData | null;
 
   // General settings
   pollRate: number;
@@ -216,6 +250,7 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
     },
     potaSettings: { enabled: false, pollRate: 5, maxAge: 15 },
     sotaSettings: { enabled: false, pollRate: 5, maxAge: 15 },
+    solarData: null,
 
     pollRate: 2000,
     autoStartEnabled: false,

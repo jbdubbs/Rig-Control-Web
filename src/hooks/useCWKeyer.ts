@@ -25,6 +25,7 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
   const cwStateRef = useRef({
     machine: 'IDLE' as 'IDLE' | 'SENDING_DIT' | 'SENDING_DAH' | 'INTER_ELEMENT',
     pendingElement: null as 'dit' | 'dah' | null,
+    // Audio-clock seconds: in SENDING = tone-off time; in INTER_ELEMENT = gap-end time.
     elementEndTime: 0,
     keyIsDown: false,
   });
@@ -35,6 +36,8 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
   const sidetoneCtxRef = useRef<AudioContext | null>(null);
   const sidetoneOscRef = useRef<OscillatorNode | null>(null);
   const sidetoneGainRef = useRef<GainNode | null>(null);
+  // Audio-clock time through which gain changes are already committed.
+  const scheduledUntilRef = useRef(0);
 
   // ── Sidetone lifecycle ────────────────────────────────────────────────────
   const teardownSidetone = () => {
@@ -44,6 +47,7 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
       sidetoneCtxRef.current.close().catch(() => {});
       sidetoneCtxRef.current = null;
     }
+    scheduledUntilRef.current = 0;
   };
 
   const initSidetone = async () => {
@@ -60,6 +64,7 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
     sidetoneCtxRef.current = ctx;
     sidetoneOscRef.current = osc;
     sidetoneGainRef.current = gain;
+    scheduledUntilRef.current = 0;
     if (localAudioOutputDevice && localAudioOutputDevice !== 'default' && typeof (ctx as any).setSinkId === 'function') {
       try { await (ctx as any).setSinkId(localAudioOutputDevice); } catch (e) { console.error("Sidetone setSinkId error:", e); }
     }
@@ -68,28 +73,72 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
     }
   };
 
-  const sidetoneOn = () => {
-    const ctx = sidetoneCtxRef.current;
-    const gain = sidetoneGainRef.current;
-    const osc = sidetoneOscRef.current;
-    if (!ctx || !gain || !osc || !cwSettingsRef.current.sidetoneEnabled) return;
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-    osc.frequency.value = cwSettingsRef.current.sidetoneHz;
-    gain.gain.cancelScheduledValues(ctx.currentTime);
-    gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(cwSettingsRef.current.sidetoneVolume, ctx.currentTime + 0.004);
-  };
-
+  // Emergency/immediate silence — used for stuck key, mode change, straight key release.
   const sidetoneOff = () => {
     const ctx = sidetoneCtxRef.current;
     const gain = sidetoneGainRef.current;
     if (!ctx || !gain) return;
-    gain.gain.cancelScheduledValues(ctx.currentTime);
-    gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.004);
+    const t = ctx.currentTime;
+    gain.gain.cancelScheduledValues(t);
+    gain.gain.setValueAtTime(gain.gain.value, t);
+    gain.gain.linearRampToValueAtTime(0, t + 0.004);
+    scheduledUntilRef.current = 0;
   };
 
-  // ── CW key emission ───────────────────────────────────────────────────────
+  // Pre-schedules one element's gain envelope on the audio clock.
+  // Returns the audio-clock time at which the tone turns off (= elementEndTime for SENDING state).
+  // Also advances scheduledUntilRef past the following inter-element gap.
+  const scheduleElement = (durationSec: number): number => {
+    const ctx = sidetoneCtxRef.current;
+    const gain = sidetoneGainRef.current;
+    const osc = sidetoneOscRef.current;
+    const settings = cwSettingsRef.current;
+    const ditSec = 1.2 / settings.wpm;
+
+    if (!ctx) return (performance.now() / 1000) + durationSec;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+    // Re-anchor if the scheduled window has expired (operator was paused).
+    if (scheduledUntilRef.current < ctx.currentTime + 0.001) {
+      scheduledUntilRef.current = ctx.currentTime + 0.002;
+    }
+
+    const t0 = scheduledUntilRef.current;
+    const t1 = t0 + durationSec;
+
+    if (gain && osc && settings.sidetoneEnabled) {
+      const ATTACK = 0.003;
+      const RELEASE = 0.003;
+      osc.frequency.value = settings.sidetoneHz;
+      gain.gain.cancelScheduledValues(t0);
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(settings.sidetoneVolume, t0 + ATTACK);
+      // Guard: hold end can't precede attack end (only matters at extreme WPM).
+      const holdEnd = Math.max(t0 + ATTACK, t1 - RELEASE);
+      gain.gain.setValueAtTime(settings.sidetoneVolume, holdEnd);
+      gain.gain.linearRampToValueAtTime(0, t1);
+    }
+
+    // Advance past element + inter-element gap so the next element schedules correctly.
+    scheduledUntilRef.current = t1 + ditSec;
+
+    return t1;
+  };
+
+  // ── Straight key / emergency key emission ─────────────────────────────────
+  const sidetoneOn = () => {
+    const ctx = sidetoneCtxRef.current;
+    const gain = sidetoneGainRef.current;
+    const osc = sidetoneOscRef.current;
+    const settings = cwSettingsRef.current;
+    if (!ctx || !gain || !osc || !settings.sidetoneEnabled) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    osc.frequency.value = settings.sidetoneHz;
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(settings.sidetoneVolume, ctx.currentTime + 0.004);
+  };
+
   const emitCwKey = (state: boolean) => {
     const s = cwStateRef.current;
     if (s.keyIsDown === state) return;
@@ -110,6 +159,7 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
       const settings = cwSettingsRef.current;
       if (!settings.enabled) { cwTickTimerRef.current = null; return; }
       const ctx = sidetoneCtxRef.current;
+      // Use audio clock when available — it's the same clock scheduleElement uses.
       const now = ctx ? ctx.currentTime : performance.now() / 1000;
       const ditSec = 1.2 / settings.wpm;
       const s = cwStateRef.current;
@@ -117,19 +167,22 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
       if (s.machine === 'IDLE') {
         if (ditPressedRef.current && !dahPressedRef.current) {
           s.machine = 'SENDING_DIT';
-          s.elementEndTime = now + ditSec;
           s.pendingElement = null;
-          emitCwKey(true);
+          s.keyIsDown = true;
+          setCwKeyActive(true);
+          s.elementEndTime = scheduleElement(ditSec);
         } else if (dahPressedRef.current && !ditPressedRef.current) {
           s.machine = 'SENDING_DAH';
-          s.elementEndTime = now + ditSec * 3;
           s.pendingElement = null;
-          emitCwKey(true);
+          s.keyIsDown = true;
+          setCwKeyActive(true);
+          s.elementEndTime = scheduleElement(ditSec * 3);
         } else if (ditPressedRef.current && dahPressedRef.current) {
           s.machine = 'SENDING_DIT';
-          s.elementEndTime = now + ditSec;
           s.pendingElement = 'dah';
-          emitCwKey(true);
+          s.keyIsDown = true;
+          setCwKeyActive(true);
+          s.elementEndTime = scheduleElement(ditSec);
         }
       } else if (s.machine === 'SENDING_DIT' || s.machine === 'SENDING_DAH') {
         if (settings.mode === 'iambic-b') {
@@ -140,9 +193,11 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
           }
         }
         if (now >= s.elementEndTime) {
-          emitCwKey(false);
+          s.keyIsDown = false;
+          setCwKeyActive(false);
           s.machine = 'INTER_ELEMENT';
-          s.elementEndTime = now + ditSec;
+          // Advance from the scheduled element end — not from now — to prevent drift.
+          s.elementEndTime += ditSec;
         }
       } else if (s.machine === 'INTER_ELEMENT') {
         if (now >= s.elementEndTime) {
@@ -159,20 +214,22 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
           s.pendingElement = null;
           if (next === 'dit') {
             s.machine = 'SENDING_DIT';
-            s.elementEndTime = now + ditSec;
+            s.keyIsDown = true;
+            setCwKeyActive(true);
             if (settings.mode === 'iambic-b' && dahPressedRef.current) s.pendingElement = 'dah';
-            emitCwKey(true);
+            s.elementEndTime = scheduleElement(ditSec);
           } else if (next === 'dah') {
             s.machine = 'SENDING_DAH';
-            s.elementEndTime = now + ditSec * 3;
+            s.keyIsDown = true;
+            setCwKeyActive(true);
             if (settings.mode === 'iambic-b' && ditPressedRef.current) s.pendingElement = 'dit';
-            emitCwKey(true);
+            s.elementEndTime = scheduleElement(ditSec * 3);
           } else {
             s.machine = 'IDLE';
           }
         }
       }
-      cwTickTimerRef.current = setTimeout(tick, Math.max(4, (1.2 / settings.wpm) * 250));
+      cwTickTimerRef.current = setTimeout(tick, 4);
     };
     cwTickTimerRef.current = setTimeout(tick, 4);
   };
@@ -186,7 +243,12 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
     const settings = cwSettingsRef.current;
     if (!settings.enabled || !connected) {
       stopKeyerTick();
-      emitCwKey(false);
+      const s = cwStateRef.current;
+      if (s.keyIsDown) {
+        s.keyIsDown = false;
+        setCwKeyActive(false);
+        sidetoneOff();
+      }
       ditPressedRef.current = false;
       dahPressedRef.current = false;
       teardownSidetone();
@@ -261,7 +323,12 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice }: UseCWK
       window.removeEventListener('keyup', onKeyUp, { capture: true });
       stopKeyerTick();
       emitCwPaddle(false, false, false);
-      emitCwKey(false);
+      const s = cwStateRef.current;
+      if (s.keyIsDown) {
+        s.keyIsDown = false;
+        setCwKeyActive(false);
+        sidetoneOff();
+      }
       ditPressedRef.current = false;
       dahPressedRef.current = false;
     };

@@ -15,7 +15,11 @@ interface UsePotaSpotsOptions {
   skipPollsCount: React.MutableRefObject<number>;
   setStatus: React.Dispatch<React.SetStateAction<RigStatus>>;
   isPhone: boolean;
+  potaEnabled: boolean;
+  sotaEnabled: boolean;
 }
+
+const ALL_SPOT_MODES = ['SSB', 'CW', 'FT8', 'FT4'];
 
 export function usePotaSpots({
   socket,
@@ -28,13 +32,14 @@ export function usePotaSpots({
   skipPollsCount,
   setStatus,
   isPhone,
+  potaEnabled,
+  sotaEnabled,
 }: UsePotaSpotsOptions) {
   // ── POTA state ────────────────────────────────────────────────────────────
-  const [potaEnabled, setPotaEnabled] = useState(false);
   const [potaPollRate, setPotaPollRate] = useState(5);
   const [potaMaxAge, setPotaMaxAge] = useState(15);
-  const [potaModeFilter, setPotaModeFilter] = useState<'ALL' | 'SSB' | 'CW' | 'FT8' | 'FT4'>('ALL');
-  const [potaBandFilter, setPotaBandFilter] = useState<string[]>([]);
+  const [potaModeFilter, setPotaModeFilter] = useState<string[]>(ALL_SPOT_MODES);
+  const [potaBandFilter, setPotaBandFilter] = useState<string[]>(() => POTA_BANDS.map(b => b.label));
   const [potaSpots, setPotaSpots] = useState<PotaSpot[]>([]);
   const [potaSortCol, setPotaSortCol] = useState<string | null>('spotTime');
   const [potaSortDir, setPotaSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
@@ -44,11 +49,10 @@ export function usePotaSpots({
   );
 
   // ── SOTA state ────────────────────────────────────────────────────────────
-  const [sotaEnabled, setSotaEnabled] = useState(false);
   const [sotaPollRate, setSotaPollRate] = useState(5);
   const [sotaMaxAge, setSotaMaxAge] = useState(15);
-  const [sotaModeFilter, setSotaModeFilter] = useState<'ALL' | 'SSB' | 'CW' | 'FT8' | 'FT4'>('ALL');
-  const [sotaBandFilter, setSotaBandFilter] = useState<string[]>([]);
+  const [sotaModeFilter, setSotaModeFilter] = useState<string[]>(ALL_SPOT_MODES);
+  const [sotaBandFilter, setSotaBandFilter] = useState<string[]>(() => POTA_BANDS.map(b => b.label));
   const [sotaSpots, setSotaSpots] = useState<SotaSpot[]>([]);
   const [sotaSortCol, setSotaSortCol] = useState<string | null>('timeStamp');
   const [sotaSortDir, setSotaSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
@@ -72,20 +76,31 @@ export function usePotaSpots({
   // ── Settings loading from server ─────────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
+    const parseModeFilter = (raw: unknown): string[] => {
+      if (Array.isArray(raw)) return raw;
+      if (raw === 'ALL' || raw === undefined) return ALL_SPOT_MODES;
+      return [raw as string];
+    };
     const handler = (data: any) => {
       if (data.potaSettings) {
-        if (data.potaSettings.enabled !== undefined) setPotaEnabled(data.potaSettings.enabled);
         if (data.potaSettings.pollRate !== undefined) setPotaPollRate(data.potaSettings.pollRate);
         if (data.potaSettings.maxAge !== undefined) setPotaMaxAge(data.potaSettings.maxAge);
-        if (data.potaSettings.modeFilter !== undefined) setPotaModeFilter(data.potaSettings.modeFilter);
-        if (Array.isArray(data.potaSettings.bandFilter)) setPotaBandFilter(data.potaSettings.bandFilter);
+        if (data.potaSettings.modeFilter !== undefined) setPotaModeFilter(parseModeFilter(data.potaSettings.modeFilter));
+        if (Array.isArray(data.potaSettings.bandFilter)) {
+          setPotaBandFilter(data.potaSettings.bandFilter.length === 0
+            ? POTA_BANDS.map(b => b.label)
+            : data.potaSettings.bandFilter);
+        }
       }
       if (data.sotaSettings) {
-        if (data.sotaSettings.enabled !== undefined) setSotaEnabled(data.sotaSettings.enabled);
         if (data.sotaSettings.pollRate !== undefined) setSotaPollRate(data.sotaSettings.pollRate);
         if (data.sotaSettings.maxAge !== undefined) setSotaMaxAge(data.sotaSettings.maxAge);
-        if (data.sotaSettings.modeFilter !== undefined) setSotaModeFilter(data.sotaSettings.modeFilter);
-        if (Array.isArray(data.sotaSettings.bandFilter)) setSotaBandFilter(data.sotaSettings.bandFilter);
+        if (data.sotaSettings.modeFilter !== undefined) setSotaModeFilter(parseModeFilter(data.sotaSettings.modeFilter));
+        if (Array.isArray(data.sotaSettings.bandFilter)) {
+          setSotaBandFilter(data.sotaSettings.bandFilter.length === 0
+            ? POTA_BANDS.map(b => b.label)
+            : data.sotaSettings.bandFilter);
+        }
       }
     };
     socket.on("settings-data", handler);
@@ -171,9 +186,10 @@ export function usePotaSpots({
       }
     }
     const cutoff = Date.now() - potaMaxAge * 60 * 1000;
+    const potaAllModes = ALL_SPOT_MODES.every(m => potaModeFilter.includes(m));
     return [...latestByActivator.values()].filter(s => {
       if (new Date(s.spotTime + 'Z').getTime() < cutoff) return false;
-      if (potaModeFilter !== 'ALL' && s.mode !== potaModeFilter) return false;
+      if (!potaAllModes && potaModeFilter.length > 0 && !potaModeFilter.includes(s.mode)) return false;
       if (potaBandFilter.length > 0) {
         const inBand = potaBandFilter.some(label => {
           const band = POTA_BANDS.find(b => b.label === label);
@@ -226,9 +242,10 @@ export function usePotaSpots({
       }
     }
     const cutoff = Date.now() - sotaMaxAge * 60 * 1000;
+    const sotaAllModes = ALL_SPOT_MODES.every(m => sotaModeFilter.includes(m));
     return [...latestByActivator.values()].filter(s => {
       if (new Date(s.timeStamp + 'Z').getTime() < cutoff) return false;
-      if (sotaModeFilter !== 'ALL' && s.mode !== sotaModeFilter) return false;
+      if (!sotaAllModes && sotaModeFilter.length > 0 && !sotaModeFilter.includes(s.mode)) return false;
       if (sotaBandFilter.length > 0) {
         const freqKhz = parseFloat(s.frequency) * 1000;
         const inBand = sotaBandFilter.some(label => {
@@ -473,8 +490,7 @@ export function usePotaSpots({
   );
 
   return {
-    // Settings state (App.tsx needs for save-settings emit and SettingsModal)
-    potaEnabled, setPotaEnabled,
+    // Settings state (App.tsx needs for save-settings emit and layouts)
     potaPollRate, setPotaPollRate,
     potaMaxAge, setPotaMaxAge,
     potaModeFilter, setPotaModeFilter,
@@ -482,7 +498,6 @@ export function usePotaSpots({
     potaSortCol,
     potaSortDir,
     potaSpotsCollapsed, setPotaSpotsCollapsed,
-    sotaEnabled, setSotaEnabled,
     sotaPollRate, setSotaPollRate,
     sotaMaxAge, setSotaMaxAge,
     sotaModeFilter, setSotaModeFilter,

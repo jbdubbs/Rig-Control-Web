@@ -13,6 +13,7 @@ import { sendToRig, startPolling, stopPolling, registerRigCommHandlers } from ".
 import { initAudioEngine, stopAudio, registerAudioHandlers } from "./server/audio.ts";
 import { syncKeyerPort, closeKeyerPort, cwSetKey, stopCwTick, registerCwHandlers } from "./server/cw.ts";
 import { registerVideoHandlers } from "./server/video.ts";
+import { registerSolarHandlers } from "./server/solar.ts";
 
 let electronWin: any = null;
 export function setElectronWindow(win: any) {
@@ -89,6 +90,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     registerAudioHandlers(socket, ctx, clientId);
     registerCwHandlers(socket, ctx);
     registerVideoHandlers(socket, ctx);
+    registerSolarHandlers(socket, ctx);
     registerSettingsHandlers(
       socket,
       ctx,

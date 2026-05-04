@@ -136,7 +136,8 @@ export function cwTick(ctx: ServerContext): void {
       if (nowMs >= ctx.cwElementEndMs) {
         cwSetKey(ctx, false);
         ctx.cwMachine = "INTER_ELEMENT";
-        ctx.cwElementEndMs = nowMs + ditMs;
+        // Advance from scheduled element end, not from nowMs, to prevent drift accumulation.
+        ctx.cwElementEndMs += ditMs;
       }
     } else if (ctx.cwMachine === "INTER_ELEMENT") {
       if (nowMs >= ctx.cwElementEndMs) {
@@ -152,11 +153,11 @@ export function cwTick(ctx: ServerContext): void {
         }
         ctx.cwPendingElement = null;
         if (next === "dit") {
-          ctx.cwMachine = "SENDING_DIT"; ctx.cwElementEndMs = nowMs + ditMs;
+          ctx.cwMachine = "SENDING_DIT"; ctx.cwElementEndMs += ditMs;
           if (ctx.cwSettings.mode === "iambic-b" && ctx.cwPlayheadDah) ctx.cwPendingElement = "dah";
           cwSetKey(ctx, true);
         } else if (next === "dah") {
-          ctx.cwMachine = "SENDING_DAH"; ctx.cwElementEndMs = nowMs + ditMs * 3;
+          ctx.cwMachine = "SENDING_DAH"; ctx.cwElementEndMs += ditMs * 3;
           if (ctx.cwSettings.mode === "iambic-b" && ctx.cwPlayheadDit) ctx.cwPendingElement = "dit";
           cwSetKey(ctx, true);
         } else {
@@ -166,7 +167,7 @@ export function cwTick(ctx: ServerContext): void {
     }
   }
 
-  ctx.cwTickTimer = setTimeout(() => cwTick(ctx), Math.max(4, ditMs / 4));
+  ctx.cwTickTimer = setTimeout(() => cwTick(ctx), 4);
 }
 
 export async function openKeyerPort(ctx: ServerContext, portPath: string): Promise<void> {

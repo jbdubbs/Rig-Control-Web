@@ -18,6 +18,7 @@ import PhoneStickyBar from "./layouts/PhoneStickyBar";
 import SettingsModal from "./modals/SettingsModal";
 import VideoSettingsModal from "./modals/VideoSettingsModal";
 import { usePotaSpots } from "./hooks/usePotaSpots";
+import { useSolarData } from "./hooks/useSolarData";
 import { useRigctld } from "./hooks/useRigctld";
 import { useCWKeyer } from "./hooks/useCWKeyer";
 import { useVideoStream } from "./hooks/useVideoStream";
@@ -78,6 +79,18 @@ export default function App() {
     updateItemPositions, resetToDefault,
   } = useLayoutConfig();
 
+  const hasCwDecodePanel = useMemo(() =>
+    compactLayout.items.some(i => i.panelType === 'cwdecode') ||
+    phoneLayout.items.some(i => i.panelType === 'cwdecode'),
+    [compactLayout.items, phoneLayout.items]
+  );
+
+  const hasSolarPanel = useMemo(() =>
+    compactLayout.items.some(i => i.panelType === 'solar') ||
+    phoneLayout.items.some(i => i.panelType === 'solar'),
+    [compactLayout.items, phoneLayout.items]
+  );
+
   const compactGridCallbacks = useMemo(() => ({
     onExitEditMode: () => setIsCompactEditMode(false),
     addPanel: (panelType: PanelType) => addPanel('compact', panelType),
@@ -110,14 +123,14 @@ export default function App() {
   } = usePanelState();
 
   const {
-    cwDecodeEnabled, setCwDecodeEnabled,
     cwDecodedText, setCwDecodedText,
-    cwWasmReady,
     cwStats,
     cwDecoderRef,
     cwDecodeEnabledRef,
     cwScrollContainerRef,
-  } = useCwDecoder();
+  } = useCwDecoder(hasCwDecodePanel);
+
+  const { solarData, requestSolarData } = useSolarData(socket, hasSolarPanel);
 
   const {
     rigctldSettings, setRigctldSettings,
@@ -254,8 +267,17 @@ export default function App() {
     dahPressedRef,
   } = useCWKeyer({ socket, connected, localAudioOutputDevice: localAudioSettings.outputDevice });
 
+  const potaEnabled = useMemo(() => {
+    const items = isPhone ? phoneLayout.items : compactLayout.items;
+    return items.some(i => i.panelType === 'spots_pota');
+  }, [isPhone, compactLayout.items, phoneLayout.items]);
+
+  const sotaEnabled = useMemo(() => {
+    const items = isPhone ? phoneLayout.items : compactLayout.items;
+    return items.some(i => i.panelType === 'spots_sota');
+  }, [isPhone, compactLayout.items, phoneLayout.items]);
+
   const {
-    potaEnabled, setPotaEnabled,
     potaPollRate, setPotaPollRate,
     potaMaxAge, setPotaMaxAge,
     potaModeFilter, setPotaModeFilter,
@@ -263,7 +285,6 @@ export default function App() {
     potaSortCol,
     potaSortDir,
     potaSpotsCollapsed, setPotaSpotsCollapsed,
-    sotaEnabled, setSotaEnabled,
     sotaPollRate, setSotaPollRate,
     sotaMaxAge, setSotaMaxAge,
     sotaModeFilter, setSotaModeFilter,
@@ -292,6 +313,8 @@ export default function App() {
     skipPollsCount,
     setStatus,
     isPhone,
+    potaEnabled,
+    sotaEnabled,
   });
 
   // ── Effects ───────────────────────────────────────────────────────────────
@@ -312,15 +335,15 @@ export default function App() {
         pollRate,
         clientHost: host,
         clientPort: port,
-        potaSettings: { enabled: potaEnabled, pollRate: potaPollRate, maxAge: potaMaxAge, modeFilter: potaModeFilter, bandFilter: potaBandFilter },
-        sotaSettings: { enabled: sotaEnabled, pollRate: sotaPollRate, maxAge: sotaMaxAge, modeFilter: sotaModeFilter, bandFilter: sotaBandFilter }
+        potaSettings: { pollRate: potaPollRate, maxAge: potaMaxAge, modeFilter: potaModeFilter, bandFilter: potaBandFilter },
+        sotaSettings: { pollRate: sotaPollRate, maxAge: sotaMaxAge, modeFilter: sotaModeFilter, bandFilter: sotaBandFilter }
       });
       localStorage.setItem("last-poll-rate", pollRate.toString());
       localStorage.setItem("last-host", host);
       localStorage.setItem("last-port", port.toString());
     }, 1000);
     return () => clearTimeout(timer);
-  }, [rigctldSettings, host, port, pollRate, socket, potaEnabled, potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter, sotaEnabled, sotaPollRate, sotaMaxAge, sotaModeFilter, sotaBandFilter]);
+  }, [rigctldSettings, host, port, pollRate, socket, potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter, sotaPollRate, sotaMaxAge, sotaModeFilter, sotaBandFilter]);
 
   // Notify server which meters need computing based on visible layout
   useEffect(() => {
@@ -555,21 +578,39 @@ export default function App() {
             getAttenuatorLabel={getAttenuatorLabel}
             getPreampLabel={getPreampLabel}
             getAgcLabel={getAgcLabel}
-            potaEnabled={potaEnabled}
             potaSpotsCollapsed={potaSpotsCollapsed}
             filteredSpots={filteredSpots}
             potaSpotsBoxRef={potaSpotsBoxRef}
             setPotaSpotsCollapsed={setPotaSpotsCollapsed}
+            potaPollRate={potaPollRate}
+            setPotaPollRate={setPotaPollRate}
+            potaMaxAge={potaMaxAge}
+            setPotaMaxAge={setPotaMaxAge}
+            potaModeFilter={potaModeFilter}
+            setPotaModeFilter={setPotaModeFilter}
+            potaBandFilter={potaBandFilter}
+            setPotaBandFilter={setPotaBandFilter}
             renderSpotsTable={renderSpotsTable}
-            sotaEnabled={sotaEnabled}
             sotaSpotsCollapsed={sotaSpotsCollapsed}
             filteredSotaSpots={filteredSotaSpots}
             sotaSpotsBoxRef={sotaSpotsBoxRef}
             setSotaSpotsCollapsed={setSotaSpotsCollapsed}
+            sotaPollRate={sotaPollRate}
+            setSotaPollRate={setSotaPollRate}
+            sotaMaxAge={sotaMaxAge}
+            setSotaMaxAge={setSotaMaxAge}
+            sotaModeFilter={sotaModeFilter}
+            setSotaModeFilter={setSotaModeFilter}
+            sotaBandFilter={sotaBandFilter}
+            setSotaBandFilter={setSotaBandFilter}
             renderSotaSpotsTable={renderSotaSpotsTable}
             cwSettings={cwSettings}
             cwKeyActive={cwKeyActive}
             cwStuckAlert={cwStuckAlert}
+            cwDecodedText={cwDecodedText}
+            setCwDecodedText={setCwDecodedText}
+            cwStats={cwStats}
+            cwScrollContainerRef={cwScrollContainerRef}
             handleSetPTT={handleSetPTT}
             isConsoleCollapsed={isConsoleCollapsed}
             consoleLogs={consoleLogs}
@@ -577,6 +618,8 @@ export default function App() {
             setIsConsoleCollapsed={setIsConsoleCollapsed}
             setRawCommand={setRawCommand}
             handleSendRaw={handleSendRaw}
+            solarData={solarData}
+            requestSolarData={requestSolarData}
             phoneLayout={phoneLayout}
             isEditMode={isPhoneEditMode}
             gridCallbacks={phoneGridCallbacks}
@@ -608,7 +651,6 @@ export default function App() {
             isCompactSMeterCollapsed={isCompactSMeterCollapsed}
             setActiveMeter={setActiveMeter}
             setIsCompactSMeterCollapsed={setIsCompactSMeterCollapsed}
-            cwDecodeEnabled={cwDecodeEnabled}
             cwDecodedText={cwDecodedText}
             cwStats={cwStats}
             cwScrollContainerRef={cwScrollContainerRef}
@@ -669,8 +711,22 @@ export default function App() {
             cwSettings={cwSettings}
             cwKeyActive={cwKeyActive}
             cwStuckAlert={cwStuckAlert}
-            potaEnabled={potaEnabled}
-            sotaEnabled={sotaEnabled}
+            potaPollRate={potaPollRate}
+            setPotaPollRate={setPotaPollRate}
+            potaMaxAge={potaMaxAge}
+            setPotaMaxAge={setPotaMaxAge}
+            potaModeFilter={potaModeFilter}
+            setPotaModeFilter={setPotaModeFilter}
+            potaBandFilter={potaBandFilter}
+            setPotaBandFilter={setPotaBandFilter}
+            sotaPollRate={sotaPollRate}
+            setSotaPollRate={setSotaPollRate}
+            sotaMaxAge={sotaMaxAge}
+            setSotaMaxAge={setSotaMaxAge}
+            sotaModeFilter={sotaModeFilter}
+            setSotaModeFilter={setSotaModeFilter}
+            sotaBandFilter={sotaBandFilter}
+            setSotaBandFilter={setSotaBandFilter}
             renderSpotsTable={renderSpotsTable}
             renderSotaSpotsTable={renderSotaSpotsTable}
             isConsoleCollapsed={isConsoleCollapsed}
@@ -679,6 +735,8 @@ export default function App() {
             setIsConsoleCollapsed={setIsConsoleCollapsed}
             setRawCommand={setRawCommand}
             handleSendRaw={handleSendRaw}
+            solarData={solarData}
+            requestSolarData={requestSolarData}
             compactLayout={compactLayout}
             setCompactLayout={setCompactLayout}
             isEditMode={isCompactEditMode}
@@ -842,31 +900,8 @@ export default function App() {
           handlePollRateChange={handlePollRateChange}
           rigctldVersionInfo={rigctldVersionInfo}
           logEndRef={logEndRef}
-          potaEnabled={potaEnabled}
-          setPotaEnabled={setPotaEnabled}
-          potaBandFilter={potaBandFilter}
-          setPotaBandFilter={setPotaBandFilter}
-          potaModeFilter={potaModeFilter}
-          setPotaModeFilter={setPotaModeFilter}
-          potaPollRate={potaPollRate}
-          setPotaPollRate={setPotaPollRate}
-          potaMaxAge={potaMaxAge}
-          setPotaMaxAge={setPotaMaxAge}
-          sotaEnabled={sotaEnabled}
-          setSotaEnabled={setSotaEnabled}
-          sotaBandFilter={sotaBandFilter}
-          setSotaBandFilter={setSotaBandFilter}
-          sotaModeFilter={sotaModeFilter}
-          setSotaModeFilter={setSotaModeFilter}
-          sotaPollRate={sotaPollRate}
-          setSotaPollRate={setSotaPollRate}
-          sotaMaxAge={sotaMaxAge}
-          setSotaMaxAge={setSotaMaxAge}
           cwSettings={cwSettings}
           setCwSettings={setCwSettings}
-          cwDecodeEnabled={cwDecodeEnabled}
-          setCwDecodeEnabled={setCwDecodeEnabled}
-          cwWasmReady={cwWasmReady}
           cwSettingsRef={cwSettingsRef}
           cwPortStatus={cwPortStatus}
           sidetoneOscRef={sidetoneOscRef}
@@ -879,11 +914,6 @@ export default function App() {
       {isPhone && (
         <PhoneStickyBar
           stickyBarRef={stickyBarRef}
-          cwDecodeEnabled={cwDecodeEnabled}
-          cwStats={cwStats}
-          cwDecodedText={cwDecodedText}
-          setCwDecodedText={setCwDecodedText}
-          cwScrollContainerRef={cwScrollContainerRef}
           cwSettings={cwSettings}
           status={status}
           connected={connected}

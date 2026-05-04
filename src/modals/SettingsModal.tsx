@@ -8,7 +8,6 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "../utils";
-import { POTA_BANDS } from "../constants";
 import type { CwSettings, RigctldSettings } from "../types";
 
 export interface SettingsModalProps {
@@ -17,9 +16,9 @@ export interface SettingsModalProps {
   socket: Socket | null;
 
   // Tab state
-  activeSettingsTab: "rigctld" | "spots" | "cw";
+  activeSettingsTab: "rigctld" | "cw";
   setActiveSettingsTab: React.Dispatch<
-    React.SetStateAction<"rigctld" | "spots" | "cw">
+    React.SetStateAction<"rigctld" | "cw">
   >;
 
   // Rigctld tab
@@ -39,34 +38,9 @@ export interface SettingsModalProps {
   rigctldVersionInfo: { version: string | null; isSupported: boolean };
   logEndRef: React.RefObject<HTMLDivElement>;
 
-  // Spots tab
-  potaEnabled: boolean;
-  setPotaEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  potaBandFilter: string[];
-  setPotaBandFilter: React.Dispatch<React.SetStateAction<string[]>>;
-  potaModeFilter: string;
-  setPotaModeFilter: React.Dispatch<React.SetStateAction<string>>;
-  potaPollRate: number;
-  setPotaPollRate: React.Dispatch<React.SetStateAction<number>>;
-  potaMaxAge: number;
-  setPotaMaxAge: React.Dispatch<React.SetStateAction<number>>;
-  sotaEnabled: boolean;
-  setSotaEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  sotaBandFilter: string[];
-  setSotaBandFilter: React.Dispatch<React.SetStateAction<string[]>>;
-  sotaModeFilter: string;
-  setSotaModeFilter: React.Dispatch<React.SetStateAction<string>>;
-  sotaPollRate: number;
-  setSotaPollRate: React.Dispatch<React.SetStateAction<number>>;
-  sotaMaxAge: number;
-  setSotaMaxAge: React.Dispatch<React.SetStateAction<number>>;
-
   // CW tab
   cwSettings: CwSettings;
   setCwSettings: React.Dispatch<React.SetStateAction<CwSettings>>;
-  cwDecodeEnabled: boolean;
-  setCwDecodeEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  cwWasmReady: boolean;
   cwSettingsRef: React.MutableRefObject<CwSettings>;
   cwPortStatus: { open: boolean; port: string; error?: string };
   sidetoneOscRef: React.MutableRefObject<OscillatorNode | null>;
@@ -98,31 +72,8 @@ function SettingsModal({
   handlePollRateChange,
   rigctldVersionInfo,
   logEndRef,
-  potaEnabled,
-  setPotaEnabled,
-  potaBandFilter,
-  setPotaBandFilter,
-  potaModeFilter,
-  setPotaModeFilter,
-  potaPollRate,
-  setPotaPollRate,
-  potaMaxAge,
-  setPotaMaxAge,
-  sotaEnabled,
-  setSotaEnabled,
-  sotaBandFilter,
-  setSotaBandFilter,
-  sotaModeFilter,
-  setSotaModeFilter,
-  sotaPollRate,
-  setSotaPollRate,
-  sotaMaxAge,
-  setSotaMaxAge,
   cwSettings,
   setCwSettings,
-  cwDecodeEnabled,
-  setCwDecodeEnabled,
-  cwWasmReady,
   cwSettingsRef,
   cwPortStatus,
   sidetoneOscRef,
@@ -150,7 +101,7 @@ function SettingsModal({
 
     {/* Tab Bar */}
     <div className="flex border-b border-[#2a2b2e] bg-[#1a1b1e]">
-      {(['rigctld', 'spots', 'cw'] as const).map((tab) => (
+      {(['rigctld', 'cw'] as const).map((tab) => (
         <button
           key={tab}
           onClick={() => setActiveSettingsTab(tab)}
@@ -294,7 +245,7 @@ function SettingsModal({
       <div className="pt-4 space-y-3">
         <div className="flex items-center justify-between text-[0.5rem] text-[#8e9299] opacity-50 uppercase font-bold tracking-widest border-t border-[#2a2b2e] pt-4">
           <span>App Version</span>
-          <span>v05.01.2026-Beta8</span>
+          <span>v05.04.2026-Beta9</span>
         </div>
 
         {rigctldProcessStatus === "already_running" && (
@@ -396,251 +347,10 @@ function SettingsModal({
     </div>
     )}
 
-    {activeSettingsTab === 'spots' && (
-    <div className="p-6 space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">Spot Sources</h3>
-        <div className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            id="pota-enabled"
-            checked={potaEnabled}
-            onChange={(e) => setPotaEnabled(e.target.checked)}
-            className="w-4 h-4 accent-emerald-500 cursor-pointer"
-          />
-          <label htmlFor="pota-enabled" className="text-sm font-bold cursor-pointer select-none">POTA</label>
-          <span className="text-[0.5625rem] text-[#8e9299]">Parks on the Air</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            id="sota-enabled"
-            checked={sotaEnabled}
-            onChange={(e) => setSotaEnabled(e.target.checked)}
-            className="w-4 h-4 accent-amber-500 cursor-pointer"
-          />
-          <label htmlFor="sota-enabled" className="text-sm font-bold cursor-pointer select-none">SOTA</label>
-          <span className="text-[0.5625rem] text-[#8e9299]">Summits on the Air</span>
-        </div>
-      </div>
 
-      {potaEnabled && (
-        <div className="space-y-4 animate-in fade-in duration-200">
-          <h3 className="text-[0.625rem] uppercase text-blue-500 font-bold border-b border-blue-500/20 pb-1">POTA Options</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-[0.625rem] uppercase text-[#8e9299]">Poll Frequency</label>
-              <select
-                value={potaPollRate}
-                onChange={(e) => setPotaPollRate(Number(e.target.value))}
-                className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white appearance-none cursor-pointer"
-              >
-                {[1, 2, 3, 4, 5].map(m => (
-                  <option key={m} value={m}>{m} min</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[0.625rem] uppercase text-[#8e9299]">Max Spot Age</label>
-              <select
-                value={potaMaxAge}
-                onChange={(e) => setPotaMaxAge(Number(e.target.value))}
-                className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white appearance-none cursor-pointer"
-              >
-                {[1, 3, 5, 10, 15].map(m => (
-                  <option key={m} value={m}>{m} min</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[0.625rem] uppercase text-[#8e9299]">Band Filter</label>
-              {potaBandFilter.length > 0 && (
-                <button
-                  onClick={() => setPotaBandFilter([])}
-                  className="text-[0.5rem] uppercase font-bold text-[#8e9299] hover:text-white transition-colors"
-                >
-                  Clear (ALL)
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-4 gap-1.5">
-              {POTA_BANDS.map(({ label }) => {
-                const active = potaBandFilter.includes(label);
-                return (
-                  <label
-                    key={label}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
-                      active
-                        ? "bg-emerald-500/10 border-emerald-500/60 text-emerald-400"
-                        : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500/40 hover:text-white"
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={active}
-                      onChange={() =>
-                        setPotaBandFilter(prev =>
-                          active ? prev.filter(b => b !== label) : [...prev, label]
-                        )
-                      }
-                      className="w-3 h-3 accent-emerald-500 cursor-pointer flex-shrink-0"
-                    />
-                    <span className="text-[0.5625rem] font-bold uppercase">{label}</span>
-                  </label>
-                );
-              })}
-            </div>
-            {potaBandFilter.length === 0 && (
-              <p className="text-[0.5rem] text-[#4a4b4e] italic">No bands selected — showing all bands</p>
-            )}
-          </div>
-          <div className="space-y-1">
-            <label className="text-[0.625rem] uppercase text-[#8e9299]">Mode Filter</label>
-            <div className="flex gap-2 flex-wrap">
-              {(['ALL', 'SSB', 'CW', 'FT8', 'FT4'] as const).map(m => (
-                <button
-                  key={m}
-                  onClick={() => setPotaModeFilter(m)}
-                  className={cn(
-                    "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all border",
-                    potaModeFilter === m
-                      ? "bg-emerald-500/20 border-emerald-500 text-emerald-400"
-                      : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-emerald-500/50 hover:text-white"
-                  )}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {sotaEnabled && (
-        <div className="space-y-4 animate-in fade-in duration-200">
-          <h3 className="text-[0.625rem] uppercase text-amber-500 font-bold border-b border-amber-500/20 pb-1">SOTA Options</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-[0.625rem] uppercase text-[#8e9299]">Poll Frequency</label>
-              <select
-                value={sotaPollRate}
-                onChange={(e) => setSotaPollRate(Number(e.target.value))}
-                className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-amber-500 text-white appearance-none cursor-pointer"
-              >
-                {[1, 2, 3, 4, 5].map(m => (
-                  <option key={m} value={m}>{m} min</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[0.625rem] uppercase text-[#8e9299]">Max Spot Age</label>
-              <select
-                value={sotaMaxAge}
-                onChange={(e) => setSotaMaxAge(Number(e.target.value))}
-                className="w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm focus:outline-none focus:border-amber-500 text-white appearance-none cursor-pointer"
-              >
-                {[1, 3, 5, 10, 15].map(m => (
-                  <option key={m} value={m}>{m} min</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[0.625rem] uppercase text-[#8e9299]">Band Filter</label>
-              {sotaBandFilter.length > 0 && (
-                <button
-                  onClick={() => setSotaBandFilter([])}
-                  className="text-[0.5rem] uppercase font-bold text-[#8e9299] hover:text-white transition-colors"
-                >
-                  Clear (ALL)
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-4 gap-1.5">
-              {POTA_BANDS.map(({ label }) => {
-                const active = sotaBandFilter.includes(label);
-                return (
-                  <label
-                    key={label}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
-                      active
-                        ? "bg-amber-500/10 border-amber-500/60 text-amber-400"
-                        : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-amber-500/40 hover:text-white"
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={active}
-                      onChange={() =>
-                        setSotaBandFilter(prev =>
-                          active ? prev.filter(b => b !== label) : [...prev, label]
-                        )
-                      }
-                      className="w-3 h-3 accent-amber-500 cursor-pointer flex-shrink-0"
-                    />
-                    <span className="text-[0.5625rem] font-bold uppercase">{label}</span>
-                  </label>
-                );
-              })}
-            </div>
-            {sotaBandFilter.length === 0 && (
-              <p className="text-[0.5rem] text-[#4a4b4e] italic">No bands selected — showing all bands</p>
-            )}
-          </div>
-          <div className="space-y-1">
-            <label className="text-[0.625rem] uppercase text-[#8e9299]">Mode Filter</label>
-            <div className="flex gap-2 flex-wrap">
-              {(['ALL', 'SSB', 'CW', 'FT8', 'FT4'] as const).map(m => (
-                <button
-                  key={m}
-                  onClick={() => setSotaModeFilter(m)}
-                  className={cn(
-                    "px-3 py-1 rounded text-[0.625rem] font-bold uppercase transition-all border",
-                    sotaModeFilter === m
-                      ? "bg-amber-500/20 border-amber-500 text-amber-400"
-                      : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-amber-500/50 hover:text-white"
-                  )}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-    )}
 
     {activeSettingsTab === 'cw' && (
     <div className="p-6 space-y-6">
-
-      {/* CW Decoder */}
-      <div className="space-y-4">
-        <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">CW Decoder</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm text-[#e0e0e0] font-bold">Enable CW Decoder</div>
-            <div className="text-[0.625rem] text-[#8e9299] mt-0.5">Decode incoming audio to text in real time</div>
-          </div>
-          <button
-            onClick={() => {
-              const next = !cwDecodeEnabled;
-              setCwDecodeEnabled(next);
-              localStorage.setItem('cw-decode-enabled', String(next));
-            }}
-            disabled={cwDecodeEnabled && !cwWasmReady}
-            title={cwDecodeEnabled && !cwWasmReady ? 'Loading decoder…' : undefined}
-            className={cn("relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0", cwDecodeEnabled ? "bg-emerald-500" : "bg-[#2a2b2e]", cwDecodeEnabled && !cwWasmReady && "opacity-50 cursor-wait")}
-          >
-            <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white transition-transform", cwDecodeEnabled ? "translate-x-6" : "translate-x-1")} />
-          </button>
-        </div>
-      </div>
 
       {/* Enable & Keying Method */}
       <div className="space-y-4">

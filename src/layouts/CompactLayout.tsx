@@ -23,6 +23,8 @@ import type {
 } from "../types";
 import type { GridItem, GridLayoutCallbacks, PanelType, ViewLayout } from "../types/layout";
 import { PANEL_LABELS } from "../types/layout";
+import type { SolarData } from "../types/solar";
+import SolarPanel from "../panels/SolarPanel";
 import PanelChrome from "../components/PanelChrome";
 import EditToolbar from "../components/EditToolbar";
 import PanelPicker from "../components/PanelPicker";
@@ -34,12 +36,14 @@ import VideoAudioPanel, {
 } from "../panels/VideoAudioPanel";
 import ControlsPanel from "../panels/ControlsPanel";
 import CwDecodePanel from "../panels/CwDecodePanel";
+import { SpotSettingsGear } from "../panels/SpotsPanel";
+import SpotSettingsModal from "../modals/SpotSettingsModal";
 
 export type { GridLayoutCallbacks };
 
 const COMPACT_PANEL_TYPES: PanelType[] = [
   'vfo', 'smeter', 'videoaudio', 'controls', 'rflevels',
-  'cwdecode', 'commandconsole', 'spots_pota', 'spots_sota',
+  'cwdecode', 'commandconsole', 'spots_pota', 'spots_sota', 'solar',
 ];
 
 export interface CompactLayoutProps {
@@ -77,7 +81,6 @@ export interface CompactLayoutProps {
   setIsCompactSMeterCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
 
   // CW decoder
-  cwDecodeEnabled: boolean;
   cwDecodedText: string;
   cwStats: { pitch: number; speed: number };
   cwScrollContainerRef: React.RefObject<HTMLDivElement>;
@@ -148,8 +151,22 @@ export interface CompactLayoutProps {
   cwStuckAlert: boolean;
 
   // POTA/SOTA spots
-  potaEnabled: boolean;
-  sotaEnabled: boolean;
+  potaPollRate: number;
+  setPotaPollRate: (v: number) => void;
+  potaMaxAge: number;
+  setPotaMaxAge: (v: number) => void;
+  potaModeFilter: string[];
+  setPotaModeFilter: (v: string[]) => void;
+  potaBandFilter: string[];
+  setPotaBandFilter: (v: string[]) => void;
+  sotaPollRate: number;
+  setSotaPollRate: (v: number) => void;
+  sotaMaxAge: number;
+  setSotaMaxAge: (v: number) => void;
+  sotaModeFilter: string[];
+  setSotaModeFilter: (v: string[]) => void;
+  sotaBandFilter: string[];
+  setSotaBandFilter: (v: string[]) => void;
   renderSpotsTable: (showFullLocation: boolean) => React.ReactElement;
   renderSotaSpotsTable: () => React.ReactElement;
 
@@ -160,6 +177,10 @@ export interface CompactLayoutProps {
   setIsConsoleCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   setRawCommand: React.Dispatch<React.SetStateAction<string>>;
   handleSendRaw: (e: React.FormEvent) => void;
+
+  // Solar conditions
+  solarData: SolarData | null;
+  requestSolarData: () => void;
 
   // Grid layout
   compactLayout: ViewLayout;
@@ -194,7 +215,6 @@ function CompactLayout({
   isCompactSMeterCollapsed,
   setActiveMeter,
   setIsCompactSMeterCollapsed,
-  cwDecodeEnabled,
   cwDecodedText,
   cwStats,
   cwScrollContainerRef,
@@ -255,8 +275,22 @@ function CompactLayout({
   cwSettings,
   cwKeyActive,
   cwStuckAlert,
-  potaEnabled,
-  sotaEnabled,
+  potaPollRate,
+  setPotaPollRate,
+  potaMaxAge,
+  setPotaMaxAge,
+  potaModeFilter,
+  setPotaModeFilter,
+  potaBandFilter,
+  setPotaBandFilter,
+  sotaPollRate,
+  setSotaPollRate,
+  sotaMaxAge,
+  setSotaMaxAge,
+  sotaModeFilter,
+  setSotaModeFilter,
+  sotaBandFilter,
+  setSotaBandFilter,
   renderSpotsTable,
   renderSotaSpotsTable,
   isConsoleCollapsed,
@@ -265,6 +299,8 @@ function CompactLayout({
   setIsConsoleCollapsed,
   setRawCommand,
   handleSendRaw,
+  solarData,
+  requestSolarData,
   compactLayout,
   setCompactLayout,
   isEditMode,
@@ -272,6 +308,8 @@ function CompactLayout({
 }: CompactLayoutProps) {
 
   const [showPanelPicker, setShowPanelPicker] = useState(false);
+  const [showPotaSettings, setShowPotaSettings] = useState(false);
+  const [showSotaSettings, setShowSotaSettings] = useState(false);
 
   const existingPanelTypes = useMemo(() => {
     const types = new Set<PanelType>();
@@ -589,8 +627,9 @@ function CompactLayout({
       case 'spots_pota':
         return (
           <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg">
-            <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e]">
+            <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e] flex items-center justify-between">
               <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">POTA Spots</span>
+              <SpotSettingsGear accent="emerald" onClick={() => setShowPotaSettings(true)} />
             </div>
             <div className="max-h-64 overflow-y-auto custom-scrollbar">
               {renderSpotsTable(false)}
@@ -601,12 +640,23 @@ function CompactLayout({
       case 'spots_sota':
         return (
           <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg">
-            <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e]">
+            <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e] flex items-center justify-between">
               <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">SOTA Spots</span>
+              <SpotSettingsGear accent="amber" onClick={() => setShowSotaSettings(true)} />
             </div>
             <div className="max-h-64 overflow-y-auto custom-scrollbar">
               {renderSotaSpotsTable()}
             </div>
+          </div>
+        );
+
+      case 'solar':
+        return (
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg flex flex-col">
+            <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e]">
+              <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">Solar Conditions</span>
+            </div>
+            <SolarPanel solarData={solarData} onRefresh={requestSolarData} />
           </div>
         );
 
@@ -654,7 +704,7 @@ function CompactLayout({
     status, connected, availableModes, socket, vfoSupported,
     isPhoneVFOCollapsed,
     vfoStep, inputVfoA, inputVfoB, localMode,
-    history, activeMeter, isCompactSMeterCollapsed, cwDecodeEnabled,
+    history, activeMeter, isCompactSMeterCollapsed,
     cwDecodedText, cwStats, cwScrollContainerRef,
     videoStatus, isVideoCollapsed, isElectronSource, videoError,
     audioStatus, localAudioReady, inboundMuted, outboundMuted, audioSettings, audioWasRestarted,
@@ -663,8 +713,10 @@ function CompactLayout({
     nbCapabilities, nrCapabilities, anfCapabilities,
     localRFPower, rfPowerCapabilities, localRFLevel, localNRLevel, localNBLevel,
     cwSettings, cwKeyActive, cwStuckAlert,
-    potaEnabled, sotaEnabled,
+    potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter,
+    sotaPollRate, sotaMaxAge, sotaModeFilter, sotaBandFilter,
     isConsoleCollapsed, consoleLogs, rawCommand,
+    solarData, requestSolarData,
     compactLayout, isEditMode, gridCallbacks,
   ]);
 
@@ -808,6 +860,25 @@ function CompactLayout({
           )}
         </>
       )}
+
+      <SpotSettingsModal
+        isOpen={showPotaSettings}
+        onClose={() => setShowPotaSettings(false)}
+        type="pota"
+        pollRate={potaPollRate} setPollRate={setPotaPollRate}
+        maxAge={potaMaxAge} setMaxAge={setPotaMaxAge}
+        modeFilter={potaModeFilter} setModeFilter={setPotaModeFilter}
+        bandFilter={potaBandFilter} setBandFilter={setPotaBandFilter}
+      />
+      <SpotSettingsModal
+        isOpen={showSotaSettings}
+        onClose={() => setShowSotaSettings(false)}
+        type="sota"
+        pollRate={sotaPollRate} setPollRate={setSotaPollRate}
+        maxAge={sotaMaxAge} setMaxAge={setSotaMaxAge}
+        modeFilter={sotaModeFilter} setModeFilter={setSotaModeFilter}
+        bandFilter={sotaBandFilter} setBandFilter={setSotaBandFilter}
+      />
     </div>
   );
 }
