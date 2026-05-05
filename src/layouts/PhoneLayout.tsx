@@ -16,6 +16,7 @@ import type { GridItem, GridLayoutCallbacks, PanelType, ViewLayout } from "../ty
 import { PANEL_LABELS } from "../types/layout";
 import type { SolarData } from "../types/solar";
 import SolarPanel from "../panels/SolarPanel";
+import MufMapPanel from "../panels/MufMapPanel";
 import PanelChrome from "../components/PanelChrome";
 import EditToolbar from "../components/EditToolbar";
 import PanelPicker from "../components/PanelPicker";
@@ -27,7 +28,9 @@ import VideoAudioPanel, {
   VideoAudioHeaderActions,
 } from "../panels/VideoAudioPanel";
 import SpotsPanel, { SpotSettingsGear } from "../panels/SpotsPanel";
+import SpotComboPanel from "../panels/SpotComboPanel";
 import SpotSettingsModal from "../modals/SpotSettingsModal";
+import ComboSpotSettingsModal from "../modals/ComboSpotSettingsModal";
 import ControlsPanel from "../panels/ControlsPanel";
 import TabbedMeterPanel, {
   TabbedMeterHeaderContent,
@@ -35,7 +38,7 @@ import TabbedMeterPanel, {
 
 const PHONE_PANEL_TYPES: PanelType[] = [
   'vfo', 'videoaudio', 'smeter', 'controls',
-  'spots_pota', 'spots_sota', 'cwdecode', 'commandconsole', 'solar',
+  'spots_pota', 'spots_sota', 'spots_wwff', 'spots_combo', 'cwdecode', 'commandconsole', 'solar', 'mufmap',
 ];
 
 export interface PhoneLayoutProps {
@@ -133,7 +136,6 @@ export interface PhoneLayoutProps {
   // POTA spots
   potaSpotsCollapsed: boolean;
   filteredSpots: any[];
-  potaSpotsBoxRef: React.RefObject<HTMLDivElement>;
   setPotaSpotsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   potaPollRate: number;
   setPotaPollRate: (v: number) => void;
@@ -148,7 +150,6 @@ export interface PhoneLayoutProps {
   // SOTA spots
   sotaSpotsCollapsed: boolean;
   filteredSotaSpots: any[];
-  sotaSpotsBoxRef: React.RefObject<HTMLDivElement>;
   setSotaSpotsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   sotaPollRate: number;
   setSotaPollRate: (v: number) => void;
@@ -159,6 +160,20 @@ export interface PhoneLayoutProps {
   sotaBandFilter: string[];
   setSotaBandFilter: (v: string[]) => void;
   renderSotaSpotsTable: () => React.ReactElement;
+
+  // WWFF spots
+  wwffSpotsCollapsed: boolean;
+  filteredWwffSpots: any[];
+  setWwffSpotsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  wwffPollRate: number;
+  setWwffPollRate: (v: number) => void;
+  wwffMaxAge: number;
+  setWwffMaxAge: (v: number) => void;
+  wwffModeFilter: string[];
+  setWwffModeFilter: (v: string[]) => void;
+  wwffBandFilter: string[];
+  setWwffBandFilter: (v: string[]) => void;
+  renderWwffSpotsTable: () => React.ReactElement;
 
   // CW
   cwSettings: CwSettings;
@@ -265,7 +280,6 @@ function PhoneLayout({
   getAgcLabel,
   potaSpotsCollapsed,
   filteredSpots,
-  potaSpotsBoxRef,
   setPotaSpotsCollapsed,
   potaPollRate,
   setPotaPollRate,
@@ -278,7 +292,6 @@ function PhoneLayout({
   renderSpotsTable,
   sotaSpotsCollapsed,
   filteredSotaSpots,
-  sotaSpotsBoxRef,
   setSotaSpotsCollapsed,
   sotaPollRate,
   setSotaPollRate,
@@ -289,6 +302,18 @@ function PhoneLayout({
   sotaBandFilter,
   setSotaBandFilter,
   renderSotaSpotsTable,
+  wwffSpotsCollapsed,
+  filteredWwffSpots,
+  setWwffSpotsCollapsed,
+  wwffPollRate,
+  setWwffPollRate,
+  wwffMaxAge,
+  setWwffMaxAge,
+  wwffModeFilter,
+  setWwffModeFilter,
+  wwffBandFilter,
+  setWwffBandFilter,
+  renderWwffSpotsTable,
   cwSettings,
   cwKeyActive,
   cwStuckAlert,
@@ -312,6 +337,9 @@ function PhoneLayout({
   const [showPanelPicker, setShowPanelPicker] = useState(false);
   const [showPotaSettings, setShowPotaSettings] = useState(false);
   const [showSotaSettings, setShowSotaSettings] = useState(false);
+  const [showWwffSettings, setShowWwffSettings] = useState(false);
+  const [showComboSettings, setShowComboSettings] = useState(false);
+  const [spotsComboCollapsed, setSpotsComboCollapsed] = useState(false);
   const [isSolarCollapsed, setIsSolarCollapsed] = useState(false);
 
   const existingPhonePanelTypes = useMemo(() => {
@@ -337,7 +365,8 @@ function PhoneLayout({
     ]);
   }
 
-  function renderPhonePanel(panelType: PanelType | undefined): React.ReactNode {
+  function renderPhonePanel(item: GridItem): React.ReactNode {
+    const panelType = item.panelType;
     switch (panelType) {
       case 'vfo':
         return (
@@ -532,7 +561,6 @@ function PhoneLayout({
                 <SpotSettingsGear accent="emerald" onClick={() => setShowPotaSettings(true)} />
               </div>
             }
-            outerRef={potaSpotsBoxRef}
             bodyClassName="p-0"
             headerSize="md"
           >
@@ -558,13 +586,56 @@ function PhoneLayout({
                 <SpotSettingsGear accent="amber" onClick={() => setShowSotaSettings(true)} />
               </div>
             }
-            outerRef={sotaSpotsBoxRef}
             bodyClassName="p-0"
             headerSize="md"
           >
             <SpotsPanel
               type="sota"
               renderTable={() => renderSotaSpotsTable()}
+            />
+          </PanelChrome>
+        );
+
+      case 'spots_wwff':
+        return (
+          <PanelChrome
+            title="WWFF Spots"
+            icon={<MapPin size={12} />}
+            isCollapsed={wwffSpotsCollapsed}
+            setIsCollapsed={setWwffSpotsCollapsed}
+            headerActions={
+              <div className="flex items-center gap-1.5">
+                <span className="text-[0.5rem] text-[#8e9299]">
+                  {filteredWwffSpots.length} spot{filteredWwffSpots.length !== 1 ? "s" : ""}
+                </span>
+                <SpotSettingsGear accent="sky" onClick={() => setShowWwffSettings(true)} />
+              </div>
+            }
+            bodyClassName="p-0"
+            headerSize="md"
+          >
+            <SpotsPanel
+              type="wwff"
+              renderTable={() => renderWwffSpotsTable()}
+            />
+          </PanelChrome>
+        );
+
+      case 'spots_combo':
+        return (
+          <PanelChrome
+            title="All Spots"
+            icon={<MapPin size={12} />}
+            isCollapsed={spotsComboCollapsed}
+            setIsCollapsed={setSpotsComboCollapsed}
+            bodyClassName="p-0"
+            headerSize="md"
+          >
+            <SpotComboPanel
+              renderPotaTable={renderSpotsTable}
+              renderSotaTable={renderSotaSpotsTable}
+              renderWwffTable={renderWwffSpotsTable}
+              onOpenSettings={() => setShowComboSettings(true)}
             />
           </PanelChrome>
         );
@@ -615,6 +686,16 @@ function PhoneLayout({
           </PanelChrome>
         );
 
+      case 'mufmap':
+        return (
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg flex flex-col">
+            <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e]">
+              <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">MUF Map</span>
+            </div>
+            <MufMapPanel heightPx={item.heightPx} />
+          </div>
+        );
+
       default:
         return null;
     }
@@ -633,7 +714,7 @@ function PhoneLayout({
 
       {visibleItems.map((item, idx) => (
         <div key={item.i} className="relative">
-          {renderPhonePanel(item.panelType)}
+          {renderPhonePanel(item)}
           {isEditMode && (
             <div className="absolute top-1.5 right-1.5 z-30 flex items-center gap-0.5">
               <span className="text-[0.5rem] uppercase tracking-widest font-bold text-[#5a5b5e] mr-1 select-none">
@@ -681,7 +762,7 @@ function PhoneLayout({
             <PanelPicker
               availableTypes={PHONE_PANEL_TYPES}
               existingTypes={existingPhonePanelTypes}
-              onSelect={(type) => { gridCallbacks.addPanel(type); setShowPanelPicker(false); }}
+              onSelect={(type, config) => { gridCallbacks.addPanel(type, config); setShowPanelPicker(false); }}
               onClose={() => setShowPanelPicker(false)}
             />
           )}
@@ -705,6 +786,31 @@ function PhoneLayout({
         maxAge={sotaMaxAge} setMaxAge={setSotaMaxAge}
         modeFilter={sotaModeFilter} setModeFilter={setSotaModeFilter}
         bandFilter={sotaBandFilter} setBandFilter={setSotaBandFilter}
+      />
+      <SpotSettingsModal
+        isOpen={showWwffSettings}
+        onClose={() => setShowWwffSettings(false)}
+        type="wwff"
+        pollRate={wwffPollRate} setPollRate={setWwffPollRate}
+        maxAge={wwffMaxAge} setMaxAge={setWwffMaxAge}
+        modeFilter={wwffModeFilter} setModeFilter={setWwffModeFilter}
+        bandFilter={wwffBandFilter} setBandFilter={setWwffBandFilter}
+      />
+      <ComboSpotSettingsModal
+        isOpen={showComboSettings}
+        onClose={() => setShowComboSettings(false)}
+        potaPollRate={potaPollRate} setPotaPollRate={setPotaPollRate}
+        potaMaxAge={potaMaxAge} setPotaMaxAge={setPotaMaxAge}
+        potaModeFilter={potaModeFilter} setPotaModeFilter={setPotaModeFilter}
+        potaBandFilter={potaBandFilter} setPotaBandFilter={setPotaBandFilter}
+        sotaPollRate={sotaPollRate} setSotaPollRate={setSotaPollRate}
+        sotaMaxAge={sotaMaxAge} setSotaMaxAge={setSotaMaxAge}
+        sotaModeFilter={sotaModeFilter} setSotaModeFilter={setSotaModeFilter}
+        sotaBandFilter={sotaBandFilter} setSotaBandFilter={setSotaBandFilter}
+        wwffPollRate={wwffPollRate} setWwffPollRate={setWwffPollRate}
+        wwffMaxAge={wwffMaxAge} setWwffMaxAge={setWwffMaxAge}
+        wwffModeFilter={wwffModeFilter} setWwffModeFilter={setWwffModeFilter}
+        wwffBandFilter={wwffBandFilter} setWwffBandFilter={setWwffBandFilter}
       />
     </div>
   );

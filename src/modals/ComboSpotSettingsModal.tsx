@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { MapPin, X } from "lucide-react";
 import { cn } from "../utils";
 import { POTA_BANDS } from "../constants";
@@ -6,38 +6,84 @@ import { POTA_BANDS } from "../constants";
 const SPOT_MODES = ['SSB', 'CW', 'FT8', 'FT4'] as const;
 const ALL_BAND_LABELS = POTA_BANDS.map(b => b.label);
 
-export interface SpotSettingsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  type: 'pota' | 'sota' | 'wwff';
-  pollRate: number;
-  setPollRate: (v: number) => void;
-  maxAge: number;
-  setMaxAge: (v: number) => void;
-  modeFilter: string[];
-  setModeFilter: (v: string[]) => void;
-  bandFilter: string[];
-  setBandFilter: (v: string[]) => void;
+type Tab = 'pota' | 'sota' | 'wwff';
+
+const TABS: { key: Tab; label: string; ac: ReturnType<typeof acFor> }[] = [
+  { key: 'pota', label: 'POTA', ac: acFor('pota') },
+  { key: 'sota', label: 'SOTA', ac: acFor('sota') },
+  { key: 'wwff', label: 'WWFF', ac: acFor('wwff') },
+];
+
+function acFor(type: Tab) {
+  if (type === 'pota') return {
+    iconBg: 'bg-emerald-500/10 text-emerald-500',
+    pill: 'bg-emerald-500/10 border-emerald-500/60 text-emerald-400',
+    check: 'accent-emerald-500',
+    focus: 'focus:border-emerald-500',
+    activeTab: 'text-emerald-400 border-emerald-500',
+  };
+  if (type === 'wwff') return {
+    iconBg: 'bg-sky-500/10 text-sky-500',
+    pill: 'bg-sky-500/10 border-sky-500/60 text-sky-400',
+    check: 'accent-sky-500',
+    focus: 'focus:border-sky-500',
+    activeTab: 'text-sky-400 border-sky-500',
+  };
+  return {
+    iconBg: 'bg-amber-500/10 text-amber-500',
+    pill: 'bg-amber-500/10 border-amber-500/60 text-amber-400',
+    check: 'accent-amber-500',
+    focus: 'focus:border-amber-500',
+    activeTab: 'text-amber-400 border-amber-500',
+  };
 }
 
-export default function SpotSettingsModal({
-  isOpen, onClose, type,
-  pollRate, setPollRate,
-  maxAge, setMaxAge,
-  modeFilter, setModeFilter,
-  bandFilter, setBandFilter,
-}: SpotSettingsModalProps) {
+export interface ComboSpotSettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  potaPollRate: number; setPotaPollRate: (v: number) => void;
+  potaMaxAge: number; setPotaMaxAge: (v: number) => void;
+  potaModeFilter: string[]; setPotaModeFilter: (v: string[]) => void;
+  potaBandFilter: string[]; setPotaBandFilter: (v: string[]) => void;
+  sotaPollRate: number; setSotaPollRate: (v: number) => void;
+  sotaMaxAge: number; setSotaMaxAge: (v: number) => void;
+  sotaModeFilter: string[]; setSotaModeFilter: (v: string[]) => void;
+  sotaBandFilter: string[]; setSotaBandFilter: (v: string[]) => void;
+  wwffPollRate: number; setWwffPollRate: (v: number) => void;
+  wwffMaxAge: number; setWwffMaxAge: (v: number) => void;
+  wwffModeFilter: string[]; setWwffModeFilter: (v: string[]) => void;
+  wwffBandFilter: string[]; setWwffBandFilter: (v: string[]) => void;
+}
+
+export default function ComboSpotSettingsModal(props: ComboSpotSettingsModalProps) {
+  const { isOpen, onClose } = props;
+  const [activeTab, setActiveTab] = useState<Tab>('pota');
+
   if (!isOpen) return null;
 
-  const isPota = type === 'pota';
-  const isWwff = type === 'wwff';
-  const ac = isPota
-    ? { iconBg: 'bg-emerald-500/10 text-emerald-500', pill: 'bg-emerald-500/10 border-emerald-500/60 text-emerald-400', check: 'accent-emerald-500', focus: 'focus:border-emerald-500' }
-    : isWwff
-    ? { iconBg: 'bg-sky-500/10 text-sky-500', pill: 'bg-sky-500/10 border-sky-500/60 text-sky-400', check: 'accent-sky-500', focus: 'focus:border-sky-500' }
-    : { iconBg: 'bg-amber-500/10 text-amber-500', pill: 'bg-amber-500/10 border-amber-500/60 text-amber-400', check: 'accent-amber-500', focus: 'focus:border-amber-500' };
+  const config = {
+    pota: {
+      pollRate: props.potaPollRate, setPollRate: props.setPotaPollRate,
+      maxAge: props.potaMaxAge, setMaxAge: props.setPotaMaxAge,
+      modeFilter: props.potaModeFilter, setModeFilter: props.setPotaModeFilter,
+      bandFilter: props.potaBandFilter, setBandFilter: props.setPotaBandFilter,
+    },
+    sota: {
+      pollRate: props.sotaPollRate, setPollRate: props.setSotaPollRate,
+      maxAge: props.sotaMaxAge, setMaxAge: props.setSotaMaxAge,
+      modeFilter: props.sotaModeFilter, setModeFilter: props.setSotaModeFilter,
+      bandFilter: props.sotaBandFilter, setBandFilter: props.setSotaBandFilter,
+    },
+    wwff: {
+      pollRate: props.wwffPollRate, setPollRate: props.setWwffPollRate,
+      maxAge: props.wwffMaxAge, setMaxAge: props.setWwffMaxAge,
+      modeFilter: props.wwffModeFilter, setModeFilter: props.setWwffModeFilter,
+      bandFilter: props.wwffBandFilter, setBandFilter: props.setWwffBandFilter,
+    },
+  };
 
-  const title = isPota ? 'POTA Spots Settings' : isWwff ? 'WWFF Spots Settings' : 'SOTA Spots Settings';
+  const ac = acFor(activeTab);
+  const { pollRate, setPollRate, maxAge, setMaxAge, modeFilter, setModeFilter, bandFilter, setBandFilter } = config[activeTab];
 
   const allModesChecked = SPOT_MODES.every(m => modeFilter.includes(m));
   const allBandsChecked = ALL_BAND_LABELS.every(b => bandFilter.includes(b));
@@ -66,7 +112,7 @@ export default function SpotSettingsModal({
             <div className={cn("p-1.5 rounded-lg", ac.iconBg)}>
               <MapPin size={16} />
             </div>
-            <h2 className="text-sm font-bold uppercase tracking-tight">{title}</h2>
+            <h2 className="text-sm font-bold uppercase tracking-tight">All Spots Settings</h2>
           </div>
           <button
             onClick={onClose}
@@ -74,6 +120,24 @@ export default function SpotSettingsModal({
           >
             <X size={18} />
           </button>
+        </div>
+
+        {/* Tab bar */}
+        <div className="flex border-b border-[#2a2b2e] bg-[#1a1b1e]">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={cn(
+                'px-4 py-2 text-[0.5625rem] uppercase tracking-widest font-bold transition-colors border-b-2 -mb-px',
+                activeTab === t.key
+                  ? t.ac.activeTab
+                  : 'text-[#8e9299] border-transparent hover:text-white'
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         <div className="p-6 space-y-6">
@@ -100,7 +164,6 @@ export default function SpotSettingsModal({
             </div>
           </div>
 
-          {/* Mode Filter */}
           <div className="space-y-2">
             <label className="text-[0.625rem] uppercase text-[#8e9299]">Mode Filter</label>
             <div className="flex gap-2 flex-wrap">
@@ -127,7 +190,6 @@ export default function SpotSettingsModal({
             </div>
           </div>
 
-          {/* Band Filter */}
           <div className="space-y-2">
             <label className="text-[0.625rem] uppercase text-[#8e9299]">Band Filter</label>
             <div className="grid grid-cols-4 gap-1.5">

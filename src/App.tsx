@@ -28,7 +28,7 @@ import { useLayoutState } from "./hooks/useLayoutState";
 import { useCwDecoder } from "./hooks/useCwDecoder";
 import { usePanelState } from "./hooks/usePanelState";
 import { useLayoutConfig } from "./hooks/useLayoutConfig";
-import type { PanelType } from "./types/layout";
+import type { PanelType, PanelAddConfig } from "./types/layout";
 
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -93,7 +93,7 @@ export default function App() {
 
   const compactGridCallbacks = useMemo(() => ({
     onExitEditMode: () => setIsCompactEditMode(false),
-    addPanel: (panelType: PanelType) => addPanel('compact', panelType),
+    addPanel: (panelType: PanelType, config?: PanelAddConfig) => addPanel('compact', panelType, config),
     removePanel: (itemId: string) => removePanel('compact', itemId),
     setGridSize: (cols: number, rows: number) => setGridSize('compact', cols, rows),
     updateItemPositions: (positions: Array<{ i: string; x: number; y: number; w: number; h: number }>) => updateItemPositions('compact', positions),
@@ -102,7 +102,7 @@ export default function App() {
 
   const phoneGridCallbacks = useMemo(() => ({
     onExitEditMode: () => setIsPhoneEditMode(false),
-    addPanel: (panelType: PanelType) => addPanel('phone', panelType),
+    addPanel: (panelType: PanelType, config?: PanelAddConfig) => addPanel('phone', panelType, config),
     removePanel: (itemId: string) => removePanel('phone', itemId),
     setGridSize: (cols: number, rows: number) => setGridSize('phone', cols, rows),
     updateItemPositions: (positions: Array<{ i: string; x: number; y: number; w: number; h: number }>) => updateItemPositions('phone', positions),
@@ -269,12 +269,17 @@ export default function App() {
 
   const potaEnabled = useMemo(() => {
     const items = isPhone ? phoneLayout.items : compactLayout.items;
-    return items.some(i => i.panelType === 'spots_pota');
+    return items.some(i => i.panelType === 'spots_pota' || i.panelType === 'spots_combo');
   }, [isPhone, compactLayout.items, phoneLayout.items]);
 
   const sotaEnabled = useMemo(() => {
     const items = isPhone ? phoneLayout.items : compactLayout.items;
-    return items.some(i => i.panelType === 'spots_sota');
+    return items.some(i => i.panelType === 'spots_sota' || i.panelType === 'spots_combo');
+  }, [isPhone, compactLayout.items, phoneLayout.items]);
+
+  const wwffEnabled = useMemo(() => {
+    const items = isPhone ? phoneLayout.items : compactLayout.items;
+    return items.some(i => i.panelType === 'spots_wwff' || i.panelType === 'spots_combo');
   }, [isPhone, compactLayout.items, phoneLayout.items]);
 
   const {
@@ -292,16 +297,22 @@ export default function App() {
     sotaSortCol,
     sotaSortDir,
     sotaSpotsCollapsed, setSotaSpotsCollapsed,
-    potaSpotsVisible,
-    sotaSpotsVisible,
-    potaSpotsBoxRef,
-    sotaSpotsBoxRef,
+    wwffPollRate, setWwffPollRate,
+    wwffMaxAge, setWwffMaxAge,
+    wwffModeFilter, setWwffModeFilter,
+    wwffBandFilter, setWwffBandFilter,
+    wwffSortCol,
+    wwffSortDir,
+    wwffSpotsCollapsed, setWwffSpotsCollapsed,
     filteredSpots,
     filteredSotaSpots,
+    filteredWwffSpots,
     displayedSpots,
     displayedSotaSpots,
+    displayedWwffSpots,
     renderSpotsTable,
     renderSotaSpotsTable,
+    renderWwffSpotsTable,
   } = usePotaSpots({
     socket,
     connected,
@@ -309,12 +320,11 @@ export default function App() {
     inputVfoA,
     inputVfoB,
     availableModes,
-    containerRef,
     skipPollsCount,
     setStatus,
-    isPhone,
     potaEnabled,
     sotaEnabled,
+    wwffEnabled,
   });
 
   // ── Effects ───────────────────────────────────────────────────────────────
@@ -336,14 +346,15 @@ export default function App() {
         clientHost: host,
         clientPort: port,
         potaSettings: { pollRate: potaPollRate, maxAge: potaMaxAge, modeFilter: potaModeFilter, bandFilter: potaBandFilter },
-        sotaSettings: { pollRate: sotaPollRate, maxAge: sotaMaxAge, modeFilter: sotaModeFilter, bandFilter: sotaBandFilter }
+        sotaSettings: { pollRate: sotaPollRate, maxAge: sotaMaxAge, modeFilter: sotaModeFilter, bandFilter: sotaBandFilter },
+        wwffSettings: { pollRate: wwffPollRate, maxAge: wwffMaxAge, modeFilter: wwffModeFilter, bandFilter: wwffBandFilter },
       });
       localStorage.setItem("last-poll-rate", pollRate.toString());
       localStorage.setItem("last-host", host);
       localStorage.setItem("last-port", port.toString());
     }, 1000);
     return () => clearTimeout(timer);
-  }, [rigctldSettings, host, port, pollRate, socket, potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter, sotaPollRate, sotaMaxAge, sotaModeFilter, sotaBandFilter]);
+  }, [rigctldSettings, host, port, pollRate, socket, potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter, sotaPollRate, sotaMaxAge, sotaModeFilter, sotaBandFilter, wwffPollRate, wwffMaxAge, wwffModeFilter, wwffBandFilter]);
 
   // Notify server which meters need computing based on visible layout
   useEffect(() => {
@@ -580,7 +591,6 @@ export default function App() {
             getAgcLabel={getAgcLabel}
             potaSpotsCollapsed={potaSpotsCollapsed}
             filteredSpots={filteredSpots}
-            potaSpotsBoxRef={potaSpotsBoxRef}
             setPotaSpotsCollapsed={setPotaSpotsCollapsed}
             potaPollRate={potaPollRate}
             setPotaPollRate={setPotaPollRate}
@@ -593,7 +603,6 @@ export default function App() {
             renderSpotsTable={renderSpotsTable}
             sotaSpotsCollapsed={sotaSpotsCollapsed}
             filteredSotaSpots={filteredSotaSpots}
-            sotaSpotsBoxRef={sotaSpotsBoxRef}
             setSotaSpotsCollapsed={setSotaSpotsCollapsed}
             sotaPollRate={sotaPollRate}
             setSotaPollRate={setSotaPollRate}
@@ -604,6 +613,18 @@ export default function App() {
             sotaBandFilter={sotaBandFilter}
             setSotaBandFilter={setSotaBandFilter}
             renderSotaSpotsTable={renderSotaSpotsTable}
+            wwffSpotsCollapsed={wwffSpotsCollapsed}
+            filteredWwffSpots={filteredWwffSpots}
+            setWwffSpotsCollapsed={setWwffSpotsCollapsed}
+            wwffPollRate={wwffPollRate}
+            setWwffPollRate={setWwffPollRate}
+            wwffMaxAge={wwffMaxAge}
+            setWwffMaxAge={setWwffMaxAge}
+            wwffModeFilter={wwffModeFilter}
+            setWwffModeFilter={setWwffModeFilter}
+            wwffBandFilter={wwffBandFilter}
+            setWwffBandFilter={setWwffBandFilter}
+            renderWwffSpotsTable={renderWwffSpotsTable}
             cwSettings={cwSettings}
             cwKeyActive={cwKeyActive}
             cwStuckAlert={cwStuckAlert}
@@ -729,6 +750,15 @@ export default function App() {
             setSotaBandFilter={setSotaBandFilter}
             renderSpotsTable={renderSpotsTable}
             renderSotaSpotsTable={renderSotaSpotsTable}
+            wwffPollRate={wwffPollRate}
+            setWwffPollRate={setWwffPollRate}
+            wwffMaxAge={wwffMaxAge}
+            setWwffMaxAge={setWwffMaxAge}
+            wwffModeFilter={wwffModeFilter}
+            setWwffModeFilter={setWwffModeFilter}
+            wwffBandFilter={wwffBandFilter}
+            setWwffBandFilter={setWwffBandFilter}
+            renderWwffSpotsTable={renderWwffSpotsTable}
             isConsoleCollapsed={isConsoleCollapsed}
             consoleLogs={consoleLogs}
             rawCommand={rawCommand}

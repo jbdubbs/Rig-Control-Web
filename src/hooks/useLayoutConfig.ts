@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { LayoutConfig, ViewLayout, GridItem, PanelType } from '../types/layout';
+import type { LayoutConfig, ViewLayout, GridItem, PanelType, PanelAddConfig } from '../types/layout';
 import { PANEL_MIN_SIZES } from '../types/layout';
 
 
@@ -74,19 +74,22 @@ export function useLayoutConfig() {
     });
   }, []);
 
-  const addPanel = useCallback((view: 'compact' | 'phone', panelType: PanelType, cell?: { x: number; y: number }) => {
+  const addPanel = useCallback((view: 'compact' | 'phone', panelType: PanelType, config?: PanelAddConfig) => {
     setConfig(prev => {
       const viewLayout = prev[view];
       const mins = PANEL_MIN_SIZES[panelType];
+      const isFullWidth = config?.fullWidth ?? false;
       const newItem: GridItem = {
         i: `${panelType}-${Date.now()}`,
-        x: cell?.x ?? 0,
-        y: cell?.y ?? viewLayout.items.reduce((max, item) => Math.max(max, item.y + item.h), 0),
-        w: mins?.minW ?? 1,
+        x: 0,
+        y: viewLayout.items.reduce((max, item) => Math.max(max, item.y + item.h), 0),
+        w: isFullWidth ? 9999 : (mins?.minW ?? 1),
         h: mins?.minH ?? 1,
         minW: mins?.minW ?? 1,
         minH: mins?.minH ?? 1,
         panelType,
+        ...(config?.heightPx !== undefined && { heightPx: config.heightPx }),
+        ...(config?.fullWidth !== undefined && { fullWidth: config.fullWidth }),
       };
       const next = { ...prev, [view]: { ...viewLayout, items: [...viewLayout.items, newItem] } };
       saveToStorage(next);

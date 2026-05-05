@@ -22,6 +22,21 @@ export interface SotaSpot {
   timeStamp: string;
 }
 
+export interface WwffSpot {
+  id: number;
+  activator: string;
+  frequency_khz: number;
+  mode: string;
+  reference: string;
+  reference_name: string;
+  remarks: string;
+  spotter: string;
+  latitude: number;
+  longitude: number;
+  spot_time: number;
+  spot_time_formatted: string;
+}
+
 export interface RigStatus {
   frequency: string;
   mode: string;

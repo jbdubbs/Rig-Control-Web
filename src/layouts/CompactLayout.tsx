@@ -25,6 +25,7 @@ import type { GridItem, GridLayoutCallbacks, PanelType, ViewLayout } from "../ty
 import { PANEL_LABELS } from "../types/layout";
 import type { SolarData } from "../types/solar";
 import SolarPanel from "../panels/SolarPanel";
+import MufMapPanel from "../panels/MufMapPanel";
 import PanelChrome from "../components/PanelChrome";
 import EditToolbar from "../components/EditToolbar";
 import PanelPicker from "../components/PanelPicker";
@@ -37,13 +38,15 @@ import VideoAudioPanel, {
 import ControlsPanel from "../panels/ControlsPanel";
 import CwDecodePanel from "../panels/CwDecodePanel";
 import { SpotSettingsGear } from "../panels/SpotsPanel";
+import SpotComboPanel from "../panels/SpotComboPanel";
 import SpotSettingsModal from "../modals/SpotSettingsModal";
+import ComboSpotSettingsModal from "../modals/ComboSpotSettingsModal";
 
 export type { GridLayoutCallbacks };
 
 const COMPACT_PANEL_TYPES: PanelType[] = [
   'vfo', 'smeter', 'videoaudio', 'controls', 'rflevels',
-  'cwdecode', 'commandconsole', 'spots_pota', 'spots_sota', 'solar',
+  'cwdecode', 'commandconsole', 'spots_pota', 'spots_sota', 'spots_wwff', 'spots_combo', 'solar', 'mufmap',
 ];
 
 export interface CompactLayoutProps {
@@ -169,6 +172,15 @@ export interface CompactLayoutProps {
   setSotaBandFilter: (v: string[]) => void;
   renderSpotsTable: (showFullLocation: boolean) => React.ReactElement;
   renderSotaSpotsTable: () => React.ReactElement;
+  wwffPollRate: number;
+  setWwffPollRate: (v: number) => void;
+  wwffMaxAge: number;
+  setWwffMaxAge: (v: number) => void;
+  wwffModeFilter: string[];
+  setWwffModeFilter: (v: string[]) => void;
+  wwffBandFilter: string[];
+  setWwffBandFilter: (v: string[]) => void;
+  renderWwffSpotsTable: () => React.ReactElement;
 
   // Command console
   isConsoleCollapsed: boolean;
@@ -293,6 +305,15 @@ function CompactLayout({
   setSotaBandFilter,
   renderSpotsTable,
   renderSotaSpotsTable,
+  wwffPollRate,
+  setWwffPollRate,
+  wwffMaxAge,
+  setWwffMaxAge,
+  wwffModeFilter,
+  setWwffModeFilter,
+  wwffBandFilter,
+  setWwffBandFilter,
+  renderWwffSpotsTable,
   isConsoleCollapsed,
   consoleLogs,
   rawCommand,
@@ -310,6 +331,8 @@ function CompactLayout({
   const [showPanelPicker, setShowPanelPicker] = useState(false);
   const [showPotaSettings, setShowPotaSettings] = useState(false);
   const [showSotaSettings, setShowSotaSettings] = useState(false);
+  const [showWwffSettings, setShowWwffSettings] = useState(false);
+  const [showComboSettings, setShowComboSettings] = useState(false);
 
   const existingPanelTypes = useMemo(() => {
     const types = new Set<PanelType>();
@@ -650,6 +673,31 @@ function CompactLayout({
           </div>
         );
 
+      case 'spots_wwff':
+        return (
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg">
+            <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e] flex items-center justify-between">
+              <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">WWFF Spots</span>
+              <SpotSettingsGear accent="sky" onClick={() => setShowWwffSettings(true)} />
+            </div>
+            <div className="max-h-64 overflow-y-auto custom-scrollbar">
+              {renderWwffSpotsTable()}
+            </div>
+          </div>
+        );
+
+      case 'spots_combo':
+        return (
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg">
+            <SpotComboPanel
+              renderPotaTable={renderSpotsTable}
+              renderSotaTable={renderSotaSpotsTable}
+              renderWwffTable={renderWwffSpotsTable}
+              onOpenSettings={() => setShowComboSettings(true)}
+            />
+          </div>
+        );
+
       case 'solar':
         return (
           <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg flex flex-col">
@@ -657,6 +705,16 @@ function CompactLayout({
               <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">Solar Conditions</span>
             </div>
             <SolarPanel solarData={solarData} onRefresh={requestSolarData} />
+          </div>
+        );
+
+      case 'mufmap':
+        return (
+          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden shadow-lg flex flex-col">
+            <div className="p-2 border-b border-[#2a2b2e] bg-[#1a1b1e]">
+              <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">MUF Map</span>
+            </div>
+            <MufMapPanel heightPx={_item.heightPx} />
           </div>
         );
 
@@ -715,6 +773,7 @@ function CompactLayout({
     cwSettings, cwKeyActive, cwStuckAlert,
     potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter,
     sotaPollRate, sotaMaxAge, sotaModeFilter, sotaBandFilter,
+    wwffPollRate, wwffMaxAge, wwffModeFilter, wwffBandFilter,
     isConsoleCollapsed, consoleLogs, rawCommand,
     solarData, requestSolarData,
     compactLayout, isEditMode, gridCallbacks,
@@ -854,7 +913,7 @@ function CompactLayout({
             <PanelPicker
               availableTypes={COMPACT_PANEL_TYPES}
               existingTypes={existingPanelTypes}
-              onSelect={(type) => { gridCallbacks.addPanel(type); setShowPanelPicker(false); }}
+              onSelect={(type, config) => { gridCallbacks.addPanel(type, config); setShowPanelPicker(false); }}
               onClose={() => setShowPanelPicker(false)}
             />
           )}
@@ -878,6 +937,31 @@ function CompactLayout({
         maxAge={sotaMaxAge} setMaxAge={setSotaMaxAge}
         modeFilter={sotaModeFilter} setModeFilter={setSotaModeFilter}
         bandFilter={sotaBandFilter} setBandFilter={setSotaBandFilter}
+      />
+      <SpotSettingsModal
+        isOpen={showWwffSettings}
+        onClose={() => setShowWwffSettings(false)}
+        type="wwff"
+        pollRate={wwffPollRate} setPollRate={setWwffPollRate}
+        maxAge={wwffMaxAge} setMaxAge={setWwffMaxAge}
+        modeFilter={wwffModeFilter} setModeFilter={setWwffModeFilter}
+        bandFilter={wwffBandFilter} setBandFilter={setWwffBandFilter}
+      />
+      <ComboSpotSettingsModal
+        isOpen={showComboSettings}
+        onClose={() => setShowComboSettings(false)}
+        potaPollRate={potaPollRate} setPotaPollRate={setPotaPollRate}
+        potaMaxAge={potaMaxAge} setPotaMaxAge={setPotaMaxAge}
+        potaModeFilter={potaModeFilter} setPotaModeFilter={setPotaModeFilter}
+        potaBandFilter={potaBandFilter} setPotaBandFilter={setPotaBandFilter}
+        sotaPollRate={sotaPollRate} setSotaPollRate={setSotaPollRate}
+        sotaMaxAge={sotaMaxAge} setSotaMaxAge={setSotaMaxAge}
+        sotaModeFilter={sotaModeFilter} setSotaModeFilter={setSotaModeFilter}
+        sotaBandFilter={sotaBandFilter} setSotaBandFilter={setSotaBandFilter}
+        wwffPollRate={wwffPollRate} setWwffPollRate={setWwffPollRate}
+        wwffMaxAge={wwffMaxAge} setWwffMaxAge={setWwffMaxAge}
+        wwffModeFilter={wwffModeFilter} setWwffModeFilter={setWwffModeFilter}
+        wwffBandFilter={wwffBandFilter} setWwffBandFilter={setWwffBandFilter}
       />
     </div>
   );
