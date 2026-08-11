@@ -95,7 +95,8 @@
         "libasound2",
         "libpulse0",
         "libusb-1.0-0",
-        "libreadline8"
+        "libreadline8",
+        "libportaudio2"
       ],
       "recommends": [
         "libappindicator3-1"
@@ -114,7 +115,8 @@
         "alsa-lib",
         "pulseaudio-libs",
         "libusb1",
-        "readline"
+        "readline",
+        "portaudio"
       ]
     },
     "mac": {
