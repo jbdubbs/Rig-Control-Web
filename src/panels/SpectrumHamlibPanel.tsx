@@ -1,9 +1,11 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { Activity, Settings, X } from "lucide-react";
+import { Activity, RefreshCw, Settings, X } from "lucide-react";
 import type { Socket } from "socket.io-client";
 import PanelChrome from "../components/PanelChrome";
 import type { SpectrumData, SpectrumSettings } from "../types";
 import { COLORMAPS, COLORMAP_NAMES, amplitudeToPixel } from "../utils/spectrumColors";
+import { useAutoLevel } from "../hooks/useAutoLevel";
+import type { AutoLevelOptions } from "../utils/autoLevel";
 
 // The FT-710 wf1 array is 850 bins; only 790 cover the nominal span (395 per half-span),
 // with 30 guard bins on each side. 850/790 maps pixel position to true frequency.
@@ -27,6 +29,19 @@ const SOURCE_DISPLAY_DEFAULTS: Record<SpectrumSettings["source"], { floor: numbe
   hamlib: { floor: FLOOR_DEFAULT_HAMLIB, ceiling: CEILING_DEFAULT_HAMLIB, lsKey: "" },
   ft4222: { floor: FLOOR_DEFAULT_FT4222, ceiling: CEILING_DEFAULT_FT4222, lsKey: "-ft4222" },
   iq: { floor: FLOOR_DEFAULT_IQ, ceiling: CEILING_DEFAULT_IQ, lsKey: "-iq" },
+};
+
+// The FT4222 SPI stream is a raw, single-look (un-averaged) periodogram
+// straight from the radio's DSP, so its floor estimate needs a higher
+// percentile than the p10 default to avoid landing in the tail of a
+// single-look power estimate's exponential distribution (see autoLevel.ts
+// header comment) — p63.2 is the percentile that equals that distribution's
+// own mean, i.e. ~0dB bias instead of p10's ~-9.8dB. hamlib/iq are left at
+// the default: hamlib's reported level may already reflect radio-side
+// detector averaging, and the iq source's Web Audio AnalyserNode applies its
+// own smoothingTimeConstant averaging before we ever see the FFT bins.
+const SOURCE_ALGORITHM_OPTIONS: Partial<Record<SpectrumSettings["source"], Partial<AutoLevelOptions>>> = {
+  ft4222: { floorPercentile: 63.2 },
 };
 
 const IQ_SAMPLE_RATE_OPTIONS = [48000, 96000, 192000];
@@ -84,11 +99,20 @@ export default function SpectrumHamlibPanel({
   const sourceDefaults = SOURCE_DISPLAY_DEFAULTS[spectrumSettings.source];
   const floorDefault = sourceDefaults.floor;
   const ceilingDefault = sourceDefaults.ceiling;
-  const lsFloorKey = `floor${sourceDefaults.lsKey}`;
-  const lsCeilingKey = `ceiling${sourceDefaults.lsKey}`;
 
-  const [floor, setFloor] = useState(() => Number(lsGet(lsKey(lsFloorKey), String(floorDefault))));
-  const [ceiling, setCeiling] = useState(() => Number(lsGet(lsKey(lsCeilingKey), String(ceilingDefault))));
+  const autoLevel = useAutoLevel({
+    lsKey,
+    sourceSuffix: sourceDefaults.lsKey,
+    manualFloorDefault: floorDefault,
+    manualCeilingDefault: ceilingDefault,
+    algorithmOptions: SOURCE_ALGORITHM_OPTIONS[spectrumSettings.source],
+  });
+  // Keeps the draw loop's closure on the latest sampleFrame/getEffective*
+  // without needing floor/ceiling/auto-toggle changes to tear down and
+  // rebuild the rAF loop below (that rebuild-on-every-change was the root
+  // cause of floor/ceiling edits instantly re-painting the whole waterfall).
+  const autoLevelRef = useRef(autoLevel);
+  autoLevelRef.current = autoLevel;
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string } | null>(null);
   const [cursorLineX, setCursorLineX] = useState<number | null>(null);
   const [yaesuStatus, setYaesuStatus] = useState<{ running: boolean; error: string | null }>({ running: false, error: null });
@@ -96,11 +120,6 @@ export default function SpectrumHamlibPanel({
   const [iqInputDevices, setIqInputDevices] = useState<{ name: string; altName: string; hostAPIName: string; defaultSampleRate: number }[]>([]);
   const [optimisticSpanIndex, setOptimisticSpanIndex] = useState<number | null>(null);
   const optimisticTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    setFloor(Number(lsGet(lsKey(lsFloorKey), String(floorDefault))));
-    setCeiling(Number(lsGet(lsKey(lsCeilingKey), String(ceilingDefault))));
-  }, [spectrumSettings.source]);
 
   useEffect(() => {
     if (!socket) return;
@@ -203,6 +222,14 @@ export default function SpectrumHamlibPanel({
 
       const ampRange = data.maxLevel - data.minLevel || 1;
 
+      const dbValues = new Float32Array(data.amplitudes.length);
+      for (let i = 0; i < data.amplitudes.length; i++) {
+        dbValues[i] = data.minLevel + (data.amplitudes[i] / 255) * ampRange;
+      }
+      autoLevelRef.current.sampleFrame(dbValues, performance.now());
+      const effFloor = autoLevelRef.current.getEffectiveFloor();
+      const effCeiling = autoLevelRef.current.getEffectiveCeiling();
+
       // --- Spectrum line ---
       const sCtx = specCanvas.getContext("2d");
       if (sCtx) {
@@ -211,8 +238,8 @@ export default function SpectrumHamlibPanel({
 
         sCtx.strokeStyle = "rgba(255,255,255,0.08)";
         sCtx.lineWidth = 1;
-        for (let db = Math.ceil(floor / 10) * 10; db <= ceiling; db += 10) {
-          const y = sh - ((db - floor) / (ceiling - floor)) * sh;
+        for (let db = Math.ceil(effFloor / 10) * 10; db <= effCeiling; db += 10) {
+          const y = sh - ((db - effFloor) / (effCeiling - effFloor)) * sh;
           sCtx.beginPath();
           sCtx.moveTo(0, y);
           sCtx.lineTo(w, y);
@@ -226,8 +253,7 @@ export default function SpectrumHamlibPanel({
 
         const step = w / data.amplitudes.length;
         for (let i = 0; i < data.amplitudes.length; i++) {
-          const dbm = data.minLevel + (data.amplitudes[i] / 255) * ampRange;
-          const norm = Math.max(0, Math.min(1, (dbm - floor) / (ceiling - floor)));
+          const norm = Math.max(0, Math.min(1, (dbValues[i] - effFloor) / (effCeiling - effFloor)));
           const x = i * step;
           const y = sh - norm * sh;
           if (i === 0) {
@@ -269,7 +295,7 @@ export default function SpectrumHamlibPanel({
           for (let col = 0; col < w; col++) {
             const ampIdx = Math.min(line.length - 1, Math.floor(col * step));
             const dbm = data.minLevel + (line[ampIdx] / 255) * ampRange;
-            const norm = Math.max(0, Math.min(1, (dbm - floor) / (ceiling - floor)));
+            const norm = Math.max(0, Math.min(1, (dbm - effFloor) / (effCeiling - effFloor)));
             buf32[row * w + col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
           }
         }
@@ -293,7 +319,7 @@ export default function SpectrumHamlibPanel({
 
     animFrameRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [isCollapsed, colorMapId, floor, ceiling, connected, spectrumEnabled, latestSpectrumRef, waterfallHistoryRef]);
+  }, [isCollapsed, colorMapId, connected, spectrumEnabled, latestSpectrumRef, waterfallHistoryRef]);
 
   const freqAxisContent = (() => {
     const data = latestSpectrumRef.current;
@@ -608,29 +634,60 @@ export default function SpectrumHamlibPanel({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Noise Floor</label>
-              <span className="text-xs font-mono text-[#8e9299]">{floor} dBm</span>
+              <span className="text-xs font-mono text-[#8e9299]">
+                {autoLevel.autoFloor ? `${Math.round(autoLevel.displayFloor)} dBm (auto)` : `${autoLevel.floor} dBm`}
+              </span>
             </div>
             <input
               type="range" min={-160} max={-10} step={5}
-              value={floor}
-              onChange={e => { setFloor(Number(e.target.value)); lsSet(lsKey(lsFloorKey), e.target.value); }}
-              className="w-full accent-emerald-500"
+              value={autoLevel.autoFloor ? Math.round(autoLevel.displayFloor) : autoLevel.floor}
+              disabled={autoLevel.autoFloor}
+              onChange={e => autoLevel.setFloor(Number(e.target.value))}
+              className="w-full accent-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
+            <label className="flex items-center gap-2 text-[0.625rem] text-[#8e9299]">
+              <input
+                type="checkbox"
+                checked={autoLevel.autoFloor}
+                onChange={e => autoLevel.setAutoFloor(e.target.checked)}
+              />
+              Auto Floor
+            </label>
           </div>
 
           {/* Ceiling */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Ceiling</label>
-              <span className="text-xs font-mono text-[#8e9299]">{ceiling} dBm</span>
+              <span className="text-xs font-mono text-[#8e9299]">
+                {autoLevel.autoCeiling ? `${Math.round(autoLevel.displayCeiling)} dBm (auto)` : `${autoLevel.ceiling} dBm`}
+              </span>
             </div>
             <input
               type="range" min={-100} max={50} step={5}
-              value={ceiling}
-              onChange={e => { setCeiling(Number(e.target.value)); lsSet(lsKey(lsCeilingKey), e.target.value); }}
-              className="w-full accent-emerald-500"
+              value={autoLevel.autoCeiling ? Math.round(autoLevel.displayCeiling) : autoLevel.ceiling}
+              disabled={autoLevel.autoCeiling}
+              onChange={e => autoLevel.setCeiling(Number(e.target.value))}
+              className="w-full accent-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
+            <label className="flex items-center gap-2 text-[0.625rem] text-[#8e9299]">
+              <input
+                type="checkbox"
+                checked={autoLevel.autoCeiling}
+                onChange={e => autoLevel.setAutoCeiling(e.target.checked)}
+              />
+              Auto Ceiling
+            </label>
           </div>
+
+          <button
+            onClick={() => autoLevel.resetAutoScale()}
+            disabled={!autoLevel.autoFloor && !autoLevel.autoCeiling}
+            className="flex items-center gap-1.5 text-[0.625rem] text-[#8e9299] hover:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Clear tracked auto-scale estimates and re-converge from scratch"
+          >
+            <RefreshCw size={11} /> Reset Auto-Scale
+          </button>
 
           {/* Requirements */}
           <div className="rounded-lg bg-[#1a1b1e] border border-[#2a2b2e] p-3 text-[0.625rem] text-[#8e9299] space-y-1 leading-relaxed">

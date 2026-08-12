@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { Settings, Waves, X } from "lucide-react";
+import { RefreshCw, Settings, Waves, X } from "lucide-react";
 import PanelChrome from "../components/PanelChrome";
 import { COLORMAPS, COLORMAP_NAMES, amplitudeToPixel } from "../utils/spectrumColors";
+import { useAutoLevel } from "../hooks/useAutoLevel";
 
 const DEFAULT_HEIGHT = 200;
 const SPECTRUM_RATIO = 0.3;
@@ -77,9 +78,18 @@ export default function SpectrumAudioPanel({
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [colorMapId, setColorMapId] = useState(() => lsGet(lsKey("colormap"), "classic"));
-  const [floor, setFloor] = useState(() => Number(lsGet(lsKey("floor"), String(FLOOR_DEFAULT))));
-  const [ceiling, setCeiling] = useState(() => Number(lsGet(lsKey("ceiling"), String(CEILING_DEFAULT))));
   const [bwOverride, setBwOverride] = useState<string>(() => lsGet(lsKey("bwOverride"), "auto"));
+
+  const autoLevel = useAutoLevel({
+    lsKey,
+    sourceSuffix: "",
+    manualFloorDefault: FLOOR_DEFAULT,
+    manualCeilingDefault: CEILING_DEFAULT,
+  });
+  // See SpectrumHamlibPanel.tsx for why the draw loop reads through a ref
+  // rather than depending on floor/ceiling/auto-toggle state directly.
+  const autoLevelRef = useRef(autoLevel);
+  autoLevelRef.current = autoLevel;
 
   const spectrumHeight = Math.floor(heightPx * SPECTRUM_RATIO);
   const waterfallHeight = heightPx - spectrumHeight - 20;
@@ -127,6 +137,10 @@ export default function SpectrumAudioPanel({
         ...waterfallLinesRef.current,
       ].slice(0, WATERFALL_MAX_LINES);
 
+      autoLevelRef.current.sampleFrame(freqData.subarray(0, endBin), performance.now());
+      const effFloor = autoLevelRef.current.getEffectiveFloor();
+      const effCeiling = autoLevelRef.current.getEffectiveCeiling();
+
       const w = specCanvas.width;
 
       // --- Spectrum line ---
@@ -137,8 +151,8 @@ export default function SpectrumAudioPanel({
 
         sCtx.strokeStyle = "rgba(255,255,255,0.08)";
         sCtx.lineWidth = 1;
-        for (let db = Math.ceil(floor / 10) * 10; db <= ceiling; db += 10) {
-          const y = sh - ((db - floor) / (ceiling - floor)) * sh;
+        for (let db = Math.ceil(effFloor / 10) * 10; db <= effCeiling; db += 10) {
+          const y = sh - ((db - effFloor) / (effCeiling - effFloor)) * sh;
           sCtx.beginPath();
           sCtx.moveTo(0, y);
           sCtx.lineTo(w, y);
@@ -154,7 +168,7 @@ export default function SpectrumAudioPanel({
         for (let col = 0; col < w; col++) {
           const binIdx = Math.min(endBin - 1, Math.floor(col * step));
           const dbfs = freqData[binIdx];
-          const norm = Math.max(0, Math.min(1, (dbfs - floor) / (ceiling - floor)));
+          const norm = Math.max(0, Math.min(1, (dbfs - effFloor) / (effCeiling - effFloor)));
           const y = sh - norm * sh;
           if (col === 0) {
             sCtx.moveTo(col, sh);
@@ -184,7 +198,7 @@ export default function SpectrumAudioPanel({
           for (let col = 0; col < w; col++) {
             const binIdx = Math.min(endBin - 1, Math.floor(col * step));
             const dbfs = line[binIdx];
-            const norm = Math.max(0, Math.min(1, (dbfs - floor) / (ceiling - floor)));
+            const norm = Math.max(0, Math.min(1, (dbfs - effFloor) / (effCeiling - effFloor)));
             buf32[row * w + col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
           }
         }
@@ -199,7 +213,7 @@ export default function SpectrumAudioPanel({
     return () => {
       cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isCollapsed, audioStatus, colorMapId, floor, ceiling, analyserNodeRef, bandwidth, mode, displayBandwidth, bwOverride]);
+  }, [isCollapsed, audioStatus, colorMapId, analyserNodeRef, bandwidth, mode, displayBandwidth, bwOverride]);
 
   const freqAxisContent = (
     <div className="relative h-5 text-[0.5rem] text-gray-400 select-none">
@@ -296,29 +310,60 @@ export default function SpectrumAudioPanel({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Noise Floor</label>
-              <span className="text-xs font-mono text-[#8e9299]">{floor} dBFS</span>
+              <span className="text-xs font-mono text-[#8e9299]">
+                {autoLevel.autoFloor ? `${Math.round(autoLevel.displayFloor)} dBFS (auto)` : `${autoLevel.floor} dBFS`}
+              </span>
             </div>
             <input
               type="range" min={-160} max={-20} step={5}
-              value={floor}
-              onChange={e => { setFloor(Number(e.target.value)); lsSet(lsKey("floor"), e.target.value); }}
-              className="w-full accent-blue-500"
+              value={autoLevel.autoFloor ? Math.round(autoLevel.displayFloor) : autoLevel.floor}
+              disabled={autoLevel.autoFloor}
+              onChange={e => autoLevel.setFloor(Number(e.target.value))}
+              className="w-full accent-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
+            <label className="flex items-center gap-2 text-[0.625rem] text-[#8e9299]">
+              <input
+                type="checkbox"
+                checked={autoLevel.autoFloor}
+                onChange={e => autoLevel.setAutoFloor(e.target.checked)}
+              />
+              Auto Floor
+            </label>
           </div>
 
           {/* Ceiling */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Ceiling</label>
-              <span className="text-xs font-mono text-[#8e9299]">{ceiling} dBFS</span>
+              <span className="text-xs font-mono text-[#8e9299]">
+                {autoLevel.autoCeiling ? `${Math.round(autoLevel.displayCeiling)} dBFS (auto)` : `${autoLevel.ceiling} dBFS`}
+              </span>
             </div>
             <input
               type="range" min={-80} max={0} step={5}
-              value={ceiling}
-              onChange={e => { setCeiling(Number(e.target.value)); lsSet(lsKey("ceiling"), e.target.value); }}
-              className="w-full accent-blue-500"
+              value={autoLevel.autoCeiling ? Math.round(autoLevel.displayCeiling) : autoLevel.ceiling}
+              disabled={autoLevel.autoCeiling}
+              onChange={e => autoLevel.setCeiling(Number(e.target.value))}
+              className="w-full accent-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
+            <label className="flex items-center gap-2 text-[0.625rem] text-[#8e9299]">
+              <input
+                type="checkbox"
+                checked={autoLevel.autoCeiling}
+                onChange={e => autoLevel.setAutoCeiling(e.target.checked)}
+              />
+              Auto Ceiling
+            </label>
           </div>
+
+          <button
+            onClick={() => autoLevel.resetAutoScale()}
+            disabled={!autoLevel.autoFloor && !autoLevel.autoCeiling}
+            className="flex items-center gap-1.5 text-[0.625rem] text-[#8e9299] hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Clear tracked auto-scale estimates and re-converge from scratch"
+          >
+            <RefreshCw size={11} /> Reset Auto-Scale
+          </button>
         </div>
       </div>
     </div>

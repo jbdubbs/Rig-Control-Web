@@ -241,9 +241,17 @@ export const NAMESPACED_KEYS = [
   "spectrum-hamlib-ceiling-ft4222",
   "spectrum-hamlib-floor-iq",
   "spectrum-hamlib-ceiling-iq",
+  "spectrum-hamlib-autoFloor",
+  "spectrum-hamlib-autoCeiling",
+  "spectrum-hamlib-autoFloor-ft4222",
+  "spectrum-hamlib-autoCeiling-ft4222",
+  "spectrum-hamlib-autoFloor-iq",
+  "spectrum-hamlib-autoCeiling-iq",
   "spectrum-audio-colormap",
   "spectrum-audio-floor",
   "spectrum-audio-ceiling",
+  "spectrum-audio-autoFloor",
+  "spectrum-audio-autoCeiling",
   "spectrum-audio-bwOverride",
 ];
 
