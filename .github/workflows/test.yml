@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch: {}
 
 # Scoped to release tag pushes only — same trigger as build.yml's real
 # release path — so this suite (and its ~10min e2e job) doesn't run on every
