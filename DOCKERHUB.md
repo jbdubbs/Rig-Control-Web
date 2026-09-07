@@ -4,7 +4,7 @@ Open-source web app for controlling amateur radio equipment via [Hamlib](https:/
 
 Full-featured desktop builds (Windows/macOS/Linux, with the video feed) are on the [GitHub Releases page](https://github.com/jbdubbs/Rig-Control-Web/releases).
 
-**Latest release: v1.3.0** — headless deployment (this image) is new in this release: Docker Compose, plain `docker run`, and systemd options, including a verified FT-710 (FT4222 USB-SPI) spectrum scope and second-serial-port CW keying path through Docker. Also brings official Yaesu FT-857 support — preamp, attenuator control, and PKTUSB/PKTLSB/PKTFM modes now work correctly against real hardware (thanks @phfu for testing!). See the [full release notes](https://github.com/jbdubbs/Rig-Control-Web/releases/tag/v1.3.0) for everything else included.
+**Latest release: v1.4.0** — adds a DX Cluster spotting tab, a searchable Rig Model dropdown, and Serial Port fields that auto-populate with detected devices. Fixes a headless Docker/Podman audio device-enumeration bug (issue #55) and a segfault from rapid backend-audio device restarts (issue #53). See the [full release notes](https://github.com/jbdubbs/Rig-Control-Web/releases/tag/v1.4.0) for everything else included.
 
 ## Quick start (Docker Compose)
 
@@ -18,7 +18,7 @@ docker compose up -d
 
 Browse to `https://<controller-ip>:3000` and log in as `ADMIN` / `admin` (forced password change on first login).
 
-Tags: `latest` and version-pinned (e.g. `1.3.0`). `linux/amd64` only for now — ARM64/Raspberry Pi is intentionally deferred until the amd64 image gets more real-world usage reports.
+Tags: `latest` and version-pinned (e.g. `1.4.0`). `linux/amd64` only for now — ARM64/Raspberry Pi is intentionally deferred until the amd64 image gets more real-world usage reports.
 
 ## Full documentation
 
