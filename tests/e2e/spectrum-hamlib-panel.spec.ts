@@ -62,12 +62,17 @@ test.describe('SpectrumHamlibPanel via synthetic UDP', () => {
       .locator('div.flex.items-center.justify-between', { hasText: 'Enable Spectrum Scope' })
       .getByRole('button')
       .click();
-    // Fill+settle port first, then address last: each field's onBlur fires
-    // its own save-settings round trip, and the resulting settings-data
-    // echo can otherwise race and clobber whichever field was edited second.
+    // The enable click above fires its own save-settings round trip; wait for
+    // its settings-data echo (still carrying the old default port) to land
+    // and settle before editing the port field, or that echo can arrive after
+    // the fill and clobber it back to the default.
     const portInput = page.locator(
       'div.flex.items-center.justify-between.gap-3:has(label:text-is("Multicast Port")) input',
     );
+    await expect(portInput).toHaveValue("4531");
+    // Fill+settle port first, then address last: each field's onBlur fires
+    // its own save-settings round trip, and the resulting settings-data
+    // echo can otherwise race and clobber whichever field was edited second.
     await portInput.fill(String(MULTICAST_PORT));
     await portInput.blur();
     await expect(portInput).toHaveValue(String(MULTICAST_PORT));

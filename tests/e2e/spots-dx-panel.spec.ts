@@ -32,7 +32,13 @@ test.describe('DX Cluster spots panel via synthetic telnet feed', () => {
     }, {
       compact: {
         ...DEFAULT_COMPACT_LAYOUT,
-        items: [{ i: 'spots_dx', x: 0, y: 0, w: 1, h: 1, minW: 1, minH: 1, panelType: 'spots_dx' }],
+        items: [
+          // vfo is required here (not just spots_dx): the tune-on-click assertion
+          // below reads the frequency back from VfoPanel's "Click to edit
+          // frequency" input, which doesn't render unless 'vfo' is in the layout.
+          { i: 'vfo', x: 0, y: 0, w: 9999, h: 1, minW: 2, minH: 1, panelType: 'vfo', fullWidth: true },
+          { i: 'spots_dx', x: 0, y: 1, w: 1, h: 1, minW: 1, minH: 1, panelType: 'spots_dx' },
+        ],
       },
       phone: { cols: 1, rows: 1, items: [] },
     });
