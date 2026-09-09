@@ -208,7 +208,8 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
       setOutboundMuted(true);
     };
 
-    const onAudioDevicesList = (devices: { inputs: { name: string; altName: string; hostAPIName: string; defaultSampleRate: number }[]; outputs: { name: string; altName: string; hostAPIName: string; defaultSampleRate: number }[] }) => {
+    const onAudioDevicesList = (devices: { inputs: { name: string; altName: string; hostAPIName: string; defaultSampleRate: number }[]; outputs: { name: string; altName: string; hostAPIName: string; defaultSampleRate: number }[]; error?: string }) => {
+      if (devices.error) console.warn("[audio] Device enumeration failed:", devices.error);
       setAudioDevices(devices);
     };
 

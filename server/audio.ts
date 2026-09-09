@@ -353,7 +353,7 @@ export function registerAudioHandlers(socket: Socket, ctx: ServerContext, client
   socket.on("get-audio-devices", async () => {
     vlog("[AUDIO] Client requested audio devices list");
     const { inputs, outputs, error } = await listAudioDevices(ctx);
-    socket.emit("audio-devices-list", { inputs, outputs });
+    socket.emit("audio-devices-list", { inputs, outputs, error });
   });
 
   socket.on("update-audio-settings", async (settings: any) => {

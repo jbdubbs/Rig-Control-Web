@@ -138,7 +138,7 @@
     "jsonwebtoken": "^9.0.3",
     "libopus-node": "^0.0.4",
     "lucide-react": "^0.546.0",
-    "naudiodon": "github:jbdubbs/naudiodon-gcc15",
+    "naudiodon": "github:jbdubbs/naudiodon-gcc15#v2.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-grid-layout": "^2.2.3",
