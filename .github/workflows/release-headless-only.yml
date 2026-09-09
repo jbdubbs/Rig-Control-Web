@@ -1,0 +1,97 @@
+name: Release (Headless Only)
+
+# For patch releases that only touch headless-relevant code (server/,
+# naudiodon/native-dependency bumps, the Docker image, the bare-metal
+# tarball), where rebuilding and re-releasing the full Electron desktop
+# matrix (Windows/macOS/Linux installers via build.yml) would be pure
+# churn. Mirrors release-windows-only.yml's pattern: triggered manually
+# (not by tag push) so it never collides with build.yml's or
+# docker-publish.yml's `v*` tag trigger, both of which always build/publish
+# unconditionally on a tag push. The release tag itself is created by
+# softprops/action-gh-release as part of publishing the release (a GitHub
+# API tag-create, not a `git push --tags`), which does not fire push-based
+# workflow triggers — so neither of those workflows runs from this one.
+#
+# Publishes: the jbdubbs/rigcontrol-web Docker image (:latest and
+# :<version>, linux/amd64 — same as docker-publish.yml) and the bare-metal
+# x64 tarball (scripts/build-headless-x64.sh) as a GitHub Release asset.
+# Does NOT touch: Windows/macOS/Linux Electron installers, the arm64
+# headless tarball (still a testing build pending real Raspberry Pi
+# hardware verification — see issue #54).
+#
+# Requires the same DOCKERHUB_USERNAME/DOCKERHUB_TOKEN repo secrets
+# docker-publish.yml uses.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 1.4.1 (must match package.json "version")'
+        required: true
+      prerelease:
+        description: 'Mark the GitHub Release as a pre-release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release-headless:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify version input matches package.json
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "${{ github.event.inputs.version }}" ]; then
+            echo "::error::Input version '${{ github.event.inputs.version }}' does not match package.json version '$PKG_VERSION'. Bump package.json (and the App Version string in src/modals/SettingsModal.tsx) first."
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            jbdubbs/rigcontrol-web:latest
+            jbdubbs/rigcontrol-web:${{ github.event.inputs.version }}
+
+      # Keeps the Docker Hub repo page in sync with DOCKERHUB.md, same as
+      # docker-publish.yml. Update DOCKERHUB.md's "Latest release" line by
+      # hand as part of cutting this release, same as any other release.
+      - name: Sync description to Docker Hub
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: jbdubbs/rigcontrol-web
+          short-description: "Headless web backend for RigControl Web — control amateur radio via Hamlib rigctld"
+          readme-filepath: ./DOCKERHUB.md
+
+      - name: Build x64 headless bare-metal tarball
+        run: bash scripts/build-headless-x64.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: v${{ github.event.inputs.version }} (headless)
+          prerelease: ${{ github.event.inputs.prerelease }}
+          generate_release_notes: true
+          files: dist-headless-x64/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
