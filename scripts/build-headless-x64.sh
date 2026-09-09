@@ -94,7 +94,25 @@ MOUNT_SUFFIX=""
 [ "$ENGINE" = "podman" ] && MOUNT_SUFFIX=":Z"
 
 echo "[build-headless-x64] npm ci / npm run build / npm prune --omit=dev (at /opt/rigcontrol-web, matching the install path)..."
+# Rootless podman already maps the container's root (its default user) back
+# to the invoking host user via subuid remapping, so files written into the
+# bind-mounted $STAGE/repo already come out host-owned with no extra flags.
+# Rootful docker (what CI's GitHub Actions runners use) has no such
+# remapping — the container's root is the host's real root, so anything
+# npm writes lands root-owned on the host, and the trap's `rm -rf "$STAGE"`
+# cleanup below then fails with "Permission denied" for any invoker that
+# isn't itself root (confirmed failing exactly this way in CI). Only docker
+# needs --user pinned to the invoking host UID/GID to avoid that; adding it
+# unconditionally breaks the podman path instead (its own UID mapping means
+# --user's UID doesn't refer to the same host user, confirmed by testing).
+# -e HOME=/tmp gives npm a writable home for its cache/config, since the
+# pinned UID has no real home directory inside the container.
+DOCKER_RUN_USER_ARGS=()
+if [ "$ENGINE" = "docker" ]; then
+  DOCKER_RUN_USER_ARGS=(--user "$(id -u):$(id -g)" -e HOME=/tmp)
+fi
 "$ENGINE" run --rm \
+  "${DOCKER_RUN_USER_ARGS[@]}" \
   -v "$STAGE/repo:/opt/rigcontrol-web$MOUNT_SUFFIX" \
   "$IMAGE" bash -c '
     set -e
