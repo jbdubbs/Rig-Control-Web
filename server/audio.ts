@@ -29,6 +29,29 @@ function queueAudioOp(op: () => Promise<void>): Promise<void> {
   return result;
 }
 
+// ─── Backend Audio Engine admin-lock (issue #51) ───────────────────────────
+// Pure decision logic, kept separate from the socket handlers below so it's
+// unit-testable without touching naudiodon/sockets/ctx.
+
+const BACKEND_LOCKABLE_KEYS = new Set(["inputDevice", "outputDevice", "inboundEnabled", "outboundEnabled"]);
+const LOCK_FLAG_KEY = "backendLockedToAdmin";
+
+export function isAudioSettingsChangeAllowed(
+  locked: boolean,
+  role: "admin" | "regular" | undefined,
+  incomingKeys: string[]
+): boolean {
+  if (role === "admin") return true;
+  // Only an admin may ever flip the lock flag itself, regardless of current lock state.
+  if (incomingKeys.includes(LOCK_FLAG_KEY)) return false;
+  if (locked && incomingKeys.some((k) => BACKEND_LOCKABLE_KEYS.has(k))) return false;
+  return true;
+}
+
+export function isControlAudioActionAllowed(locked: boolean, role: "admin" | "regular" | undefined): boolean {
+  return role === "admin" || !locked;
+}
+
 export async function initAudioEngine(ctx: ServerContext): Promise<void> {
   try {
     const dynamicImport = new Function('modulePath', 'return import(modulePath)');
@@ -358,6 +381,16 @@ export function registerAudioHandlers(socket: Socket, ctx: ServerContext, client
 
   socket.on("update-audio-settings", async (settings: any) => {
     vlog("[AUDIO] Updating audio settings:", settings);
+    const authInfo = ctx.authenticatedSockets.get(socket.id);
+    const incomingKeys = Object.keys(settings ?? {});
+    if (!isAudioSettingsChangeAllowed(ctx.audioSettings.backendLockedToAdmin, authInfo?.role, incomingKeys)) {
+      vlog(`[AUDIO] Rejected update-audio-settings from ${authInfo?.callsign ?? "unauthenticated"} (locked): ${incomingKeys.join(",")}`);
+      socket.emit("audio-settings:denied", {
+        action: "update-audio-settings",
+        reason: "Backend Audio Engine settings are locked to administrators.",
+      });
+      return;
+    }
     const wasPlaying = ctx.audioStatus === "playing";
     ctx.audioSettings = { ...ctx.audioSettings, ...settings };
     ctx.saveSettings();
@@ -369,6 +402,15 @@ export function registerAudioHandlers(socket: Socket, ctx: ServerContext, client
 
   socket.on("control-audio", async (action: "start" | "stop") => {
     vlog(`[AUDIO] Control action received: ${action}`);
+    const authInfo = ctx.authenticatedSockets.get(socket.id);
+    if (!isControlAudioActionAllowed(ctx.audioSettings.backendLockedToAdmin, authInfo?.role)) {
+      vlog(`[AUDIO] Rejected control-audio '${action}' from ${authInfo?.callsign ?? "unauthenticated"} (locked)`);
+      socket.emit("audio-settings:denied", {
+        action: "control-audio",
+        reason: "Backend Audio Engine is locked to administrators.",
+      });
+      return;
+    }
     if (action === "start") {
       await startAudio(ctx);
     } else if (action === "stop") {

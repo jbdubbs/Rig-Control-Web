@@ -101,6 +101,7 @@ export interface ServerContext {
     outputDevice: string;
     inboundEnabled: boolean;
     outboundEnabled: boolean;
+    backendLockedToAdmin: boolean;
   };
   videoSettings: {
     device: string;
@@ -356,6 +357,7 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
       outputDevice: "",
       inboundEnabled: false,
       outboundEnabled: false,
+      backendLockedToAdmin: false,
     },
     videoSettings: {
       device: "",

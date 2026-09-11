@@ -297,6 +297,7 @@ export default function App() {
     audioEngineState,
     audioDevices,
     audioSettings, setAudioSettings,
+    audioSettingsDenied,
     localAudioDevices, setLocalAudioDevices,
     localAudioSettings, setLocalAudioSettings,
     inboundMuted, setInboundMuted,
@@ -1410,6 +1411,8 @@ export default function App() {
           audioStatus={audioStatus}
           audioSettings={audioSettings}
           setAudioSettings={setAudioSettings}
+          audioSettingsDenied={audioSettingsDenied}
+          role={currentUser?.role ?? "regular"}
           localAudioDevices={localAudioDevices}
           setLocalAudioDevices={setLocalAudioDevices}
           localAudioSettings={localAudioSettings}

@@ -8,6 +8,7 @@ import {
   Link,
   Link2Off,
   Loader2,
+  Lock,
   Power,
   Radio,
   X,
@@ -25,6 +26,7 @@ export interface AudioSettingsModalProps {
     outputDevice: string;
     inboundEnabled: boolean;
     outboundEnabled: boolean;
+    backendLockedToAdmin: boolean;
   };
   setAudioSettings: React.Dispatch<
     React.SetStateAction<{
@@ -32,8 +34,11 @@ export interface AudioSettingsModalProps {
       outputDevice: string;
       inboundEnabled: boolean;
       outboundEnabled: boolean;
+      backendLockedToAdmin: boolean;
     }>
   >;
+  audioSettingsDenied?: { action: string; reason: string } | null;
+  role?: "admin" | "regular";
   localAudioDevices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] };
   setLocalAudioDevices: React.Dispatch<
     React.SetStateAction<{ inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] }>
@@ -79,6 +84,8 @@ function AudioSettingsModal({
   audioStatus,
   audioSettings,
   setAudioSettings,
+  audioSettingsDenied,
+  role = "regular",
   localAudioDevices,
   setLocalAudioDevices,
   localAudioSettings,
@@ -110,6 +117,7 @@ function AudioSettingsModal({
   wsjtxAutoSetupActive,
 }: AudioSettingsModalProps) {
   if (!isOpen) return null;
+  const backendLocked = audioSettings.backendLockedToAdmin && role !== "admin";
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
       <div className="bg-[#151619] w-full max-w-md rounded-2xl border border-[#2a2b2e] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -370,11 +378,55 @@ function AudioSettingsModal({
                   )}>
                     {audioStatus === "playing" ? "RUNNING" : audioStatus === "cooldown" ? "COOLDOWN" : "STOPPED"}
                   </span>
+                  {audioSettings.backendLockedToAdmin && (
+                    <span className="text-[0.5rem] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 flex items-center gap-1">
+                      <Lock size={9} /> Locked
+                    </span>
+                  )}
                   {isBackendEngineCollapsed ? <ChevronDown size={12} className="text-[#8e9299]" /> : <ChevronUp size={12} className="text-[#8e9299]" />}
                 </div>
               </button>
 
               {!isBackendEngineCollapsed && (<>
+              {role === "admin" && (
+                <div className="flex items-center justify-between px-3 py-2 mb-3 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg">
+                  <div className="flex items-center gap-2 text-[0.625rem] uppercase text-[#8e9299] font-bold">
+                    <Lock size={12} /> Restrict to Admins
+                  </div>
+                  <button
+                    onClick={() => {
+                      const newSettings = { ...audioSettings, backendLockedToAdmin: !audioSettings.backendLockedToAdmin };
+                      setAudioSettings(newSettings);
+                      socket?.emit("update-audio-settings", newSettings);
+                    }}
+                    className={cn(
+                      "w-8 h-4 rounded-full transition-all relative",
+                      audioSettings.backendLockedToAdmin ? "bg-amber-500" : "bg-[#2a2b2e]"
+                    )}
+                  >
+                    <div className={cn(
+                      "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+                      audioSettings.backendLockedToAdmin ? "left-4.5" : "left-0.5"
+                    )} />
+                  </button>
+                </div>
+              )}
+
+              {backendLocked && (
+                <div className="flex items-center gap-2 mb-3 text-[0.625rem] uppercase text-amber-400/80 font-bold">
+                  <Lock size={12} /> Locked by Administrator
+                </div>
+              )}
+
+              {audioSettingsDenied && (
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 flex items-center gap-3 mb-3">
+                  <Lock className="text-amber-400 shrink-0" size={16} />
+                  <p className="text-[0.625rem] text-amber-400/80 font-medium leading-tight">
+                    {audioSettingsDenied.reason}
+                  </p>
+                </div>
+              )}
+
               {audioEngineState.error && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 flex items-center gap-3">
                   <AlertTriangle className="text-red-500 shrink-0" size={16} />
@@ -384,13 +436,14 @@ function AudioSettingsModal({
                 </div>
               )}
 
-              <div className={cn("space-y-4", (!audioEngineState.isReady || audioStatus === "cooldown") && "opacity-50 pointer-events-none")}>
+              <div className={cn("space-y-4", (!audioEngineState.isReady || audioStatus === "cooldown" || backendLocked) && "opacity-50 pointer-events-none")}>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Backend Input (Mic/Line)</label>
                     <div className="flex items-center gap-2">
                       <span className="text-[0.5rem] uppercase text-[#4a4b4e]">Enabled</span>
                       <button
+                        disabled={backendLocked}
                         onClick={() => {
                           const newSettings = { ...audioSettings, inboundEnabled: !audioSettings.inboundEnabled };
                           setAudioSettings(newSettings);
@@ -410,6 +463,7 @@ function AudioSettingsModal({
                   </div>
                   <select
                     value={audioSettings.inputDevice}
+                    disabled={backendLocked}
                     onFocus={() => socket?.emit("get-audio-devices")}
                     onChange={(e) => {
                       const newSettings = { ...audioSettings, inputDevice: e.target.value, inboundEnabled: e.target.value !== "" };
@@ -439,6 +493,7 @@ function AudioSettingsModal({
                     <div className="flex items-center gap-2">
                       <span className="text-[0.5rem] uppercase text-[#4a4b4e]">Enabled</span>
                       <button
+                        disabled={backendLocked}
                         onClick={() => {
                           const newSettings = { ...audioSettings, outboundEnabled: !audioSettings.outboundEnabled };
                           setAudioSettings(newSettings);
@@ -458,6 +513,7 @@ function AudioSettingsModal({
                   </div>
                   <select
                     value={audioSettings.outputDevice}
+                    disabled={backendLocked}
                     onFocus={() => socket?.emit("get-audio-devices")}
                     onChange={(e) => {
                       const newSettings = { ...audioSettings, outputDevice: e.target.value, outboundEnabled: e.target.value !== "" };
@@ -482,10 +538,10 @@ function AudioSettingsModal({
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-2">
+              <div className={cn("flex gap-3 pt-2", backendLocked && "opacity-50 pointer-events-none")}>
                 <button
                   onClick={handleStartAudio}
-                  disabled={(!audioSettings.inputDevice && !audioSettings.outputDevice) || audioStatus === "playing" || audioStatus === "cooldown"}
+                  disabled={(!audioSettings.inputDevice && !audioSettings.outputDevice) || audioStatus === "playing" || audioStatus === "cooldown" || backendLocked}
                   title={audioStatus === "cooldown" ? "Waiting for the previous audio device to finish closing…" : undefined}
                   className={cn(
                     "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold uppercase text-xs transition-all",
@@ -501,7 +557,7 @@ function AudioSettingsModal({
                 </button>
                 <button
                   onClick={() => socket?.emit("control-audio", "stop")}
-                  disabled={audioStatus === "stopped" || audioStatus === "cooldown"}
+                  disabled={audioStatus === "stopped" || audioStatus === "cooldown" || backendLocked}
                   className={cn(
                     "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold uppercase text-xs transition-all",
                     audioStatus === "stopped" || audioStatus === "cooldown"

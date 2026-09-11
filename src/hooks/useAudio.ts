@@ -24,8 +24,10 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
     inputDevice: "",
     outputDevice: "",
     inboundEnabled: false,
-    outboundEnabled: false
+    outboundEnabled: false,
+    backendLockedToAdmin: false
   });
+  const [audioSettingsDenied, setAudioSettingsDenied] = useState<{ action: string; reason: string } | null>(null);
   const [localAudioDevices, setLocalAudioDevices] = useState<{ inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] }>({ inputs: [], outputs: [] });
   const [localAudioSettings, setLocalAudioSettings] = useState({
     inputDevice: localStorage.getItem("local-audio-input") || "default",
@@ -78,6 +80,12 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
   useEffect(() => { localAudioReadyRef.current = localAudioReady; }, [localAudioReady]);
   useEffect(() => { localAudioSettingsRef.current = localAudioSettings; }, [localAudioSettings]);
   useEffect(() => { inboundVolumeRef.current = inboundVolume; }, [inboundVolume]);
+
+  useEffect(() => {
+    if (!audioSettingsDenied) return;
+    const t = setTimeout(() => setAudioSettingsDenied(null), 5000);
+    return () => clearTimeout(t);
+  }, [audioSettingsDenied]);
 
   // Single source of truth for "does the inbound gain node reflect mute state" —
   // called both when inboundMuted changes and whenever the gain node itself is
@@ -227,6 +235,10 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
       wsjtxAudioVerbose = wsjtx;
     };
 
+    const onAudioSettingsDenied = (payload: { action: string; reason: string }) => {
+      setAudioSettingsDenied(payload);
+    };
+
     socket.on("settings-data", onSettingsData);
     socket.on("audio-status", onAudioStatus);
     socket.on("audio-engine-state", onAudioEngineState);
@@ -234,6 +246,7 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
     socket.on("mic-mute-forced", onMicMuteForced);
     socket.on("audio-devices-list", onAudioDevicesList);
     socket.on("debug-flags", onDebugFlags);
+    socket.on("audio-settings:denied", onAudioSettingsDenied);
 
     return () => {
       socket.off("settings-data", onSettingsData);
@@ -243,6 +256,7 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
       socket.off("mic-mute-forced", onMicMuteForced);
       socket.off("audio-devices-list", onAudioDevicesList);
       socket.off("debug-flags", onDebugFlags);
+      socket.off("audio-settings:denied", onAudioSettingsDenied);
     };
   }, [socket]);
 
@@ -606,6 +620,7 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
     audioEngineState,
     audioDevices,
     audioSettings, setAudioSettings,
+    audioSettingsDenied,
     localAudioDevices, setLocalAudioDevices,
     localAudioSettings, setLocalAudioSettings,
     inboundMuted, setInboundMuted,
