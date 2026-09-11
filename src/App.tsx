@@ -23,6 +23,7 @@ import VideoSettingsModal from "./modals/VideoSettingsModal";
 import AudioSettingsModal from "./modals/AudioSettingsModal";
 import LoginScreen from "./components/LoginScreen";
 import ChangePasswordModal from "./components/ChangePasswordModal";
+import PhoneHeaderMenu from "./components/PhoneHeaderMenu";
 import { useAuth } from "./hooks/useAuth";
 import { usePotaSpots } from "./hooks/usePotaSpots";
 import { useDxSpots } from "./hooks/useDxSpots";
@@ -40,6 +41,7 @@ import { useLayoutConfig } from "./hooks/useLayoutConfig";
 import { useSpectrum } from "./hooks/useSpectrum";
 import { useWsjtxBridge } from "./hooks/useWsjtxBridge";
 import { useConsoleCapture } from "./hooks/useConsoleCapture";
+import { useFullscreenWakeLock } from "./hooks/useFullscreenWakeLock";
 import type { PanelType, PanelAddConfig } from "./types/layout";
 
 // Reconciles a stored backend-url against the page's current origin.
@@ -315,6 +317,8 @@ export default function App() {
     stopMicCapture,
     updateWsjtxOutput,
   } = useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallActiveRef });
+
+  const { isActive: isFullscreenWakeLockActive, toggle: toggleFullscreenWakeLock } = useFullscreenWakeLock();
 
   const {
     connected,
@@ -775,49 +779,66 @@ export default function App() {
               <div className="flex-1" />
             )}
             <div className="flex items-center gap-1 flex-shrink-0">
-              <button
-                onClick={handleConnect}
-                className={cn(
-                  "p-1 rounded transition-all flex-shrink-0",
-                  uiConnected
-                    ? "text-red-500 hover:bg-red-500/10"
-                    : "text-emerald-500 hover:bg-emerald-500/10"
-                )}
-                title={uiConnected ? "Disconnect" : "Connect"}
-              >
-                {uiConnected ? <Unplug size={14} /> : <Plug size={14} />}
-              </button>
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className={cn(
-                  "p-1 rounded transition-all flex-shrink-0",
-                  rigctldProcessStatus === "running" ? "text-emerald-500 hover:bg-emerald-500/10" : "text-red-500 hover:bg-red-500/10"
-                )}
-                title="Rigctld Settings"
-              >
-                <Settings size={14} />
-              </button>
-              {(isCompact || isPhone) && (
-                <button
-                  onClick={() => isCompact ? setIsCompactEditMode(v => !v) : setIsPhoneEditMode(v => !v)}
-                  className={cn(
-                    "p-1 rounded transition-all flex-shrink-0",
-                    (isCompact ? isCompactEditMode : isPhoneEditMode)
-                      ? "text-emerald-400 bg-emerald-500/10"
-                      : "text-[#8e9299] hover:text-emerald-400"
-                  )}
-                  title={(isCompact ? isCompactEditMode : isPhoneEditMode) ? "Exit layout editor" : "Edit layout"}
-                >
-                  <LayoutGrid size={14} />
-                </button>
+              {isCompact && (
+                <>
+                  <button
+                    onClick={handleConnect}
+                    className={cn(
+                      "p-1 rounded transition-all flex-shrink-0",
+                      uiConnected
+                        ? "text-red-500 hover:bg-red-500/10"
+                        : "text-emerald-500 hover:bg-emerald-500/10"
+                    )}
+                    title={uiConnected ? "Disconnect" : "Connect"}
+                  >
+                    {uiConnected ? <Unplug size={14} /> : <Plug size={14} />}
+                  </button>
+                  <button
+                    onClick={() => setIsSettingsOpen(true)}
+                    className={cn(
+                      "p-1 rounded transition-all flex-shrink-0",
+                      rigctldProcessStatus === "running" ? "text-emerald-500 hover:bg-emerald-500/10" : "text-red-500 hover:bg-red-500/10"
+                    )}
+                    title="Rigctld Settings"
+                  >
+                    <Settings size={14} />
+                  </button>
+                  <button
+                    onClick={() => setIsCompactEditMode(v => !v)}
+                    className={cn(
+                      "p-1 rounded transition-all flex-shrink-0",
+                      isCompactEditMode
+                        ? "text-emerald-400 bg-emerald-500/10"
+                        : "text-[#8e9299] hover:text-emerald-400"
+                    )}
+                    title={isCompactEditMode ? "Exit layout editor" : "Edit layout"}
+                  >
+                    <LayoutGrid size={14} />
+                  </button>
+                  <button
+                    onClick={logout}
+                    className="p-1 rounded text-[#8e9299] hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
+                    title={`Sign out (${currentUser?.callsign ?? ''})`}
+                  >
+                    <LogOut size={14} />
+                  </button>
+                </>
               )}
-              <button
-                onClick={logout}
-                className="p-1 rounded text-[#8e9299] hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
-                title={`Sign out (${currentUser?.callsign ?? ''})`}
-              >
-                <LogOut size={14} />
-              </button>
+              {isPhone && (
+                <PhoneHeaderMenu
+                  variant="collapsed"
+                  uiConnected={uiConnected}
+                  onToggleConnect={handleConnect}
+                  rigctldRunning={rigctldProcessStatus === "running"}
+                  onOpenSettings={() => setIsSettingsOpen(true)}
+                  isEditMode={isPhoneEditMode}
+                  onToggleEditMode={() => setIsPhoneEditMode(v => !v)}
+                  isFullscreenActive={isFullscreenWakeLockActive}
+                  onToggleFullscreen={toggleFullscreenWakeLock}
+                  onLogout={logout}
+                  callsign={currentUser?.callsign ?? ''}
+                />
+              )}
               <button
                 onClick={() => setHeaderCollapsed(false)}
                 className="p-1 hover:bg-white/5 rounded text-[#8e9299] flex-shrink-0"
@@ -837,49 +858,66 @@ export default function App() {
               <h1 className="text-xl font-bold tracking-tighter uppercase truncate">RigControl Web</h1>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              <button
-                onClick={handleConnect}
-                className={cn(
-                  "p-1.5 sm:px-6 sm:py-2 rounded-lg font-bold uppercase text-sm transition-all flex items-center gap-2",
-                  uiConnected
-                    ? "bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500 hover:text-white"
-                    : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white"
-                )}
-              >
-                {uiConnected ? <Unplug size={16} className="flex-shrink-0" /> : <Plug size={16} className="flex-shrink-0" />}
-                <span className="hidden sm:inline">{uiConnected ? "Disconnect" : "Connect"}</span>
-              </button>
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className={cn(
-                  "p-1.5 sm:p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg transition-all flex-shrink-0",
-                  rigctldProcessStatus === "running" ? "text-emerald-500 border-emerald-500/50" : "text-red-500 border-red-500/50"
-                )}
-                title="Rigctld Settings"
-              >
-                <Settings size={18} />
-              </button>
-              {(isCompact || isPhone) && (
-                <button
-                  onClick={() => isCompact ? setIsCompactEditMode(v => !v) : setIsPhoneEditMode(v => !v)}
-                  className={cn(
-                    "p-1.5 sm:p-2 bg-[#0a0a0a] border rounded-lg transition-all flex-shrink-0",
-                    (isCompact ? isCompactEditMode : isPhoneEditMode)
-                      ? "text-emerald-400 border-emerald-500/70 bg-emerald-500/10"
-                      : "text-[#8e9299] border-[#2a2b2e] hover:text-emerald-400"
-                  )}
-                  title={(isCompact ? isCompactEditMode : isPhoneEditMode) ? "Exit layout editor" : "Edit layout"}
-                >
-                  <LayoutGrid size={18} />
-                </button>
+              {isCompact && (
+                <>
+                  <button
+                    onClick={handleConnect}
+                    className={cn(
+                      "p-1.5 sm:px-6 sm:py-2 rounded-lg font-bold uppercase text-sm transition-all flex items-center gap-2",
+                      uiConnected
+                        ? "bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500 hover:text-white"
+                        : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500 hover:text-white"
+                    )}
+                  >
+                    {uiConnected ? <Unplug size={16} className="flex-shrink-0" /> : <Plug size={16} className="flex-shrink-0" />}
+                    <span className="hidden sm:inline">{uiConnected ? "Disconnect" : "Connect"}</span>
+                  </button>
+                  <button
+                    onClick={() => setIsSettingsOpen(true)}
+                    className={cn(
+                      "p-1.5 sm:p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg transition-all flex-shrink-0",
+                      rigctldProcessStatus === "running" ? "text-emerald-500 border-emerald-500/50" : "text-red-500 border-red-500/50"
+                    )}
+                    title="Rigctld Settings"
+                  >
+                    <Settings size={18} />
+                  </button>
+                  <button
+                    onClick={() => setIsCompactEditMode(v => !v)}
+                    className={cn(
+                      "p-1.5 sm:p-2 bg-[#0a0a0a] border rounded-lg transition-all flex-shrink-0",
+                      isCompactEditMode
+                        ? "text-emerald-400 border-emerald-500/70 bg-emerald-500/10"
+                        : "text-[#8e9299] border-[#2a2b2e] hover:text-emerald-400"
+                    )}
+                    title={isCompactEditMode ? "Exit layout editor" : "Edit layout"}
+                  >
+                    <LayoutGrid size={18} />
+                  </button>
+                  <button
+                    onClick={logout}
+                    className="p-1.5 sm:p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-[#8e9299] hover:text-red-400 hover:border-red-500/50 transition-all flex-shrink-0"
+                    title={`Sign out (${currentUser?.callsign ?? ''})`}
+                  >
+                    <LogOut size={18} />
+                  </button>
+                </>
               )}
-              <button
-                onClick={logout}
-                className="p-1.5 sm:p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-[#8e9299] hover:text-red-400 hover:border-red-500/50 transition-all flex-shrink-0"
-                title={`Sign out (${currentUser?.callsign ?? ''})`}
-              >
-                <LogOut size={18} />
-              </button>
+              {isPhone && (
+                <PhoneHeaderMenu
+                  variant="expanded"
+                  uiConnected={uiConnected}
+                  onToggleConnect={handleConnect}
+                  rigctldRunning={rigctldProcessStatus === "running"}
+                  onOpenSettings={() => setIsSettingsOpen(true)}
+                  isEditMode={isPhoneEditMode}
+                  onToggleEditMode={() => setIsPhoneEditMode(v => !v)}
+                  isFullscreenActive={isFullscreenWakeLockActive}
+                  onToggleFullscreen={toggleFullscreenWakeLock}
+                  onLogout={logout}
+                  callsign={currentUser?.callsign ?? ''}
+                />
+              )}
               <button
                 onClick={() => setHeaderCollapsed(true)}
                 className="p-1.5 sm:p-2 bg-[#0a0a0a] border border-[#2a2b2e] rounded-lg text-[#8e9299] hover:text-white transition-all flex-shrink-0"

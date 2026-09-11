@@ -34,3 +34,15 @@ export function shouldAttemptAutoJoin(
 ): boolean {
   return hasGestured && audioStatus === "playing" && !localAudioReady;
 }
+
+// Pure go/no-go check for re-requesting the Screen Wake Lock (issue #61):
+// a held sentinel is unconditionally released by the browser when the page
+// is hidden, so it must be re-acquired on return, but only while the
+// feature is still meant to be on and only if we don't already hold one.
+export function shouldReacquireWakeLock(input: {
+  documentVisible: boolean;
+  isActive: boolean;
+  hasSentinel: boolean;
+}): boolean {
+  return input.documentVisible && input.isActive && !input.hasSentinel;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatStep, shouldAttemptAutoJoin, splitLocalAudioDevices } from './utils';
+import { formatStep, shouldAttemptAutoJoin, shouldReacquireWakeLock, splitLocalAudioDevices } from './utils';
 
 describe('formatStep', () => {
   it('formats values >= 1 as MHz', () => {
@@ -78,5 +78,23 @@ describe('shouldAttemptAutoJoin', () => {
   it('does not fire while stopped or in cooldown', () => {
     expect(shouldAttemptAutoJoin('stopped', false, true)).toBe(false);
     expect(shouldAttemptAutoJoin('cooldown', false, true)).toBe(false);
+  });
+});
+
+describe('shouldReacquireWakeLock', () => {
+  it('reacquires when visible, active, and no sentinel held', () => {
+    expect(shouldReacquireWakeLock({ documentVisible: true, isActive: true, hasSentinel: false })).toBe(true);
+  });
+
+  it('does not reacquire while hidden', () => {
+    expect(shouldReacquireWakeLock({ documentVisible: false, isActive: true, hasSentinel: false })).toBe(false);
+  });
+
+  it('does not reacquire when the feature is off', () => {
+    expect(shouldReacquireWakeLock({ documentVisible: true, isActive: false, hasSentinel: false })).toBe(false);
+  });
+
+  it('does not reacquire when a sentinel is already held', () => {
+    expect(shouldReacquireWakeLock({ documentVisible: true, isActive: true, hasSentinel: true })).toBe(false);
   });
 });
