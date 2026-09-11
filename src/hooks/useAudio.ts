@@ -109,29 +109,38 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
     });
   }, []);
 
-  // Enumerate browser-side local audio devices
+  // Enumerate browser-side local audio devices.
+  // getUserMedia is only requested once, on mount — per spec (Chrome 86+),
+  // enumerateDevices() keeps returning labeled devices for the rest of the
+  // browsing context's lifetime after that single successful grant, so a
+  // devicechange handler that re-requests it just re-triggers the mic-in-use
+  // indicator (and on Android Chrome, opening/closing a mic stream can itself
+  // raise a devicechange event, looping the permission banner — issue #60).
   useEffect(() => {
     if (!navigator.mediaDevices) {
       console.warn("navigator.mediaDevices is not available. Audio device selection will be disabled.");
       return;
     }
-    const getLocalDevices = async () => {
+    const refreshLocalDevices = async () => {
       try {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          stream.getTracks().forEach(t => t.stop());
-        } catch (permErr) {
-          console.warn("Microphone permission not yet granted or denied:", permErr);
-        }
         const devices = await navigator.mediaDevices.enumerateDevices();
         setLocalAudioDevices(splitLocalAudioDevices(devices));
       } catch (err) {
         console.error("Error enumerating local audio devices:", err);
       }
     };
-    getLocalDevices();
-    navigator.mediaDevices.addEventListener('devicechange', getLocalDevices);
-    return () => navigator.mediaDevices.removeEventListener('devicechange', getLocalDevices);
+    const requestPermissionAndRefresh = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+      } catch (permErr) {
+        console.warn("Microphone permission not yet granted or denied:", permErr);
+      }
+      await refreshLocalDevices();
+    };
+    requestPermissionAndRefresh();
+    navigator.mediaDevices.addEventListener('devicechange', refreshLocalDevices);
+    return () => navigator.mediaDevices.removeEventListener('devicechange', refreshLocalDevices);
   }, []);
 
   // Resume AudioContext on user interaction (browser autoplay policy)
