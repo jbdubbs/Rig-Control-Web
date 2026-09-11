@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatStep, splitLocalAudioDevices } from './utils';
+import { formatStep, shouldAttemptAutoJoin, splitLocalAudioDevices } from './utils';
 
 describe('formatStep', () => {
   it('formats values >= 1 as MHz', () => {
@@ -59,5 +59,24 @@ describe('splitLocalAudioDevices', () => {
 
   it('returns empty arrays for an empty device list', () => {
     expect(splitLocalAudioDevices([])).toEqual({ inputs: [], outputs: [] });
+  });
+});
+
+describe('shouldAttemptAutoJoin', () => {
+  it('fires when gestured, playing, and not yet ready', () => {
+    expect(shouldAttemptAutoJoin('playing', false, true)).toBe(true);
+  });
+
+  it('does not fire before the page has seen a gesture', () => {
+    expect(shouldAttemptAutoJoin('playing', false, false)).toBe(false);
+  });
+
+  it('does not fire once already ready', () => {
+    expect(shouldAttemptAutoJoin('playing', true, true)).toBe(false);
+  });
+
+  it('does not fire while stopped or in cooldown', () => {
+    expect(shouldAttemptAutoJoin('stopped', false, true)).toBe(false);
+    expect(shouldAttemptAutoJoin('cooldown', false, true)).toBe(false);
   });
 });

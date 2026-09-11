@@ -42,14 +42,17 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 //    default on) is speech-tuned DSP that suppresses a pure synthetic test
 //    tone almost entirely — same reason the app itself forces this off for
 //    WSJTX/digital-mode sessions (CLAUDE.md's Audio Pipeline section).
-// 6. An explicit "Join Audio" click is still needed after "Start Backend
-//    Audio", even though handleStartAudio() (useAudio.ts) already calls
-//    initLocalAudioPipeline() itself: startAudio() server-side always calls
-//    stopAudio() first (tearing down any prior streams), which emits a
-//    transient "audio-status":"stopped" before the real "playing" — and the
-//    client's onAudioStatus handler unconditionally resets localAudioReady
-//    to false on any "stopped" event, undoing the optimistic local-pipeline
-//    init. The "Join Audio" button reappears once audioStatus settles.
+// 6. "Start Backend Audio" always emits a transient "audio-status":"stopped"
+//    before the real "playing" (startAudio() server-side always calls
+//    stopAudio() first to tear down any prior streams), and the client's
+//    onAudioStatus handler unconditionally resets localAudioReady to false
+//    on any "stopped" event. Since useAudio.ts now auto-joins local audio
+//    once the page has seen any gesture (issue #51 — see the auto-join
+//    effects around initLocalAudioPipeline), the "Join Audio" button that
+//    reappears when audioStatus settles back to "playing" is usually
+//    already gone again by the time the test would click it (this spec has
+//    already driven several real clicks by then). The click below is a
+//    best-effort fallback, not a required step.
 //
 // Full round trip: browser fake mic (WAV file) -> Opus -> naudiodon OUTPUT
 // (plays directly into the loopback's named sink node) -> PipeWire loop ->
@@ -160,7 +163,10 @@ test.describe('AudioFeedPanel + SpectrumAudioPanel via a PipeWire loopback', () 
     // order, before the body content).
     await page.locator('button:has(svg.lucide-x)').first().click();
 
-    await page.getByTitle('Join the active audio session').click();
+    const joinAudioButton = page.getByTitle('Join the active audio session');
+    if (await joinAudioButton.isVisible().catch(() => false)) {
+      await joinAudioButton.click();
+    }
     await expect(page.getByTitle('Mute Inbound Audio')).toBeEnabled({ timeout: 15_000 });
     await page.getByTitle('Unmute Outbound Audio').click();
 

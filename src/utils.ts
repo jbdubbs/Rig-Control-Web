@@ -23,3 +23,14 @@ export function splitLocalAudioDevices(devices: MediaDeviceInfo[]): { inputs: Me
     outputs: real.filter(d => d.kind === "audiooutput"),
   };
 }
+
+// Pure go/no-go check for auto-joining the local audio pipeline (issue #51):
+// only attempt it once the page has seen a user gesture (browser autoplay
+// policy) and only while there's actually a session to join.
+export function shouldAttemptAutoJoin(
+  audioStatus: "playing" | "stopped" | "cooldown",
+  localAudioReady: boolean,
+  hasGestured: boolean,
+): boolean {
+  return hasGestured && audioStatus === "playing" && !localAudioReady;
+}

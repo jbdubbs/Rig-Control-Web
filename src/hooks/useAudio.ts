@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type MutableRefObject } from "react";
 import { Socket } from "socket.io-client";
 import type { GGMorseDecoder } from "../ggmorseDecoder";
-import { splitLocalAudioDevices } from "../utils";
+import { shouldAttemptAutoJoin, splitLocalAudioDevices } from "../utils";
 
 let audioVerbose = false;
 let wsjtxAudioVerbose = false;
@@ -62,6 +62,10 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
   const wsjtxStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const wsjtxAudioRef = useRef<HTMLAudioElement | null>(null);
   const socketRef = useRef(socket);
+  // Tracks whether the page has ever seen a user gesture this session —
+  // used to auto-join local audio without requiring a click on "Join Audio".
+  const hasGesturedRef = useRef(false);
+  const localAudioInitInFlightRef = useRef(false);
 
   // Internal refs kept in sync for use in stale closures
   const audioSettingsRef = useRef(audioSettings);
@@ -286,144 +290,218 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
   }, []);
 
   const initLocalAudioPipeline = useCallback(async () => {
-    stopMicCapture();
-
-    if (opusEncoderRef.current) {
-      try { opusEncoderRef.current.close(); } catch (_) {}
-      opusEncoderRef.current = null;
+    if (localAudioInitInFlightRef.current) {
+      vlog("[AUDIO] initLocalAudioPipeline already in flight, ignoring re-entrant call");
+      return;
     }
-    if (opusDecoderRef.current) {
-      try { opusDecoderRef.current.close(); } catch (_) {}
-      opusDecoderRef.current = null;
-    }
-    if (playbackNodeRef.current) {
-      playbackNodeRef.current.disconnect();
-      playbackNodeRef.current = null;
-    }
-    if (analyserNodeRef.current) {
-      analyserNodeRef.current.disconnect();
-      analyserNodeRef.current = null;
-    }
-    if (inboundGainRef.current) {
-      inboundGainRef.current.disconnect();
-      inboundGainRef.current = null;
-    }
-    if (audioContextRef.current) {
-      try { await audioContextRef.current.close(); } catch (_) {}
-      audioContextRef.current = null;
-    }
-
-    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
-      sampleRate: 48000,
-      latencyHint: 'interactive'
-    });
-    const ctx = audioContextRef.current;
-    vlog(`[AUDIO-DIAG] AudioContext actual sampleRate=${ctx.sampleRate} (requested 48000)`);
-
-    const outputDevice = localAudioSettingsRef.current.outputDevice;
-    if (outputDevice && outputDevice !== 'default' && typeof (ctx as any).setSinkId === 'function') {
-      try {
-        await (ctx as any).setSinkId(outputDevice);
-      } catch (e) {
-        console.error("Error setting sink ID:", e);
-      }
-    }
-
-    if (ctx.state === 'suspended') {
-      await ctx.resume();
-    }
-
+    localAudioInitInFlightRef.current = true;
     try {
-      await ctx.audioWorklet.addModule('/audio-processor.js');
+      stopMicCapture();
 
-      if (!playbackNodeRef.current) {
-        playbackNodeRef.current = new AudioWorkletNode(ctx, 'playback-processor');
-        const analyserNode = ctx.createAnalyser();
-        analyserNode.fftSize = 4096;
-        analyserNode.smoothingTimeConstant = 0.6;
-        analyserNodeRef.current = analyserNode;
-        const gainNode = ctx.createGain();
-        inboundGainRef.current = gainNode;
-        applyInboundMute();
-        playbackNodeRef.current.connect(analyserNode);
-        analyserNode.connect(gainNode);
-        gainNode.connect(ctx.destination);
+      if (opusEncoderRef.current) {
+        try { opusEncoderRef.current.close(); } catch (_) {}
+        opusEncoderRef.current = null;
+      }
+      if (opusDecoderRef.current) {
+        try { opusDecoderRef.current.close(); } catch (_) {}
+        opusDecoderRef.current = null;
+      }
+      if (playbackNodeRef.current) {
+        playbackNodeRef.current.disconnect();
+        playbackNodeRef.current = null;
+      }
+      if (analyserNodeRef.current) {
+        analyserNodeRef.current.disconnect();
+        analyserNodeRef.current = null;
+      }
+      if (inboundGainRef.current) {
+        inboundGainRef.current.disconnect();
+        inboundGainRef.current = null;
+      }
+      if (audioContextRef.current) {
+        try { await audioContextRef.current.close(); } catch (_) {}
+        audioContextRef.current = null;
+      }
 
-        // WSJTX dual output: tap from analyserNode (before gain) so mute/volume
-        // doesn't affect the WSJTX feed
-        const wsjtxDevice = localAudioSettingsRef.current.wsjtxOutputDevice;
-        if (wsjtxDevice) {
-          vlogWsjtx(`Setting up dual output to device: ${wsjtxDevice}`);
-          try {
-            const streamDest = ctx.createMediaStreamDestination();
-            analyserNode.connect(streamDest);
-            wsjtxStreamDestRef.current = streamDest;
-            vlogWsjtx("MediaStreamDestination created and connected to analyserNode");
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
+        sampleRate: 48000,
+        latencyHint: 'interactive'
+      });
+      const ctx = audioContextRef.current;
+      vlog(`[AUDIO-DIAG] AudioContext actual sampleRate=${ctx.sampleRate} (requested 48000)`);
 
-            const audioEl = new Audio();
-            audioEl.srcObject = streamDest.stream;
-            if (typeof (audioEl as any).setSinkId === "function") {
-              vlogWsjtx(`Calling setSinkId(${wsjtxDevice})`);
-              await (audioEl as any).setSinkId(wsjtxDevice);
-              vlogWsjtx("setSinkId succeeded");
-            } else {
-              vlogWsjtx("setSinkId not available on this browser");
-            }
-            await audioEl.play();
-            wsjtxAudioRef.current = audioEl;
-            vlogWsjtx("WSJTX audio output active");
-          } catch (e) {
-            console.error("[AUDIO] Failed to setup WSJTX output:", e);
-            vlogWsjtx("WSJTX audio output setup failed:", e);
-          }
+      const outputDevice = localAudioSettingsRef.current.outputDevice;
+      if (outputDevice && outputDevice !== 'default' && typeof (ctx as any).setSinkId === 'function') {
+        try {
+          await (ctx as any).setSinkId(outputDevice);
+        } catch (e) {
+          console.error("Error setting sink ID:", e);
         }
       }
 
-      if (!opusDecoderRef.current && typeof (window as any).AudioDecoder !== 'undefined') {
-        const decoder = new (window as any).AudioDecoder({
-          output: (audioData: any) => {
-            const isPlaying = audioStatusRef.current === "playing";
-            const needPcm = isPlaying && (!inboundMutedRef.current);
-            const needCw = isPlaying && cwDecodeEnabledRef.current && !!cwDecoderRef.current;
-            const needWaterfall = isPlaying && waterfallActiveRef.current;
-            const needWsjtx = isPlaying && !!wsjtxStreamDestRef.current;
-
-            if (!needPcm && !needCw && !needWaterfall && !needWsjtx) {
-              audioData.close();
-              return;
-            }
-
-            const options = { planeIndex: 0 };
-            const size = audioData.allocationSize(options);
-            const buffer = new ArrayBuffer(size);
-            audioData.copyTo(buffer, options);
-            const float32Data = new Float32Array(buffer);
-
-            if ((needPcm || needWaterfall || needWsjtx) && playbackNodeRef.current) {
-              playbackNodeRef.current.port.postMessage({ type: 'pcm', pcm: float32Data });
-            }
-            if (needCw) {
-              cwDecoderRef.current!.processSamples(float32Data);
-            }
-            audioData.close();
-          },
-          error: (e: any) => console.error("[AUDIO] Decoder error:", e)
-        });
-
-        decoder.configure({
-          codec: 'opus',
-          sampleRate: 48000,
-          numberOfChannels: 1
-        });
-        opusDecoderRef.current = decoder;
+      if (ctx.state === 'suspended') {
+        // A resume() blocked by autoplay policy (no user gesture yet) doesn't
+        // reject — it can hang indefinitely. Bound it so a blocked attempt
+        // (most likely from the state-watching auto-join effect, which isn't
+        // itself inside a fresh gesture) can't wedge localAudioInitInFlightRef
+        // shut for the rest of the session, which would block even a later,
+        // correctly-gestured retry from ever running.
+        await Promise.race([
+          ctx.resume().catch(() => {}),
+          new Promise<void>(resolve => setTimeout(resolve, 1500)),
+        ]);
       }
-    } catch (e) {
-      console.error("[AUDIO] Failed to setup audio playback:", e);
-    }
 
-    setLocalAudioReady(true);
-    setAudioWasRestarted(false);
+      // onAudioStatus's "stopped" branch closes and nulls audioContextRef.current
+      // independently of this function. If that landed while we were awaiting
+      // setSinkId/resume above — or resume() simply never unblocked in time —
+      // ctx is now stale/still suspended. Bail out rather than building a
+      // pipeline nobody references, or publishing a false "ready" state.
+      if (audioContextRef.current !== ctx || ctx.state === 'suspended') {
+        return;
+      }
+
+      try {
+        await ctx.audioWorklet.addModule('/audio-processor.js');
+        if (audioContextRef.current !== ctx) return; // a stop could have landed during this await too
+
+        if (!playbackNodeRef.current) {
+          playbackNodeRef.current = new AudioWorkletNode(ctx, 'playback-processor');
+          const analyserNode = ctx.createAnalyser();
+          analyserNode.fftSize = 4096;
+          analyserNode.smoothingTimeConstant = 0.6;
+          analyserNodeRef.current = analyserNode;
+          const gainNode = ctx.createGain();
+          inboundGainRef.current = gainNode;
+          applyInboundMute();
+          playbackNodeRef.current.connect(analyserNode);
+          analyserNode.connect(gainNode);
+          gainNode.connect(ctx.destination);
+
+          // WSJTX dual output: tap from analyserNode (before gain) so mute/volume
+          // doesn't affect the WSJTX feed
+          const wsjtxDevice = localAudioSettingsRef.current.wsjtxOutputDevice;
+          if (wsjtxDevice) {
+            vlogWsjtx(`Setting up dual output to device: ${wsjtxDevice}`);
+            try {
+              const streamDest = ctx.createMediaStreamDestination();
+              analyserNode.connect(streamDest);
+              wsjtxStreamDestRef.current = streamDest;
+              vlogWsjtx("MediaStreamDestination created and connected to analyserNode");
+
+              const audioEl = new Audio();
+              audioEl.srcObject = streamDest.stream;
+              if (typeof (audioEl as any).setSinkId === "function") {
+                vlogWsjtx(`Calling setSinkId(${wsjtxDevice})`);
+                await (audioEl as any).setSinkId(wsjtxDevice);
+                vlogWsjtx("setSinkId succeeded");
+              } else {
+                vlogWsjtx("setSinkId not available on this browser");
+              }
+              await audioEl.play();
+              wsjtxAudioRef.current = audioEl;
+              vlogWsjtx("WSJTX audio output active");
+            } catch (e) {
+              console.error("[AUDIO] Failed to setup WSJTX output:", e);
+              vlogWsjtx("WSJTX audio output setup failed:", e);
+            }
+          }
+        }
+
+        if (!opusDecoderRef.current && typeof (window as any).AudioDecoder !== 'undefined') {
+          const decoder = new (window as any).AudioDecoder({
+            output: (audioData: any) => {
+              const isPlaying = audioStatusRef.current === "playing";
+              const needPcm = isPlaying && (!inboundMutedRef.current);
+              const needCw = isPlaying && cwDecodeEnabledRef.current && !!cwDecoderRef.current;
+              const needWaterfall = isPlaying && waterfallActiveRef.current;
+              const needWsjtx = isPlaying && !!wsjtxStreamDestRef.current;
+
+              if (!needPcm && !needCw && !needWaterfall && !needWsjtx) {
+                audioData.close();
+                return;
+              }
+
+              const options = { planeIndex: 0 };
+              const size = audioData.allocationSize(options);
+              const buffer = new ArrayBuffer(size);
+              audioData.copyTo(buffer, options);
+              const float32Data = new Float32Array(buffer);
+
+              if ((needPcm || needWaterfall || needWsjtx) && playbackNodeRef.current) {
+                playbackNodeRef.current.port.postMessage({ type: 'pcm', pcm: float32Data });
+              }
+              if (needCw) {
+                cwDecoderRef.current!.processSamples(float32Data);
+              }
+              audioData.close();
+            },
+            error: (e: any) => console.error("[AUDIO] Decoder error:", e)
+          });
+
+          decoder.configure({
+            codec: 'opus',
+            sampleRate: 48000,
+            numberOfChannels: 1
+          });
+          opusDecoderRef.current = decoder;
+        }
+
+        // Only mark ready on the success path — previously this ran
+        // unconditionally after the try/catch, so a genuine setup failure
+        // (AudioWorklet unsupported, module load failure, decoder
+        // unsupported) would still flip localAudioReady true and hide the
+        // fallback "Join Audio" button behind a false "ready" state.
+        setLocalAudioReady(true);
+        setAudioWasRestarted(false);
+      } catch (e) {
+        console.error("[AUDIO] Failed to setup audio playback:", e);
+      }
+    } finally {
+      localAudioInitInFlightRef.current = false;
+    }
   }, [stopMicCapture, applyInboundMute]);
+
+  const attemptAutoJoin = useCallback(() => {
+    if (shouldAttemptAutoJoin(audioStatusRef.current, localAudioReadyRef.current, hasGesturedRef.current)) {
+      initLocalAudioPipeline();
+    }
+  }, [initLocalAudioPipeline]);
+
+  // Auto-join local audio (issue #51 part 2): do exactly what the manual
+  // "Join Audio" button does, without requiring a click on that button.
+  // Two triggers, both needed, to cover every gesture/"playing" ordering:
+  //
+  // 1. The gesture listener below fires attemptAutoJoin() synchronously from
+  //    inside a trusted, activation-granting event — this is what actually
+  //    rescues Safari's stricter same-call-stack resume() requirement, and
+  //    is the retry path after a restart. pointerdown/pointerup/keydown are
+  //    the exact WHATWG "activation triggering input event" set — pointerdown
+  //    alone would miss touch/pen users, who only grant activation on lift
+  //    (pointerup), not on touch-start, by spec design (to exclude swipes).
+  // 2. The state-watching effect covers the common case where the user
+  //    already gestured earlier (e.g. clicking "Sign In" during login)
+  //    before backend audio ever reports "playing," including after a
+  //    restart — Chrome/Firefox grant this via document-level "sticky"
+  //    activation, no fresh gesture required.
+  useEffect(() => {
+    attemptAutoJoin();
+  }, [audioStatus, localAudioReady, attemptAutoJoin]);
+
+  useEffect(() => {
+    const onGesture = () => {
+      hasGesturedRef.current = true;
+      attemptAutoJoin();
+    };
+    window.addEventListener('pointerdown', onGesture);
+    window.addEventListener('pointerup', onGesture);
+    window.addEventListener('keydown', onGesture);
+    return () => {
+      window.removeEventListener('pointerdown', onGesture);
+      window.removeEventListener('pointerup', onGesture);
+      window.removeEventListener('keydown', onGesture);
+    };
+  }, [attemptAutoJoin]);
 
   const updateWsjtxOutput = useCallback(async (deviceId: string) => {
     vlogWsjtx(`updateWsjtxOutput called, deviceId=${deviceId || "(none)"}`);

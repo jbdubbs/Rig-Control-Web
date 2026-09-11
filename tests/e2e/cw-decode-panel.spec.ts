@@ -117,7 +117,14 @@ test.describe('CwDecodePanel via a PipeWire loopback fed a Morse-timed WAV', () 
     await page.getByRole('button', { name: 'Start Backend Audio', exact: true }).click();
     await page.locator('button:has(svg.lucide-x)').first().click();
 
-    await page.getByTitle('Join the active audio session').click();
+    // useAudio.ts now auto-joins local audio once the page has seen any
+    // gesture (issue #51) — by this point in the spec that's already
+    // happened several times over, so the button is usually already gone.
+    // See audio-panels.spec.ts's point 6 for the full explanation.
+    const joinAudioButton = page.getByTitle('Join the active audio session');
+    if (await joinAudioButton.isVisible().catch(() => false)) {
+      await joinAudioButton.click();
+    }
     await expect(page.getByTitle('Mute Inbound Audio')).toBeEnabled({ timeout: 15_000 });
     await page.getByTitle('Unmute Outbound Audio').click();
 
