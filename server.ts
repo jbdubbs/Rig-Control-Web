@@ -71,6 +71,17 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   // into ctx.diagnosticsLog as early as possible, for the Diagnostics tab.
   initDiagnosticsLog(ctx);
 
+  // Self-identify the running build in every log (journalctl, terminal, and
+  // the browser Diagnostics tab) — unconditional, not vlogInfra, since a bug
+  // report's log dump otherwise carries no version info at all (see #54,
+  // where it was impossible to tell whether a crash report was from a
+  // pre-fix or post-fix testing build).
+  let appVersion = "unknown";
+  try {
+    appVersion = JSON.parse(fs.readFileSync(path.join(baseDir, "package.json"), "utf-8")).version ?? "unknown";
+  } catch { /* package.json not readable */ }
+  console.log(`RigControl Web v${appVersion}`);
+
   // Wire cross-module callbacks
   ctx.saveSettings = () => saveSettings(ctx, SETTINGS_FILE);
   ctx.sendToRig = (cmd, ext, pri) => sendToRig(ctx, cmd, ext, pri);
