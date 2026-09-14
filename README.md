@@ -1,22 +1,43 @@
 # RigControl Web
 
-A web-first app for controlling your radio and making CW and SSB contacts!  
+Make your regular 'ole rig just like your buddy's $6000 Flex.  Completely free and open source.  
 
-- Full support for making voice and CW contacts, plus FT8/FT4/WSPR and other digital modes via the WSJTX Bridge.
+- **Remote Voice**
+  - Use your laptop or phone mic
+  - Low latency, high fidelity audio
+- **Remote CW**
+  - Hardware paddle (vband or TinyMidi), keyboard, or touch keying
+  - CW decoder
+  - Work manually keyed CW from your phone!
+- **Remote Digital**
+  - Use the full WSJTX app on your remote computer from anywhere.  Just grab the helper app.
+  - Can be used with any Hamlib compatible app like JS8Call, Fldigi, QSSTV, etc.
+- **Spectrum Scope**
+  - ICOM Rigs (7300, 705, 7610, etc)
+  - Yaesu FT-710
+  - Xiegu G90
+- **Front Panel Video Feed**
+  - ​​​For radios with DVI/HDMI out
+- **Full Remote Radio Control**
+  - Any Hamlib supported rig
+  - All Hamlib-compatible apps can connect through app so you still get all the control features.
+- **POTA/SOTA/WWFF/DX Spots**
+  - Auto-QSY on click
+  - Filter by mode and band
+- **​HF Conditions Info**
+  - ​​​Zoomable MUF and Fof2 Maps
+  - Solar conditions from hamqsl.com and prop.kc2g.com
+- **Configurable Panel Interface**
+  - Add/remove any panel you wish.  Make it large enough for a 4k display, or small enough for an old VGA monitor.
+  - Mobile phone view for iOS and Android.
+- **​​​​​​​User Auth System**
+  - Use it at your club and give each licensed amateur their own login!
   
-- CW keyer in iambic and straight modes (via keyboard, "vBand adapter", or Tiny MIDI).  You can send real CW!  Not macros!
-  
-- Audio via your radio's virtual USB Audio Device, Digirig or similar.
-  
-- Spectrum scope available on supported Icom radios (IC-7300, IC-7300MK2, IC-7610, IC-7850/7851, IC-705, IC-9700, IC-905), the Yaesu FT-710, and — via a generic Audio I/Q source over any USB audio interface — the Xiegu G90.
-  
-- Video support so you can see the front panel of your radio (by feeding DVI/HDMI into your PC with an HDMI to USB capture dongle).
-
 ## Getting Started
 
-**Most users should download the latest pre-built installer from the [Releases page](https://github.com/jbdubbs/Rig-Control-Web/releases).** Pick the installer for your operating system (Windows `.exe`, Linux `.AppImage`, or macOS `.dmg`), run it, and you are ready to go — no Node.js, no build tools required.
+**Most users should download the latest pre-built installer from the [Releases page](https://github.com/jbdubbs/Rig-Control-Web/releases).** Pick the installer for your operating system (Windows `.exe`, Linux `.AppImage`, or macOS `.dmg`), run it, and you are ready to go.
 
-**Running on a dedicated Raspberry Pi or mini PC?** See [Headless Deployment](https://github.com/jbdubbs/Rig-Control-Web/wiki/Headless-Deployment) for Docker Compose, `docker run`, and systemd options — no display or Electron required.
+**Running on a dedicated Raspberry Pi (coming soon) or mini PC?** See [Headless Deployment](https://github.com/jbdubbs/Rig-Control-Web/wiki/Headless-Deployment) for Docker Compose, `docker run`, and systemd options.
 
 For full usage instructions, see the **[Wiki](https://github.com/jbdubbs/Rig-Control-Web/wiki)**.
 
@@ -28,36 +49,13 @@ For full usage instructions, see the **[Wiki](https://github.com/jbdubbs/Rig-Con
 ### Phone View (Mobile)
 <img src="assets/1.0.0.screenshots/phone%20view%2006.11.2026.png" alt="RigControl Web — Phone View" width="50%">
 
-## Features
-
-- **Remote Access**: Access your shack from anywhere over your own VPN (or via not-included reverse proxy) by pointing a browser to your rig computer's IP on port 3000. (e.g. https://192.168.1.2:3000)
-- **User Authentication**: Run a remote rig for your club or group.  Schools can allow remote access to a radio for those who don't have one.  Or, just lock down access for you alone on your home radio.
-
-- **Split VFO Support**: Full control over split operations with visual feedback.
-- **Real-time Graphing**: Frequency, mode, and meter displays (S-Meter, SWR, ALC, Power, VDD) polled live from the rig.
-- **Spectrum Scope**: Live panadapter and waterfall display. Three sources: Hamlib UDP multicast (Icom IC-7300, IC-7300MK2, IC-7610, IC-7850/7851, IC-705, IC-9700, IC-905), direct USB-SPI on the Yaesu FT-710 (without SCU-LAN10), or a generic Audio I/Q source that captures baseband I/Q through any USB audio interface — tested against the Xiegu G90.
-- **Rig Video Feed**: Display a system video capture device (e.g. HDMI capture card or webcam) so you can see your radio's front panel remotely. Example: FT-710 DVI out → USB HDMI capture card.
-- **Bidirectional Audio**: Full transmit and receive audio from your radio to your remote browser window.
-
-- **CW Keyer**: Full iambic (A/B) and straight-key CW keying from any browser.  Use keyboard keys, a TinyMIDI, or a vBand adapter.
-- **CW Decoder**: Real-time Morse code decoding of received audio using the [GGMorse](https://github.com/ggerganov/ggmorse) library.
-
-- **WSJTX Bridge (Remote Digital Modes)**: Operate FT8, FT4, WSPR, and other digital modes with WSJT-X while controlling your radio remotely through RigControl Web. A small helper binary (`wsjtx-bridge`) runs on your local operating machine, bridging WSJT-X's rig control to RigControl Web over your existing browser connection and auto-configuring virtual audio devices for RX/TX. See the [WSJTX Integration wiki page](https://github.com/jbdubbs/Rig-Control-Web/wiki/WSJTX-Integration) for setup.
-
-- **Live Spots (POTA, SOTA, WWFF)**: Real-time spot displays with filtering by mode and frequency.
-  - Click any spot to instantly tune the VFO and set the mode.
-- **Solar & Propagation Data**: Live HF band conditions, VHF propagation alerts, and detailed solar indices from [hamqsl.com](https://www.hamqsl.com/) (N0NBH).
-- **MUF / foF2 World Map**: Zoomable SVG world propagation map embedded from [prop.kc2g.com](https://prop.kc2g.com/).
-
-- **Works With All Hamlib-Compatible Software (Local Digital Modes)**: When working from the same PC as your installed RigControl Web software, apps like WSJTX work perfectly.  No need to only have one open at a time.
-
 ## Prerequisites
 
 ### Common
 - **Operating Systems**:
   - **Windows 10 or higher** (tested on Windows 11 23H2) — The Electron installer includes a bundled `rigctld`.
   - **Linux kernel 6.0 or higher** (tested on Fedora 43) — The Electron AppImage includes a bundled `rigctld`.
-  - **macOS** — Completely untested.  No testing hardware.
+  - **macOS** — Completely untested.  No testing hardware.  Try it out and submit a report.
 
 ### Compile from Source
 - **Node.js**: Version 24 or higher.
