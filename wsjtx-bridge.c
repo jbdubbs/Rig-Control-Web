@@ -408,11 +408,60 @@ static int ws_decode_frame(const unsigned char *buf, int buflen,
 
 /* ─── WebSocket handshake ────────────────────────────────────────────────── */
 
+/* Returns 1 if the Origin header is present and looks like this app's own
+ * page (https:// + loopback or private-LAN host) — i.e. plausibly the
+ * RigControl Web tab, not an arbitrary external web page's background tab.
+ * Browsers don't apply same-origin policy to outbound WebSocket connections
+ * but always send Origin, so this mitigates a malicious external page
+ * silently hijacking this loopback-only control channel. */
+static int origin_is_allowed(const char *request) {
+    const char *origin_hdr = strstr(request, "Origin:");
+    if (!origin_hdr) origin_hdr = strstr(request, "origin:");
+    if (!origin_hdr) return 0;
+
+    origin_hdr += 7;
+    while (*origin_hdr == ' ') origin_hdr++;
+
+    char origin[128];
+    int oi = 0;
+    while (*origin_hdr && *origin_hdr != '\r' && *origin_hdr != '\n' && oi < (int)sizeof(origin) - 1)
+        origin[oi++] = *origin_hdr++;
+    origin[oi] = '\0';
+
+    const char *scheme = "https://";
+    size_t scheme_len = strlen(scheme);
+    if (strncmp(origin, scheme, scheme_len) != 0) return 0;
+
+    const char *host = origin + scheme_len;
+    char hostbuf[64];
+    int hi = 0;
+    while (host[hi] && host[hi] != ':' && host[hi] != '/' && hi < (int)sizeof(hostbuf) - 1) {
+        hostbuf[hi] = host[hi];
+        hi++;
+    }
+    hostbuf[hi] = '\0';
+
+    if (strcmp(hostbuf, "localhost") == 0 || strcmp(hostbuf, "127.0.0.1") == 0) return 1;
+
+    unsigned a, b, c, d;
+    if (sscanf(hostbuf, "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+        if (a == 10) return 1;
+        if (a == 172 && b >= 16 && b <= 31) return 1;
+        if (a == 192 && b == 168) return 1;
+    }
+    return 0;
+}
+
 /*
  * Parse the Sec-WebSocket-Key from an HTTP upgrade request,
  * compute the accept value, and send the 101 response.
  */
 static int ws_do_handshake(sock_t s, const char *request) {
+    if (!origin_is_allowed(request)) {
+        fprintf(stderr, "wsjtx-bridge: WebSocket handshake rejected (Origin missing or not a loopback/LAN https origin)\n");
+        return -1;
+    }
+
     const char *key_hdr = strstr(request, "Sec-WebSocket-Key:");
     if (!key_hdr) key_hdr = strstr(request, "sec-websocket-key:");
     if (!key_hdr) return -1;
@@ -1112,7 +1161,7 @@ int main(int argc, char *argv[]) {
 
     printf("READY %d %d\n", tcp_port, ws_port);
     fflush(stdout);
-    fprintf(stderr, "wsjtx-bridge v0.2.2: TCP (rigctld) on localhost:%d, WebSocket on localhost:%d\n",
+    fprintf(stderr, "wsjtx-bridge v0.2.3: TCP (rigctld) on localhost:%d, WebSocket on localhost:%d\n",
             tcp_port, ws_port);
 
 #if !defined(_WIN32) && !defined(__APPLE__)
