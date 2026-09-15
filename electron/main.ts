@@ -20,6 +20,12 @@ import { vlogInfra as vlog } from '../server/vlog.ts';
 
 const windowStatePath = path.join(app.getPath('userData'), 'window-state.json');
 
+// createWindow() can run more than once (macOS 'activate' after all windows
+// close, since window-all-closed deliberately doesn't quit there) — these
+// track what must only ever happen once.
+let serverStarted = false;
+let mainWindow: BrowserWindow | null = null;
+
 function loadWindowState() {
   try {
     if (fs.existsSync(windowStatePath)) {
@@ -140,10 +146,15 @@ function uninstallDesktopIntegration(): void {
 }
 
 async function createWindow() {
-  // Start the backend server with the correct app path for static files
+  // Start the backend server with the correct app path for static files.
+  // Only the first call may do this — a later call (macOS 'activate') would
+  // try to rebind the already-listening HTTPS port and fail with EADDRINUSE.
   const appPath = isDev ? process.cwd() : app.getAppPath();
   const userDataPath = isDev ? process.cwd() : app.getPath('userData');
-  await startServer(appPath, userDataPath);
+  if (!serverStarted) {
+    serverStarted = true;
+    await startServer(appPath, userDataPath);
+  }
 
   const savedState = loadWindowState();
   
@@ -181,22 +192,7 @@ async function createWindow() {
 
   // Pass the window reference to the server for device enumeration
   setElectronWindow(win);
-
-  ipcMain.handle('save-text-file', async (event, { content, defaultFilename }: { content: string; defaultFilename: string }) => {
-    const senderWin = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showSaveDialog(senderWin ?? win, {
-      defaultPath: defaultFilename,
-      filters: [{ name: 'Text Files', extensions: ['txt'] }],
-    });
-    if (result.canceled || !result.filePath) return { ok: false };
-    try {
-      fs.writeFileSync(result.filePath, content, 'utf-8');
-      return { ok: true, path: result.filePath };
-    } catch (e) {
-      console.error('Failed to save diagnostics log:', e);
-      return { ok: false };
-    }
-  });
+  mainWindow = win;
 
   ipcMain.on('resize-window', (event, { width, height }) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -264,6 +260,30 @@ async function createWindow() {
     win.loadURL('https://localhost:3000');
   }
 }
+
+// Registered once at module scope — ipcMain.handle throws if called twice
+// for the same channel, which createWindow() used to do on macOS
+// dock-icon relaunch (see createWindow()'s serverStarted guard above).
+ipcMain.handle('save-text-file', async (event, { content, defaultFilename }: { content: string; defaultFilename: string }) => {
+  const senderWin = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+  const result = senderWin
+    ? await dialog.showSaveDialog(senderWin, {
+        defaultPath: defaultFilename,
+        filters: [{ name: 'Text Files', extensions: ['txt'] }],
+      })
+    : await dialog.showSaveDialog({
+        defaultPath: defaultFilename,
+        filters: [{ name: 'Text Files', extensions: ['txt'] }],
+      });
+  if (result.canceled || !result.filePath) return { ok: false };
+  try {
+    fs.writeFileSync(result.filePath, content, 'utf-8');
+    return { ok: true, path: result.filePath };
+  } catch (e) {
+    console.error('Failed to save diagnostics log:', e);
+    return { ok: false };
+  }
+});
 
 if (process.argv.includes('--install')) {
   installDesktopIntegration();
