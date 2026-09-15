@@ -1112,7 +1112,7 @@ int main(int argc, char *argv[]) {
 
     printf("READY %d %d\n", tcp_port, ws_port);
     fflush(stdout);
-    fprintf(stderr, "wsjtx-bridge v0.2.1: TCP (rigctld) on localhost:%d, WebSocket on localhost:%d\n",
+    fprintf(stderr, "wsjtx-bridge v0.2.2: TCP (rigctld) on localhost:%d, WebSocket on localhost:%d\n",
             tcp_port, ws_port);
 
 #if !defined(_WIN32) && !defined(__APPLE__)
@@ -1244,7 +1244,7 @@ int main(int argc, char *argv[]) {
         /* ── Read from WebSocket client ── */
 
         if (ws_client != SOCK_INVALID && FD_ISSET(ws_client, &rfds)) {
-            int space = WS_BUF_SIZE - ws_buf_len;
+            int space = WS_BUF_SIZE - ws_buf_len - 1; /* reserve 1 byte for the NUL terminator written below */
             if (space <= 0) { ws_client_reset(); goto ws_done; }
 
             int n = recv(ws_client, (char*)(ws_buf + ws_buf_len), space, 0);
