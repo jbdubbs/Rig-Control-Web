@@ -141,6 +141,30 @@ export function resolveToken(
   };
 }
 
+// ─── Error guard ──────────────────────────────────────────────────────────────
+
+// Handlers below destructure client-supplied payloads directly in their
+// parameter list. Destructuring `undefined` (a malformed/missing payload)
+// throws during binding; since these are async functions, that throw becomes
+// a rejected Promise socket.io never awaits — an unhandled rejection that can
+// crash the whole process (no global unhandledRejection handler exists).
+// This wraps any such handler so a bad payload/unexpected throw is reported
+// as a normal failure result instead.
+function withErrorGuard<TArgs extends unknown[]>(
+  socket: Socket,
+  errorEvent: string,
+  handler: (...args: TArgs) => void | Promise<void>
+): (...args: TArgs) => Promise<void> {
+  return async (...args: TArgs) => {
+    try {
+      await handler(...args);
+    } catch (err) {
+      console.error(`[AUTH] Unhandled error, emitting ${errorEvent}:`, err);
+      socket.emit(errorEvent, { ok: false, error: "Internal server error" });
+    }
+  };
+}
+
 // ─── Auth guards ─────────────────────────────────────────────────────────────
 
 export function requireAuth(
@@ -224,7 +248,7 @@ export function registerAuthHandlers(
 ): void {
   socket.on(
     "auth:login",
-    async ({
+    withErrorGuard(socket, "auth:result", async ({
       callsign,
       password,
     }: {
@@ -332,7 +356,7 @@ export function registerAuthHandlers(
       if (!user.mustChangePassword) {
         onAuthenticated();
       }
-    }
+    })
   );
 
   socket.on("auth:logout", () => {
@@ -352,7 +376,7 @@ export function registerAuthHandlers(
 
   socket.on(
     "auth:change-password",
-    async ({
+    withErrorGuard(socket, "auth:op-result", async ({
       currentPassword,
       newPassword,
     }: {
@@ -435,7 +459,7 @@ export function registerAuthHandlers(
           onAuthenticated();
         }
       });
-    }
+    })
   );
 }
 
@@ -454,7 +478,7 @@ export function registerAdminHandlers(
 
   socket.on(
     "admin:create-user",
-    async ({
+    withErrorGuard(socket, "admin:op-result", async ({
       callsign,
       password,
       role,
@@ -516,10 +540,10 @@ export function registerAdminHandlers(
         socket.emit("admin:op-result", { ok: true });
         broadcastUsersList(ctx);
       });
-    }
+    })
   );
 
-  socket.on("admin:delete-user", ({ callsign }: { callsign: string }) => {
+  socket.on("admin:delete-user", withErrorGuard(socket, "admin:op-result", ({ callsign }: { callsign: string }) => {
     requireAdmin(socket, ctx, (authInfo) => {
       const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
       if (normalizedCallsign === authInfo.callsign) {
@@ -547,11 +571,11 @@ export function registerAdminHandlers(
       socket.emit("admin:op-result", { ok: true });
       broadcastUsersList(ctx);
     });
-  });
+  }));
 
   socket.on(
     "admin:modify-user",
-    async ({
+    withErrorGuard(socket, "admin:op-result", async ({
       callsign,
       role,
       password,
@@ -600,12 +624,12 @@ export function registerAdminHandlers(
         socket.emit("admin:op-result", { ok: true });
         broadcastUsersList(ctx);
       });
-    }
+    })
   );
 
   socket.on(
     "admin:clear-preferences",
-    ({ callsign }: { callsign: string }) => {
+    withErrorGuard(socket, "admin:op-result", ({ callsign }: { callsign: string }) => {
       requireAdmin(socket, ctx, (authInfo) => {
         const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
         const users = loadUsers(ctx);
@@ -634,7 +658,7 @@ export function registerAdminHandlers(
         });
         socket.emit("admin:op-result", { ok: true });
       });
-    }
+    })
   );
 
   socket.on("admin:get-sessions", () => {
@@ -655,7 +679,7 @@ export function registerAdminHandlers(
 
   socket.on(
     "admin:force-logout",
-    ({ socketId }: { socketId: string }) => {
+    withErrorGuard(socket, "admin:op-result", ({ socketId }: { socketId: string }) => {
       requireAdmin(socket, ctx, (authInfo) => {
         const target = ctx.authenticatedSockets.get(socketId);
         if (!target) {
@@ -676,12 +700,12 @@ export function registerAdminHandlers(
         ctx.authenticatedSockets.delete(socketId);
         socket.emit("admin:op-result", { ok: true });
       });
-    }
+    })
   );
 
   socket.on(
     "admin:get-audit-log",
-    ({ limit = 50 }: { limit?: number }) => {
+    withErrorGuard(socket, "admin:op-result", ({ limit = 50 }: { limit?: number }) => {
       requireAdmin(socket, ctx, () => {
         const safeLimit = Math.min(Math.max(1, Math.floor(Number(limit) || 50)), 1000);
         const entries = loadAudit(ctx);
@@ -689,7 +713,7 @@ export function registerAdminHandlers(
           entries: entries.slice(-safeLimit).reverse(),
         });
       });
-    }
+    })
   );
 
   socket.on("admin:get-system-info", () => {
@@ -733,7 +757,7 @@ export function registerAdminHandlers(
     });
   });
 
-  socket.on("admin:unlock-callsign", ({ callsign }: { callsign: string }) => {
+  socket.on("admin:unlock-callsign", withErrorGuard(socket, "admin:op-result", ({ callsign }: { callsign: string }) => {
     requireAdmin(socket, ctx, (authInfo) => {
       const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
       loginCallsignAttempts.delete(normalizedCallsign);
@@ -747,9 +771,9 @@ export function registerAdminHandlers(
       });
       socket.emit("admin:op-result", { ok: true });
     });
-  });
+  }));
 
-  socket.on("admin:factory-reset", ({ confirm }: { confirm: boolean }) => {
+  socket.on("admin:factory-reset", withErrorGuard(socket, "admin:op-result", ({ confirm }: { confirm: boolean }) => {
     requireAdmin(socket, ctx, (authInfo) => {
       if (!confirm) {
         socket.emit("admin:op-result", {
@@ -788,7 +812,7 @@ export function registerAdminHandlers(
         ctx.authenticatedSockets.delete(socket.id);
       });
     });
-  });
+  }));
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
