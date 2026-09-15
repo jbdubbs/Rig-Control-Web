@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import { spawn, exec, ChildProcess } from "child_process";
+import { spawn, exec, execFile, ChildProcess } from "child_process";
 import { Socket } from "socket.io";
 import type { ServerContext } from "./context.ts";
 import { vlogRig as vlog } from "./vlog.ts";
@@ -111,7 +111,7 @@ export function killExistingRigctld(): Promise<void> {
 
 export function fetchRadioCapabilities(ctx: ServerContext, rigNumber: string): Promise<boolean> {
   return new Promise((resolve) => {
-    if (!rigNumber || rigNumber === "" || rigNumber === "1") {
+    if (!rigNumber || rigNumber === "" || rigNumber === "1" || !/^\d+$/.test(rigNumber)) {
       resolve(false);
       return;
     }
@@ -119,7 +119,7 @@ export function fetchRadioCapabilities(ctx: ServerContext, rigNumber: string): P
     const rigctldPath = getRigctldPath(ctx.baseDir);
     vlog(`[HAMLIB] Fetching radio capabilities for rig ${rigNumber}...`);
 
-    exec(`"${rigctldPath}" -m ${rigNumber} -u`, (error, stdout) => {
+    execFile(rigctldPath, ["-m", rigNumber, "-u"], (error, stdout) => {
       if (error) {
         console.error(`[HAMLIB] Error getting radio capabilities: ${error.message}`);
         resolve(false);
