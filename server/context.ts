@@ -1,4 +1,6 @@
+import fs from "fs";
 import net from "net";
+import path from "path";
 import dgram from "dgram";
 import { Server } from "socket.io";
 import { ChildProcess } from "child_process";
@@ -531,4 +533,13 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
     saveSettings: () => {},
     sendToRig: () => Promise.reject("sendToRig not yet initialized"),
   };
+}
+
+export function getAppVersion(baseDir: string): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(baseDir, "package.json"), "utf-8"));
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }

@@ -7,7 +7,7 @@ import fs from "fs";
 import { loadOrGenerateCert } from "./server/tls.ts";
 import { vlogInfra, vlogRig, vlogVideo, vlogAudio, debugFlags } from "./server/vlog.ts";
 import { initDiagnosticsLog, registerDiagnosticsHandlers } from "./server/diagnostics.ts";
-import { createInitialContext } from "./server/context.ts";
+import { createInitialContext, getAppVersion } from "./server/context.ts";
 import { loadSettings, saveSettings, registerSettingsHandlers } from "./server/settings.ts";
 import { getRigctldVersion, checkVersionSupported, emitRigctldStatus, startRigctld, stopRigctld, registerRigctldHandlers } from "./server/rigctld.ts";
 import { sendToRig, startPolling, stopPolling, registerRigCommHandlers } from "./server/rigComm.ts";
@@ -76,10 +76,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
   // report's log dump otherwise carries no version info at all (see #54,
   // where it was impossible to tell whether a crash report was from a
   // pre-fix or post-fix testing build).
-  let appVersion = "unknown";
-  try {
-    appVersion = JSON.parse(fs.readFileSync(path.join(baseDir, "package.json"), "utf-8")).version ?? "unknown";
-  } catch { /* package.json not readable */ }
+  const appVersion = getAppVersion(baseDir);
   console.log(`RigControl Web v${appVersion}`);
 
   // Wire cross-module callbacks

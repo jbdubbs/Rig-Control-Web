@@ -5,6 +5,7 @@ import { X509Certificate } from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import type { Socket } from "socket.io";
+import { getAppVersion } from "./context.ts";
 import type { ServerContext } from "./context.ts";
 import type {
   AuthenticatedSocket,
@@ -693,15 +694,8 @@ export function registerAdminHandlers(
 
   socket.on("admin:get-system-info", () => {
     requireAdmin(socket, ctx, () => {
-      let version = "unknown";
+      const version = getAppVersion(ctx.baseDir);
       let certExpiry = "unknown";
-
-      try {
-        const pkg = JSON.parse(
-          fs.readFileSync(path.join(ctx.baseDir, "package.json"), "utf-8")
-        );
-        version = pkg.version ?? "unknown";
-      } catch { /* package.json not readable */ }
 
       try {
         const certPem = fs.readFileSync(
