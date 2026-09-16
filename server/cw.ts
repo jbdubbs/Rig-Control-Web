@@ -222,6 +222,7 @@ export async function openKeyerPort(ctx: ServerContext, portPath: string): Promi
 
     let buf = "";
     proc.stdout!.on("data", (chunk: Buffer) => {
+      if (settled) return;
       buf += chunk.toString();
       let nl: number;
       while ((nl = buf.indexOf("\n")) !== -1) {
