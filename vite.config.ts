@@ -14,6 +14,11 @@ export default defineConfig({
   ],
   worker: {
     format: 'es',
+    rollupOptions: {
+      // public/ft8-decoder.js is a static runtime asset (see native/ft8-decoder), not
+      // something to bundle — keep the worker's dynamic import pointed at it as-is.
+      external: ['/ft8-decoder.js'],
+    },
   },
   resolve: {
     alias: {

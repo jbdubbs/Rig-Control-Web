@@ -24,6 +24,8 @@ import EditToolbar from "../components/EditToolbar";
 import PanelPicker from "../components/PanelPicker";
 import CommandConsolePanel from "../panels/CommandConsolePanel";
 import CwDecodePanel from "../panels/CwDecodePanel";
+import Ft8DecodePanel, { Ft8DepthSelect } from "../panels/Ft8DecodePanel";
+import type { Ft8Decode, Ft8Depth } from "../ft8Decoder";
 import RfLevelsPanel from "../panels/RfLevelsPanel";
 import VfoPanel, { VfoCollapsedHeader } from "../panels/VfoPanel";
 import VideoFeedPanel, { VideoFeedHeaderActions } from "../panels/VideoFeedPanel";
@@ -42,7 +44,7 @@ import SpectrumAudioPanel from "../panels/SpectrumAudioPanel";
 
 const PHONE_PANEL_TYPES: PanelType[] = [
   'vfo', 'video_feed', 'audio_feed', 'smeter', 'controls',
-  'spots_pota', 'spots_sota', 'spots_wwff', 'spots_dx', 'spots_combo', 'cwdecode', 'commandconsole', 'solar', 'mufmap',
+  'spots_pota', 'spots_sota', 'spots_wwff', 'spots_dx', 'spots_combo', 'cwdecode', 'ft8decode', 'commandconsole', 'solar', 'mufmap',
   'spectrum_hamlib', 'spectrum_audio',
 ];
 
@@ -219,6 +221,10 @@ export interface PhoneLayoutProps {
   setCwDecodedText: React.Dispatch<React.SetStateAction<string>>;
   cwStats: { pitch: number; speed: number };
   cwScrollContainerRef: React.RefObject<HTMLDivElement>;
+  ft8Decodes: Ft8Decode[];
+  ft8Depth: Ft8Depth;
+  setFt8Depth: (depth: Ft8Depth) => void;
+  ft8ScrollContainerRef: React.RefObject<HTMLDivElement>;
 
   // Command console
   isConsoleCollapsed: boolean;
@@ -252,6 +258,8 @@ export interface PhoneLayoutProps {
   setIsMufMapCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   isCwDecodeCollapsed: boolean;
   setIsCwDecodeCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  isFt8DecodeCollapsed: boolean;
+  setIsFt8DecodeCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   isSpectrumHamlibCollapsed: boolean;
   setIsSpectrumHamlibCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   isSpectrumAudioCollapsed: boolean;
@@ -430,6 +438,10 @@ function PhoneLayout({
   setCwDecodedText,
   cwStats,
   cwScrollContainerRef,
+  ft8Decodes,
+  ft8Depth,
+  setFt8Depth,
+  ft8ScrollContainerRef,
   isConsoleCollapsed,
   consoleLogs,
   rawCommand,
@@ -453,6 +465,8 @@ function PhoneLayout({
   setIsMufMapCollapsed,
   isCwDecodeCollapsed,
   setIsCwDecodeCollapsed,
+  isFt8DecodeCollapsed,
+  setIsFt8DecodeCollapsed,
   isSpectrumHamlibCollapsed,
   setIsSpectrumHamlibCollapsed,
   isSpectrumAudioCollapsed,
@@ -827,6 +841,21 @@ function PhoneLayout({
             isCollapsed={isCwDecodeCollapsed}
             setIsCollapsed={setIsCwDecodeCollapsed}
           />
+        );
+
+      case 'ft8decode':
+        return (
+          <PanelChrome
+            title="FT8 Decoder"
+            icon={<Radio size={12} />}
+            isCollapsed={isFt8DecodeCollapsed}
+            setIsCollapsed={setIsFt8DecodeCollapsed}
+            headerActions={<Ft8DepthSelect depth={ft8Depth} onChange={setFt8Depth} />}
+            bodyClassName="p-0"
+            headerSize="md"
+          >
+            <Ft8DecodePanel ft8Decodes={ft8Decodes} ft8ScrollContainerRef={ft8ScrollContainerRef} />
+          </PanelChrome>
         );
 
       case 'commandconsole':

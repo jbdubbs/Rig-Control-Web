@@ -39,6 +39,8 @@ import VideoFeedPanel, { VideoFeedHeaderActions } from "../panels/VideoFeedPanel
 import { AudioFeedHeaderActions } from "../panels/AudioFeedPanel";
 import ControlsPanel from "../panels/ControlsPanel";
 import CwDecodePanel from "../panels/CwDecodePanel";
+import Ft8DecodePanel, { Ft8DepthSelect } from "../panels/Ft8DecodePanel";
+import type { Ft8Decode, Ft8Depth } from "../ft8Decoder";
 import { SpotSettingsGear } from "../panels/SpotsPanel";
 import SpotComboPanel from "../panels/SpotComboPanel";
 import SpotSettingsModal from "../modals/SpotSettingsModal";
@@ -49,7 +51,7 @@ export type { GridLayoutCallbacks };
 
 const COMPACT_PANEL_TYPES: PanelType[] = [
   'vfo', 'smeter', 'video_feed', 'audio_feed', 'controls', 'rflevels',
-  'cwdecode', 'commandconsole', 'spots_pota', 'spots_sota', 'spots_wwff', 'spots_dx', 'spots_combo', 'solar', 'mufmap',
+  'cwdecode', 'ft8decode', 'commandconsole', 'spots_pota', 'spots_sota', 'spots_wwff', 'spots_dx', 'spots_combo', 'solar', 'mufmap',
   'spectrum_hamlib', 'spectrum_audio',
 ];
 
@@ -122,6 +124,10 @@ export interface CompactLayoutProps {
   cwStats: { pitch: number; speed: number };
   cwScrollContainerRef: React.RefObject<HTMLDivElement>;
   setCwDecodedText: React.Dispatch<React.SetStateAction<string>>;
+  ft8Decodes: Ft8Decode[];
+  ft8Depth: Ft8Depth;
+  setFt8Depth: (depth: Ft8Depth) => void;
+  ft8ScrollContainerRef: React.RefObject<HTMLDivElement>;
 
   // Video feed
   videoStatus: "streaming" | "stopped";
@@ -249,6 +255,8 @@ export interface CompactLayoutProps {
   setIsComboSpotsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   isCwDecodeCollapsed: boolean;
   setIsCwDecodeCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  isFt8DecodeCollapsed: boolean;
+  setIsFt8DecodeCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
 
   // Command console
   isConsoleCollapsed: boolean;
@@ -317,6 +325,10 @@ function CompactLayout({
   cwStats,
   cwScrollContainerRef,
   setCwDecodedText,
+  ft8Decodes,
+  ft8Depth,
+  setFt8Depth,
+  ft8ScrollContainerRef,
   videoStatus,
   isVideoCollapsed,
   isElectronSource,
@@ -436,6 +448,8 @@ function CompactLayout({
   setIsComboSpotsCollapsed,
   isCwDecodeCollapsed,
   setIsCwDecodeCollapsed,
+  isFt8DecodeCollapsed,
+  setIsFt8DecodeCollapsed,
   isConsoleCollapsed,
   consoleLogs,
   rawCommand,
@@ -820,6 +834,22 @@ function CompactLayout({
           />
         );
 
+      case 'ft8decode':
+        return (
+          <PanelChrome
+            title="FT8 Decoder"
+            icon={<Radio size={12} />}
+            isCollapsed={isFt8DecodeCollapsed}
+            setIsCollapsed={setIsFt8DecodeCollapsed}
+            headerActions={<Ft8DepthSelect depth={ft8Depth} onChange={setFt8Depth} />}
+            className="shadow-lg"
+            bodyClassName="p-0"
+            headerSize="sm"
+          >
+            <Ft8DecodePanel ft8Decodes={ft8Decodes} ft8ScrollContainerRef={ft8ScrollContainerRef} />
+          </PanelChrome>
+        );
+
       case 'commandconsole':
         return (
           <PanelChrome
@@ -1083,6 +1113,7 @@ function CompactLayout({
     vfoStep, inputVfoA, inputVfoB, localMode,
     history, activeMeter, isCompactSMeterCollapsed,
     cwDecodedText, cwStats, cwScrollContainerRef,
+    ft8Decodes, ft8Depth, ft8ScrollContainerRef, isFt8DecodeCollapsed,
     videoStatus, isVideoCollapsed, isElectronSource, videoError,
     audioStatus, localAudioReady, inboundMuted, outboundMuted, audioSettings, audioWasRestarted,
     isCompactControlsCollapsed, isCompactRFPowerCollapsed,

@@ -12,6 +12,7 @@ const DEFAULT_FLAGS: DebugFlags = {
   spots: false,
   dxcluster: false,
   wsjtx: false,
+  ft8: false,
 };
 
 // Mirrors server/diagnostics.ts's rolling window: the server only ever

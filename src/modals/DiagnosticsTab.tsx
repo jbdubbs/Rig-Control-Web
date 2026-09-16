@@ -19,6 +19,7 @@ const FLAG_LABELS: { key: keyof DebugFlags; label: string }[] = [
   { key: "spots", label: "Spots" },
   { key: "dxcluster", label: "DX Cluster" },
   { key: "wsjtx", label: "WSJTX" },
+  { key: "ft8", label: "FT8" },
 ];
 
 export function buildFilename(): string {

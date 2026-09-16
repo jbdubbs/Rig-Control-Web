@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type MutableRefObject } from "react";
 import { Socket } from "socket.io-client";
 import type { GGMorseDecoder } from "../ggmorseDecoder";
+import type { Ft8Decoder } from "../ft8Decoder";
 import { shouldAttemptAutoJoin, splitLocalAudioDevices } from "../utils";
 
 let audioVerbose = false;
@@ -12,10 +13,12 @@ interface UseAudioOptions {
   socket: Socket | null;
   cwDecodeEnabledRef: MutableRefObject<boolean>;
   cwDecoderRef: MutableRefObject<GGMorseDecoder | null>;
+  ft8DecodeEnabledRef: MutableRefObject<boolean>;
+  ft8DecoderRef: MutableRefObject<Ft8Decoder | null>;
   waterfallActiveRef: MutableRefObject<boolean>;
 }
 
-export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallActiveRef }: UseAudioOptions) {
+export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, ft8DecodeEnabledRef, ft8DecoderRef, waterfallActiveRef }: UseAudioOptions) {
   const [activeMicClientId, setActiveMicClientId] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<"playing" | "stopped" | "cooldown">("stopped");
   const [audioEngineState, setAudioEngineState] = useState<{ isReady: boolean; error: string | null }>({ isReady: false, error: null });
@@ -173,7 +176,7 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
       if (!audioSettingsRef.current.inboundEnabled || audioStatusRef.current !== "playing" || !localAudioReadyRef.current) {
         return;
       }
-      if (inboundMutedRef.current && !cwDecodeEnabledRef.current && !waterfallActiveRef.current && !wsjtxStreamDestRef.current) {
+      if (inboundMutedRef.current && !cwDecodeEnabledRef.current && !ft8DecodeEnabledRef.current && !waterfallActiveRef.current && !wsjtxStreamDestRef.current) {
         return;
       }
       playInboundAudio(data);
@@ -414,10 +417,11 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
               const isPlaying = audioStatusRef.current === "playing";
               const needPcm = isPlaying && (!inboundMutedRef.current);
               const needCw = isPlaying && cwDecodeEnabledRef.current && !!cwDecoderRef.current;
+              const needFt8 = isPlaying && ft8DecodeEnabledRef.current && !!ft8DecoderRef.current;
               const needWaterfall = isPlaying && waterfallActiveRef.current;
               const needWsjtx = isPlaying && !!wsjtxStreamDestRef.current;
 
-              if (!needPcm && !needCw && !needWaterfall && !needWsjtx) {
+              if (!needPcm && !needCw && !needFt8 && !needWaterfall && !needWsjtx) {
                 audioData.close();
                 return;
               }
@@ -433,6 +437,9 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallAc
               }
               if (needCw) {
                 cwDecoderRef.current!.processSamples(float32Data);
+              }
+              if (needFt8) {
+                ft8DecoderRef.current!.processSamples(float32Data);
               }
               audioData.close();
             },

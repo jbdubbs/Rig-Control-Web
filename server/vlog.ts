@@ -21,6 +21,7 @@ Debug options:
   --debug-spots      Spot integration (POTA/SOTA/WWFF fetch lifecycle)
   --debug-dxcluster  DX cluster (telnet connection, login, spot line parsing)
   --debug-wsjtx      WSJTX bridge (WebSocket lifecycle, rig command relay)
+  --debug-ft8        FT8 decoder (browser/worker-only — WASM load, audio flow, decode calls)
   --debug-all        Enable all debug flags
   --help             Show this help message
 `);
@@ -42,6 +43,12 @@ export type DebugFlags = {
   spots: boolean;
   dxcluster: boolean;
   wsjtx: boolean;
+  // No server-side component: FT8 decoding runs entirely in the browser/worker
+  // (native/ft8-decoder). Still routed through this same flag/Diagnostics-tab
+  // machinery so it can be seeded via --debug-ft8/DEBUG_FT8 and toggled live,
+  // consistent with every other subsystem — see src/ft8Decoder.ts and
+  // src/workers/ft8Decoder.worker.ts for where it's actually consumed.
+  ft8: boolean;
 };
 
 // Mutable, live source of truth for every vlog* wrapper below — seeded from
@@ -57,6 +64,7 @@ export const debugFlags: DebugFlags = {
   spots: flag('spots', 'DEBUG_SPOTS'),
   dxcluster: flag('dxcluster', 'DEBUG_DXCLUSTER'),
   wsjtx: flag('wsjtx', 'DEBUG_WSJTX'),
+  ft8: flag('ft8', 'DEBUG_FT8'),
 };
 
 export function setDebugFlag(key: keyof DebugFlags, value: boolean): void {

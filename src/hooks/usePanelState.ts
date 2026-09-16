@@ -32,6 +32,9 @@ export function usePanelState(callsign = "") {
   const [isCompactCwDecodeCollapsed, setIsCompactCwDecodeCollapsed] = usePersistedCollapsed(ns, "compact-cwdecode-collapsed", "cwdecode-collapsed", false, callsign);
   const [isPhoneCwDecodeCollapsed, setIsPhoneCwDecodeCollapsed] = usePersistedCollapsed(ns, "phone-cwdecode-collapsed", null, false, callsign);
 
+  const [isCompactFt8DecodeCollapsed, setIsCompactFt8DecodeCollapsed] = usePersistedCollapsed(ns, "compact-ft8decode-collapsed", "ft8decode-collapsed", false, callsign);
+  const [isPhoneFt8DecodeCollapsed, setIsPhoneFt8DecodeCollapsed] = usePersistedCollapsed(ns, "phone-ft8decode-collapsed", null, false, callsign);
+
   const [isCompactSpectrumHamlibCollapsed, setIsCompactSpectrumHamlibCollapsed] = usePersistedCollapsed(ns, "compact-spectrum-hamlib-collapsed", "spectrum-hamlib-collapsed", false, callsign);
   const [isPhoneSpectrumHamlibCollapsed, setIsPhoneSpectrumHamlibCollapsed] = usePersistedCollapsed(ns, "phone-spectrum-hamlib-collapsed", null, false, callsign);
 
@@ -68,6 +71,8 @@ export function usePanelState(callsign = "") {
     isPhoneMufMapCollapsed, setIsPhoneMufMapCollapsed,
     isCompactCwDecodeCollapsed, setIsCompactCwDecodeCollapsed,
     isPhoneCwDecodeCollapsed, setIsPhoneCwDecodeCollapsed,
+    isCompactFt8DecodeCollapsed, setIsCompactFt8DecodeCollapsed,
+    isPhoneFt8DecodeCollapsed, setIsPhoneFt8DecodeCollapsed,
     isCompactSpectrumHamlibCollapsed, setIsCompactSpectrumHamlibCollapsed,
     isPhoneSpectrumHamlibCollapsed, setIsPhoneSpectrumHamlibCollapsed,
     isCompactSpectrumAudioCollapsed, setIsCompactSpectrumAudioCollapsed,

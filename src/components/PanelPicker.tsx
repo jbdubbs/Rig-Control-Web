@@ -15,6 +15,7 @@ const PANEL_ORDER: PanelType[] = [
   "alc",
   "modebw",
   "cwdecode",
+  "ft8decode",
   "commandconsole",
   "spots_pota",
   "spots_sota",

@@ -36,6 +36,7 @@ import { useAudio } from "./hooks/useAudio";
 import { useRigControl } from "./hooks/useRigControl";
 import { useLayoutState } from "./hooks/useLayoutState";
 import { useCwDecoder } from "./hooks/useCwDecoder";
+import { useFt8Decoder } from "./hooks/useFt8Decoder";
 import { usePanelState } from "./hooks/usePanelState";
 import { useLayoutConfig } from "./hooks/useLayoutConfig";
 import { useSpectrum } from "./hooks/useSpectrum";
@@ -158,6 +159,12 @@ export default function App() {
     [compactLayout.items, phoneLayout.items]
   );
 
+  const hasFt8Panel = useMemo(() =>
+    compactLayout.items.some(i => i.panelType === 'ft8decode') ||
+    phoneLayout.items.some(i => i.panelType === 'ft8decode'),
+    [compactLayout.items, phoneLayout.items]
+  );
+
   const hasSolarPanel = useMemo(() =>
     compactLayout.items.some(i => i.panelType === 'solar') ||
     phoneLayout.items.some(i => i.panelType === 'solar'),
@@ -208,6 +215,8 @@ export default function App() {
     isPhoneMufMapCollapsed, setIsPhoneMufMapCollapsed,
     isCompactCwDecodeCollapsed, setIsCompactCwDecodeCollapsed,
     isPhoneCwDecodeCollapsed, setIsPhoneCwDecodeCollapsed,
+    isCompactFt8DecodeCollapsed, setIsCompactFt8DecodeCollapsed,
+    isPhoneFt8DecodeCollapsed, setIsPhoneFt8DecodeCollapsed,
     isCompactSpectrumHamlibCollapsed, setIsCompactSpectrumHamlibCollapsed,
     isPhoneSpectrumHamlibCollapsed, setIsPhoneSpectrumHamlibCollapsed,
     isCompactSpectrumAudioCollapsed, setIsCompactSpectrumAudioCollapsed,
@@ -228,6 +237,14 @@ export default function App() {
     cwDecodeEnabledRef,
     cwScrollContainerRef,
   } = useCwDecoder(hasCwDecodePanel);
+
+  const {
+    ft8Decodes,
+    ft8Depth, setFt8Depth,
+    ft8DecoderRef,
+    ft8DecodeEnabledRef,
+    ft8ScrollContainerRef,
+  } = useFt8Decoder(hasFt8Panel, socket);
 
   const { solarData, requestSolarData } = useSolarData(socket, hasSolarPanel);
 
@@ -316,7 +333,7 @@ export default function App() {
     startMicCapture,
     stopMicCapture,
     updateWsjtxOutput,
-  } = useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, waterfallActiveRef });
+  } = useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, ft8DecodeEnabledRef, ft8DecoderRef, waterfallActiveRef });
 
   const { isActive: isFullscreenWakeLockActive, toggle: toggleFullscreenWakeLock } = useFullscreenWakeLock();
 
@@ -1115,6 +1132,10 @@ export default function App() {
             setCwDecodedText={setCwDecodedText}
             cwStats={cwStats}
             cwScrollContainerRef={cwScrollContainerRef}
+            ft8Decodes={ft8Decodes}
+            ft8Depth={ft8Depth}
+            setFt8Depth={setFt8Depth}
+            ft8ScrollContainerRef={ft8ScrollContainerRef}
             handleSetPTT={handleSetPTT}
             isConsoleCollapsed={isPhoneConsoleCollapsed}
             consoleLogs={consoleLogs}
@@ -1143,6 +1164,8 @@ export default function App() {
             setIsMufMapCollapsed={setIsPhoneMufMapCollapsed}
             isCwDecodeCollapsed={isPhoneCwDecodeCollapsed}
             setIsCwDecodeCollapsed={setIsPhoneCwDecodeCollapsed}
+            isFt8DecodeCollapsed={isPhoneFt8DecodeCollapsed}
+            setIsFt8DecodeCollapsed={setIsPhoneFt8DecodeCollapsed}
             isSpectrumHamlibCollapsed={isPhoneSpectrumHamlibCollapsed}
             setIsSpectrumHamlibCollapsed={setIsPhoneSpectrumHamlibCollapsed}
             isSpectrumAudioCollapsed={isPhoneSpectrumAudioCollapsed}
@@ -1184,6 +1207,10 @@ export default function App() {
             cwStats={cwStats}
             cwScrollContainerRef={cwScrollContainerRef}
             setCwDecodedText={setCwDecodedText}
+            ft8Decodes={ft8Decodes}
+            ft8Depth={ft8Depth}
+            setFt8Depth={setFt8Depth}
+            ft8ScrollContainerRef={ft8ScrollContainerRef}
             videoStatus={videoStatus}
             isVideoCollapsed={isCompactVideoCollapsed}
             isElectronSource={isElectronSource}
@@ -1299,6 +1326,8 @@ export default function App() {
             setIsComboSpotsCollapsed={setIsCompactComboSpotsCollapsed}
             isCwDecodeCollapsed={isCompactCwDecodeCollapsed}
             setIsCwDecodeCollapsed={setIsCompactCwDecodeCollapsed}
+            isFt8DecodeCollapsed={isCompactFt8DecodeCollapsed}
+            setIsFt8DecodeCollapsed={setIsCompactFt8DecodeCollapsed}
             isConsoleCollapsed={isCompactConsoleCollapsed}
             consoleLogs={consoleLogs}
             rawCommand={rawCommand}

@@ -200,4 +200,5 @@ export interface DebugFlags {
   spots: boolean;
   dxcluster: boolean;
   wsjtx: boolean;
+  ft8: boolean;
 }

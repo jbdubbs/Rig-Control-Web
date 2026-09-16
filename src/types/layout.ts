@@ -30,6 +30,10 @@ export const PANEL_CONFIG_OPTIONS: Partial<Record<string, PanelConfigOptions>> =
     hasHeightSlider: true,
     defaultHeightPx: 200,
   },
+  ft8decode: {
+    hasFullWidth: true,
+    defaultFullWidth: false,
+  },
 };
 
 // localStorage key for MufMapPanel's saved pan/zoom + tab selection.
@@ -52,6 +56,7 @@ export type PanelType =
   | 'alc'
   | 'modebw'
   | 'cwdecode'
+  | 'ft8decode'
   | 'commandconsole'
   | 'spots_pota'
   | 'spots_sota'
@@ -104,6 +109,7 @@ export const PANEL_LABELS: Record<PanelType, string> = {
   alc: 'ALC',
   modebw: 'Mode / BW',
   cwdecode: 'CW Decoder',
+  ft8decode: 'FT8 Decoder',
   commandconsole: 'Command Console',
   spots_pota: 'POTA Spots',
   spots_sota: 'SOTA Spots',

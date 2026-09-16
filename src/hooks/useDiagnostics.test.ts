@@ -48,6 +48,7 @@ describe('useDiagnostics', () => {
       spots: false,
       dxcluster: false,
       wsjtx: false,
+      ft8: false,
     });
   });
 
