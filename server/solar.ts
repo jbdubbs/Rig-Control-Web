@@ -13,6 +13,9 @@ async function fetchHamqslData(): Promise<Omit<SolarData, "esfi" | "essn" | "fet
     signal: AbortSignal.timeout(15_000),
     headers: { "User-Agent": "RigControlWeb/1.0" },
   });
+  if (!res.ok) {
+    throw new Error(`hamqsl.com returned HTTP ${res.status}`);
+  }
   const xml = await res.text();
 
   const hfMap: Record<string, Partial<HfBandCondition>> = {};
