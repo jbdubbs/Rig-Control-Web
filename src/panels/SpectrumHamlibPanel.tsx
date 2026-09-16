@@ -4,6 +4,7 @@ import type { Socket } from "socket.io-client";
 import PanelChrome from "../components/PanelChrome";
 import type { SpectrumData, SpectrumSettings } from "../types";
 import { COLORMAPS, COLORMAP_NAMES, amplitudeToPixel } from "../utils/spectrumColors";
+import { scrollCanvasDown } from "../utils";
 import { useAutoLevel } from "../hooks/useAutoLevel";
 import type { AutoLevelOptions } from "../utils/autoLevel";
 
@@ -213,6 +214,11 @@ function SpectrumHamlibPanel({
     if (isCollapsed) return;
 
     const colorMap = COLORMAPS[colorMapId] ?? COLORMAPS.classic;
+    // Tracks whether this effect run has done its one-time full waterfall repaint yet —
+    // resets (via effect re-run) whenever a dependency below changes, so switching color
+    // maps or resizing the panel shows the complete, correctly-colored history immediately
+    // instead of only affecting rows painted from that point forward.
+    let wfPainted = false;
 
     const draw = () => {
       const data = latestSpectrumRef.current;
@@ -297,37 +303,48 @@ function SpectrumHamlibPanel({
       }
 
       // --- Waterfall ---
+      // The center-frequency marker is a CSS overlay (see canvasContainerRef JSX below), not
+      // drawn on this canvas — baking it into the pixel data would smear down through history
+      // every time the image is scrolled below.
       const wfCtx = wfCanvas.getContext("2d");
       if (wfCtx) {
         const wh = wfCanvas.height;
         const lines = waterfallHistoryRef.current;
-        const visibleLines = Math.min(lines.length, wh);
-        const imageData = wfCtx.createImageData(w, wh);
-        const buf32 = new Uint32Array(imageData.data.buffer);
 
-        for (let row = 0; row < visibleLines; row++) {
-          const line = lines[row];
-          const step = line.length / w;
-          for (let col = 0; col < w; col++) {
-            const ampIdx = Math.min(line.length - 1, Math.floor(col * step));
-            const dbm = data.minLevel + (line[ampIdx] / 255) * ampRange;
-            const norm = Math.max(0, Math.min(1, (dbm - effFloor) / (effCeiling - effFloor)));
-            buf32[row * w + col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
+        if (!wfPainted) {
+          // One-time full repaint for this effect run — a fresh mount, colorMapId change, or
+          // panel resize should show the complete, correctly-colored history immediately.
+          const visibleLines = Math.min(lines.length, wh);
+          const imageData = wfCtx.createImageData(w, wh);
+          const buf32 = new Uint32Array(imageData.data.buffer);
+
+          for (let row = 0; row < visibleLines; row++) {
+            const line = lines[row];
+            const step = line.length / w;
+            for (let col = 0; col < w; col++) {
+              const ampIdx = Math.min(line.length - 1, Math.floor(col * step));
+              const dbm = data.minLevel + (line[ampIdx] / 255) * ampRange;
+              const norm = Math.max(0, Math.min(1, (dbm - effFloor) / (effCeiling - effFloor)));
+              buf32[row * w + col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
+            }
           }
+
+          wfCtx.putImageData(imageData, 0, 0);
+          wfPainted = true;
+        } else {
+          // Steady state: scroll the existing image down one row and paint only the newest
+          // row — O(width) instead of rebuilding the full width*height ImageData every frame.
+          const newest = lines[0];
+          const rowBuf = new Uint32Array(w);
+          const step = newest.length / w;
+          for (let col = 0; col < w; col++) {
+            const ampIdx = Math.min(newest.length - 1, Math.floor(col * step));
+            const dbm = data.minLevel + (newest[ampIdx] / 255) * ampRange;
+            const norm = Math.max(0, Math.min(1, (dbm - effFloor) / (effCeiling - effFloor)));
+            rowBuf[col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
+          }
+          scrollCanvasDown(wfCtx, w, wh, rowBuf);
         }
-
-        wfCtx.putImageData(imageData, 0, 0);
-
-        // Center frequency marker line
-        wfCtx.save();
-        wfCtx.strokeStyle = "rgba(255,255,255,0.35)";
-        wfCtx.lineWidth = 1;
-        wfCtx.setLineDash([4, 4]);
-        wfCtx.beginPath();
-        wfCtx.moveTo(w / 2, 0);
-        wfCtx.lineTo(w / 2, wh);
-        wfCtx.stroke();
-        wfCtx.restore();
       }
 
       animFrameRef.current = requestAnimationFrame(draw);
@@ -335,7 +352,7 @@ function SpectrumHamlibPanel({
 
     animFrameRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [isCollapsed, colorMapId, connected, spectrumEnabled, latestSpectrumRef, waterfallHistoryRef]);
+  }, [isCollapsed, colorMapId, connected, spectrumEnabled, latestSpectrumRef, waterfallHistoryRef, spectrumHeight, waterfallHeight]);
 
   const freqAxisContent = (() => {
     const data = latestSpectrumRef.current;
@@ -771,6 +788,13 @@ function SpectrumHamlibPanel({
             style={{ left: cursorLineX, height: spectrumHeight + waterfallHeight }}
           />
         )}
+        {/* Waterfall center-frequency marker — a CSS overlay rather than canvas-drawn, so the
+            incremental scroll-and-shift optimization in the drawing effect above never bakes
+            it into the waterfall's pixel history (it would otherwise smear down every frame). */}
+        <div
+          className="pointer-events-none absolute z-10 w-0 border-l border-dashed border-white/35"
+          style={{ left: "50%", top: spectrumHeight, height: waterfallHeight }}
+        />
         {tooltip && (
           <div
             className="pointer-events-none absolute z-10 px-1.5 py-0.5 rounded bg-black/80 text-[0.6rem] text-emerald-300 whitespace-nowrap"

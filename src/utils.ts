@@ -46,3 +46,21 @@ export function shouldReacquireWakeLock(input: {
 }): boolean {
   return input.documentVisible && input.isActive && !input.hasSentinel;
 }
+
+// Shared by SpectrumHamlibPanel/SpectrumAudioPanel's waterfall canvases: shifts the existing
+// pixel content down by one row (dropping the bottom row) and paints newRowPixels at the top —
+// O(width) work per call instead of rebuilding the full width*height ImageData every frame.
+// newRowPixels must have exactly `width` elements.
+export function scrollCanvasDown(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  newRowPixels: Uint32Array,
+): void {
+  if (height > 1) {
+    ctx.drawImage(ctx.canvas, 0, 0, width, height - 1, 0, 1, width, height - 1);
+  }
+  const rowData = ctx.createImageData(width, 1);
+  new Uint32Array(rowData.data.buffer).set(newRowPixels);
+  ctx.putImageData(rowData, 0, 0);
+}

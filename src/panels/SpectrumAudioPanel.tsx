@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from "react";
 import { RefreshCw, Settings, Waves, X } from "lucide-react";
 import PanelChrome from "../components/PanelChrome";
 import { COLORMAPS, COLORMAP_NAMES, amplitudeToPixel } from "../utils/spectrumColors";
+import { scrollCanvasDown } from "../utils";
 import { useAutoLevel } from "../hooks/useAutoLevel";
 import type { AutoLevelOptions } from "../utils/autoLevel";
 
@@ -128,6 +129,11 @@ function SpectrumAudioPanel({
     }
 
     const colorMap = COLORMAPS[colorMapId] ?? COLORMAPS.classic;
+    // Tracks whether this effect run has done its one-time full waterfall repaint yet —
+    // resets (via effect re-run) whenever a dependency below changes, so a bandwidth/mode
+    // change or panel resize shows the complete, correctly-colored history immediately
+    // instead of only affecting rows painted from that point forward.
+    let wfPainted = false;
 
     const draw = () => {
       const analyser = analyserNodeRef.current;
@@ -208,22 +214,43 @@ function SpectrumAudioPanel({
       if (wfCtx) {
         const wh = wfCanvas.height;
         const lines = waterfallLinesRef.current;
-        const visibleLines = Math.min(lines.length, wh);
-        const imageData = wfCtx.createImageData(w, wh);
-        const buf32 = new Uint32Array(imageData.data.buffer);
 
-        for (let row = 0; row < visibleLines; row++) {
-          const line = lines[row];
+        if (!wfPainted) {
+          // One-time full repaint for this effect run — a fresh mount, colorMapId/bandwidth
+          // change, or panel resize should show the complete, correctly-colored history
+          // immediately.
+          const visibleLines = Math.min(lines.length, wh);
+          const imageData = wfCtx.createImageData(w, wh);
+          const buf32 = new Uint32Array(imageData.data.buffer);
+
+          for (let row = 0; row < visibleLines; row++) {
+            const line = lines[row];
+            const step = endBin / w;
+            for (let col = 0; col < w; col++) {
+              const binIdx = Math.min(endBin - 1, Math.floor(col * step));
+              const dbfs = line[binIdx];
+              const norm = Math.max(0, Math.min(1, (dbfs - effFloor) / (effCeiling - effFloor)));
+              buf32[row * w + col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
+            }
+          }
+
+          wfCtx.putImageData(imageData, 0, 0);
+          wfPainted = true;
+        } else {
+          // Steady state: scroll the existing image down one row and paint only the newest
+          // row — O(width) instead of rebuilding the full width*height ImageData every frame
+          // (this file pushes a new row on every rAF tick, so this is the hot path).
+          const newest = lines[0];
+          const rowBuf = new Uint32Array(w);
           const step = endBin / w;
           for (let col = 0; col < w; col++) {
             const binIdx = Math.min(endBin - 1, Math.floor(col * step));
-            const dbfs = line[binIdx];
+            const dbfs = newest[binIdx];
             const norm = Math.max(0, Math.min(1, (dbfs - effFloor) / (effCeiling - effFloor)));
-            buf32[row * w + col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
+            rowBuf[col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
           }
+          scrollCanvasDown(wfCtx, w, wh, rowBuf);
         }
-
-        wfCtx.putImageData(imageData, 0, 0);
       }
 
       animFrameRef.current = requestAnimationFrame(draw);
@@ -233,7 +260,7 @@ function SpectrumAudioPanel({
     return () => {
       cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isCollapsed, audioStatus, colorMapId, analyserNodeRef, bandwidth, mode, displayBandwidth, bwOverride]);
+  }, [isCollapsed, audioStatus, colorMapId, analyserNodeRef, bandwidth, mode, displayBandwidth, bwOverride, spectrumHeight, waterfallHeight]);
 
   const freqAxisContent = (
     <div className="relative h-5 text-[0.5rem] text-gray-400 select-none">
