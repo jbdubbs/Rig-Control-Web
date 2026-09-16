@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { Socket } from "socket.io-client";
 import { cn } from "../utils";
 
@@ -83,6 +83,13 @@ export default function AdminTab({ socket, callsign }: Props) {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [opError, setOpError] = useState("");
   const [opSuccess, setOpSuccess] = useState("");
+  // Guards every privileged/destructive mutation button below against a rapid double-click
+  // firing a duplicate socket emit before the first admin:op-result response arrives (e.g.
+  // two overlapping factory-reset or create-user requests). Cleared by the shared
+  // onOpResult handler, with a timeout fallback in case a response never arrives at all
+  // (session expired mid-request, socket drop) so the panel can't get stuck disabled forever.
+  const [opPending, setOpPending] = useState(false);
+  const opPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Add user form
   const [newCallsign, setNewCallsign] = useState("");
@@ -105,6 +112,12 @@ export default function AdminTab({ socket, callsign }: Props) {
     if (isError) { setOpError(msg); setOpSuccess(""); }
     else { setOpSuccess(msg); setOpError(""); }
     setTimeout(() => { setOpError(""); setOpSuccess(""); }, 4000);
+  };
+
+  const beginOp = () => {
+    setOpPending(true);
+    if (opPendingTimerRef.current) clearTimeout(opPendingTimerRef.current);
+    opPendingTimerRef.current = setTimeout(() => setOpPending(false), 8000);
   };
 
   const fetchAll = useCallback(() => {
@@ -130,6 +143,8 @@ export default function AdminTab({ socket, callsign }: Props) {
     const onAudit = ({ entries }: { entries: AuditEntry[] }) => setAuditLog(entries);
     const onSystemInfo = (info: SystemInfo) => setSystemInfo(info);
     const onOpResult = ({ ok, error }: { ok: boolean; error?: string }) => {
+      if (opPendingTimerRef.current) { clearTimeout(opPendingTimerRef.current); opPendingTimerRef.current = null; }
+      setOpPending(false);
       showOp(ok ? "Done" : (error ?? "Error"), !ok);
       if (ok) fetchAll();
     };
@@ -143,6 +158,7 @@ export default function AdminTab({ socket, callsign }: Props) {
 
     return () => {
       clearInterval(sessionInterval);
+      if (opPendingTimerRef.current) clearTimeout(opPendingTimerRef.current);
       socket.off("admin:users-list", onUsers);
       socket.off("admin:sessions-list", onSessions);
       socket.off("admin:lockouts-list", onLockouts);
@@ -153,7 +169,8 @@ export default function AdminTab({ socket, callsign }: Props) {
   }, [socket, fetchAll]);
 
   const handleCreateUser = () => {
-    if (!newCallsign.trim() || !newPassword) return;
+    if (opPending || !newCallsign.trim() || !newPassword) return;
+    beginOp();
     socket?.emit("admin:create-user", {
       callsign: newCallsign.trim().toUpperCase(),
       password: newPassword,
@@ -166,7 +183,9 @@ export default function AdminTab({ socket, callsign }: Props) {
   };
 
   const handleDeleteUser = (target: string) => {
+    if (opPending) return;
     if (!confirm(`Delete user ${target}?`)) return;
+    beginOp();
     socket?.emit("admin:delete-user", { callsign: target });
   };
 
@@ -176,33 +195,42 @@ export default function AdminTab({ socket, callsign }: Props) {
   };
 
   const handleConfirmResetPassword = () => {
-    if (!resetPwTarget || resetPwValue.length < 8) return;
+    if (opPending || !resetPwTarget || resetPwValue.length < 8) return;
+    beginOp();
     socket?.emit("admin:modify-user", { callsign: resetPwTarget, password: resetPwValue });
     setResetPwTarget(null);
     setResetPwValue("");
   };
 
   const handleChangeRole = (target: string, currentRole: "admin" | "regular") => {
+    if (opPending) return;
+    beginOp();
     const newRoleVal = currentRole === "admin" ? "regular" : "admin";
     socket?.emit("admin:modify-user", { callsign: target, role: newRoleVal });
   };
 
   const handleForceLogout = (socketId: string) => {
+    if (opPending) return;
+    beginOp();
     socket?.emit("admin:force-logout", { socketId });
   };
 
   const handleUnlockCallsign = (target: string) => {
+    if (opPending) return;
+    beginOp();
     socket?.emit("admin:unlock-callsign", { callsign: target });
   };
 
   const handleClearPrefs = () => {
-    if (!clearPrefsTarget) return;
+    if (opPending || !clearPrefsTarget) return;
+    beginOp();
     socket?.emit("admin:clear-preferences", { callsign: clearPrefsTarget });
     setClearPrefsTarget("");
   };
 
   const handleFactoryReset = () => {
-    if (resetConfirmText !== "RESET") return;
+    if (opPending || resetConfirmText !== "RESET") return;
+    beginOp();
     socket?.emit("admin:factory-reset", { confirm: true });
     setShowResetConfirm(false);
     setResetConfirmText("");
@@ -257,7 +285,7 @@ export default function AdminTab({ socket, callsign }: Props) {
               <div className="grid grid-cols-3 gap-1 sm:flex sm:items-center sm:flex-shrink-0">
                 <button
                   onClick={() => handleChangeRole(u.callsign, u.role)}
-                  disabled={u.callsign === callsign}
+                  disabled={u.callsign === callsign || opPending}
                   className={cn(btnClass, "bg-[#1a1b1e] text-[#8e9299] hover:text-white border border-[#2a2b2e] disabled:opacity-30 disabled:cursor-not-allowed")}
                   title="Toggle role"
                 >
@@ -271,7 +299,7 @@ export default function AdminTab({ socket, callsign }: Props) {
                 </button>
                 <button
                   onClick={() => handleDeleteUser(u.callsign)}
-                  disabled={u.callsign === callsign}
+                  disabled={u.callsign === callsign || opPending}
                   className={cn(btnClass, "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 disabled:opacity-30 disabled:cursor-not-allowed")}
                 >
                   Del
@@ -297,7 +325,7 @@ export default function AdminTab({ socket, callsign }: Props) {
             <div className="flex gap-2">
               <button
                 onClick={handleConfirmResetPassword}
-                disabled={resetPwValue.length < 8}
+                disabled={resetPwValue.length < 8 || opPending}
                 className={cn(btnClass, "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed")}
               >
                 Save
@@ -340,7 +368,7 @@ export default function AdminTab({ socket, callsign }: Props) {
             <div className="flex gap-2">
               <button
                 onClick={handleCreateUser}
-                disabled={!newCallsign.trim() || newPassword.length < 8}
+                disabled={!newCallsign.trim() || newPassword.length < 8 || opPending}
                 className={cn(btnClass, "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed")}
               >
                 Create
@@ -384,7 +412,7 @@ export default function AdminTab({ socket, callsign }: Props) {
                 </div>
                 <button
                   onClick={() => handleForceLogout(s.socketId)}
-                  disabled={s.callsign === callsign}
+                  disabled={s.callsign === callsign || opPending}
                   className={cn(btnClass, "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 disabled:opacity-30 disabled:cursor-not-allowed")}
                 >
                   Kick
@@ -415,7 +443,8 @@ export default function AdminTab({ socket, callsign }: Props) {
                 </div>
                 <button
                   onClick={() => handleUnlockCallsign(l.callsign)}
-                  className={cn(btnClass, "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30")}
+                  disabled={opPending}
+                  className={cn(btnClass, "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed")}
                 >
                   Unlock
                 </button>
@@ -487,7 +516,7 @@ export default function AdminTab({ socket, callsign }: Props) {
               </select>
               <button
                 onClick={handleClearPrefs}
-                disabled={!clearPrefsTarget}
+                disabled={!clearPrefsTarget || opPending}
                 className={cn(btnClass, "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 disabled:opacity-30 disabled:cursor-not-allowed")}
               >
                 Clear
@@ -520,7 +549,7 @@ export default function AdminTab({ socket, callsign }: Props) {
                 <div className="flex gap-2">
                   <button
                     onClick={handleFactoryReset}
-                    disabled={resetConfirmText !== "RESET"}
+                    disabled={resetConfirmText !== "RESET" || opPending}
                     className={cn(btnClass, "flex-1 bg-red-600 hover:bg-red-500 text-white border border-red-500 disabled:opacity-40 disabled:cursor-not-allowed")}
                   >
                     Confirm Reset
