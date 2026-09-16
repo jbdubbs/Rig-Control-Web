@@ -246,6 +246,10 @@ export async function openKeyerPort(ctx: ServerContext, portPath: string): Promi
           proc.kill();
           ctx.io.emit("cw-port-status", { open: false, port: portPath, error: msg });
           settle();
+        } else if (line.startsWith("KEY_ERROR:")) {
+          const msg = line.slice("KEY_ERROR:".length).trim();
+          console.error(`[CW] Keyer line toggle failed on ${portPath}: ${msg}`);
+          ctx.io.emit("cw-port-status", { open: false, port: portPath, error: msg });
         }
       }
     });

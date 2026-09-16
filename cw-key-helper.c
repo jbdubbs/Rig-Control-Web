@@ -25,10 +25,19 @@ static int g_active_high;
 
 static void set_line(int active) {
     int level = active ? g_active_high : !g_active_high;
+    BOOL ok;
     if (g_rts)
-        EscapeCommFunction(g_handle, level ? SETRTS : CLRRTS);
+        ok = EscapeCommFunction(g_handle, level ? SETRTS : CLRRTS);
     else
-        EscapeCommFunction(g_handle, level ? SETDTR : CLRDTR);
+        ok = EscapeCommFunction(g_handle, level ? SETDTR : CLRDTR);
+    if (!ok) {
+        /* A failed toggle (stale handle, device unplugged) would otherwise be silently
+         * swallowed — the process keeps reading stdin as if keying still works. Report it
+         * on stdout, matching the existing OPEN_OK/OPEN_ERROR protocol convention, so the
+         * parent process can detect and surface it instead of assuming success. */
+        printf("KEY_ERROR: EscapeCommFunction failed (error %lu)\n", (unsigned long)GetLastError());
+        fflush(stdout);
+    }
 }
 
 static void cleanup(void) {
@@ -120,7 +129,14 @@ static int g_active_high;
 static void set_line(int active) {
     int level = active ? g_active_high : !g_active_high;
     int flag  = g_rts ? TIOCM_RTS : TIOCM_DTR;
-    ioctl(g_fd, level ? TIOCMBIS : TIOCMBIC, &flag);
+    if (ioctl(g_fd, level ? TIOCMBIS : TIOCMBIC, &flag) < 0) {
+        /* A failed toggle (unplugged/wedged adapter, invalid fd) would otherwise be silently
+         * swallowed — the process keeps reading stdin as if keying still works. Report it on
+         * stdout, matching the existing OPEN_OK/OPEN_ERROR protocol convention, so the parent
+         * process can detect and surface it instead of assuming success. */
+        printf("KEY_ERROR: ioctl: %s\n", strerror(errno));
+        fflush(stdout);
+    }
 }
 
 static void cleanup(void) {
