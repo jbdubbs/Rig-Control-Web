@@ -118,6 +118,30 @@ function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
     setTransform(next);
   }, [clampXY]);
 
+  // Raw mousemove/touchmove/wheel events can fire far more often than the display
+  // repaints (issue #107); committing every one straight to React state forces a full
+  // MufMapPanel re-render per event. Coalesce to at most one applyTransform per
+  // animation frame instead.
+  const rafIdRef = useRef<number | null>(null);
+  const pendingTransformRef = useRef<Transform | null>(null);
+
+  const scheduleTransform = useCallback((t: Transform) => {
+    pendingTransformRef.current = t;
+    if (rafIdRef.current == null) {
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        if (pendingTransformRef.current) {
+          applyTransform(pendingTransformRef.current);
+          pendingTransformRef.current = null;
+        }
+      });
+    }
+  }, [applyTransform]);
+
+  useEffect(() => () => {
+    if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
+  }, []);
+
   const resetTransform = useCallback(() => {
     transformRef.current = IDENTITY;
     setTransform(IDENTITY);
@@ -166,19 +190,22 @@ function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
       const rect = el.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
-      const { scale, x, y } = transformRef.current;
+      // Read from the not-yet-committed pending transform when one is queued, so several
+      // wheel ticks landing within the same animation frame (coalesced into one commit)
+      // still compound correctly instead of each computing from the same stale base.
+      const { scale, x, y } = pendingTransformRef.current ?? transformRef.current;
       const factor = e.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
       const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor));
-      if (newScale === 1) { applyTransform(IDENTITY); return; }
+      if (newScale === 1) { scheduleTransform(IDENTITY); return; }
       // Zoom toward cursor: keep the image point under the cursor stationary.
       // With translate-only (no CSS scale), the ratio math is the same as the scale-transform
       // case because both dimensions scale proportionally.
       const ratio = newScale / scale;
-      applyTransform({ scale: newScale, x: cx - (cx - x) * ratio, y: cy - (cy - y) * ratio });
+      scheduleTransform({ scale: newScale, x: cx - (cx - x) * ratio, y: cy - (cy - y) * ratio });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [applyTransform]);
+  }, [scheduleTransform]);
 
   // Mouse drag (document-level move/up so dragging outside container works)
   useEffect(() => {
@@ -194,8 +221,8 @@ function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
     };
     const onMouseMove = (e: MouseEvent) => {
       if (!isDraggingRef.current) return;
-      applyTransform({
-        scale: transformRef.current.scale,
+      scheduleTransform({
+        scale: pendingTransformRef.current?.scale ?? transformRef.current.scale,
         x: dragStartRef.current.tx + (e.clientX - dragStartRef.current.mx),
         y: dragStartRef.current.ty + (e.clientY - dragStartRef.current.my),
       });
@@ -214,7 +241,7 @@ function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
     };
-  }, [applyTransform]);
+  }, [scheduleTransform]);
 
   // Touch: pinch-to-zoom + single-finger drag
   useEffect(() => {
@@ -245,17 +272,19 @@ function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
         const d = dist(e.touches);
         const m = mid(e.touches, rect);
         const prev = lastTouchDistRef.current ?? d;
-        const { scale, x, y } = transformRef.current;
+        // See the wheel handler's identical comment: read the pending, not-yet-committed
+        // transform when present so same-frame pinch events compound correctly.
+        const { scale, x, y } = pendingTransformRef.current ?? transformRef.current;
         const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * (d / prev)));
-        if (newScale === 1) { applyTransform(IDENTITY); }
+        if (newScale === 1) { scheduleTransform(IDENTITY); }
         else {
           const ratio = newScale / scale;
-          applyTransform({ scale: newScale, x: m.x - (m.x - x) * ratio, y: m.y - (m.y - y) * ratio });
+          scheduleTransform({ scale: newScale, x: m.x - (m.x - x) * ratio, y: m.y - (m.y - y) * ratio });
         }
         lastTouchDistRef.current = d;
       } else if (e.touches.length === 1 && isDraggingRef.current) {
-        applyTransform({
-          scale: transformRef.current.scale,
+        scheduleTransform({
+          scale: pendingTransformRef.current?.scale ?? transformRef.current.scale,
           x: dragStartRef.current.tx + (e.touches[0].clientX - dragStartRef.current.mx),
           y: dragStartRef.current.ty + (e.touches[0].clientY - dragStartRef.current.my),
         });
@@ -275,7 +304,7 @@ function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
     };
-  }, [applyTransform]);
+  }, [scheduleTransform]);
 
   const url = `https://prop.kc2g.com/renders/current/${metric}-normal-${timeSlot}.svg?v=${refreshKey}`;
   const isZoomed = transform.scale > 1;
