@@ -33,6 +33,247 @@ export function inferTuneMode(mode: string, freqMhz: number, availableModes: str
   return mode;
 }
 
+// ── Shared spot pipeline ──────────────────────────────────────────────────────
+// POTA, SOTA, and WWFF each encode the same underlying facts (a dedup identity, a spot
+// timestamp, a numeric id, a frequency, a mode) in different field names and units —
+// notably POTA/SOTA's timestamp is an ISO-ish string needing a "+ 'Z'" parse, while WWFF's
+// is a raw Unix epoch in seconds. These accessors normalize each spot type to a common
+// shape once, so the dedup/filter/sort/matched-frequency pipeline below (and the tests for
+// it) don't need to know about any of these differences.
+export interface SpotAccessors<T> {
+  dedupKey: (spot: T) => string;
+  timeMs: (spot: T) => number;
+  idOf: (spot: T) => number;
+  freqKhz: (spot: T) => number;
+  modeOf: (spot: T) => string;
+}
+
+export const potaAccessors: SpotAccessors<PotaSpot> = {
+  dedupKey: (s) => s.activator,
+  timeMs: (s) => new Date(s.spotTime + 'Z').getTime(),
+  idOf: (s) => s.spotId,
+  freqKhz: (s) => s.frequency,
+  modeOf: (s) => s.mode,
+};
+
+export const sotaAccessors: SpotAccessors<SotaSpot> = {
+  dedupKey: (s) => s.activatorCallsign,
+  timeMs: (s) => new Date(s.timeStamp + 'Z').getTime(),
+  idOf: (s) => s.id,
+  freqKhz: (s) => parseFloat(s.frequency) * 1000,
+  modeOf: (s) => s.mode,
+};
+
+export const wwffAccessors: SpotAccessors<WwffSpot> = {
+  dedupKey: (s) => s.activator,
+  timeMs: (s) => s.spot_time * 1000,
+  idOf: (s) => s.id,
+  freqKhz: (s) => s.frequency_khz,
+  modeOf: (s) => s.mode,
+};
+
+// Pure — exported for unit testing. Dedupes by keeping only the most recent spot per
+// dedupKey, then drops anything older than maxAgeMinutes or outside modeFilter/bandFilter.
+export function dedupeAndFilterSpots<T>(
+  spots: T[],
+  accessors: SpotAccessors<T>,
+  maxAgeMinutes: number,
+  modeFilter: string[],
+  bandFilter: string[],
+): T[] {
+  const { dedupKey, timeMs, freqKhz, modeOf } = accessors;
+  const latestByKey = new Map<string, T>();
+  for (const spot of spots) {
+    const key = dedupKey(spot);
+    const existing = latestByKey.get(key);
+    if (!existing || timeMs(spot) > timeMs(existing)) {
+      latestByKey.set(key, spot);
+    }
+  }
+  const deduped = [...latestByKey.values()];
+  const cutoff = Date.now() - maxAgeMinutes * 60 * 1000;
+  const allModes = ALL_SPOT_MODES.every(m => modeFilter.includes(m));
+  return deduped.filter(s => {
+    if (timeMs(s) < cutoff) return false;
+    if (!allModes && modeFilter.length > 0 && !modeFilter.includes(modeOf(s))) return false;
+    if (bandFilter.length > 0) {
+      const khz = freqKhz(s);
+      const inBand = bandFilter.some(label => {
+        const band = POTA_BANDS.find(b => b.label === label);
+        return band && khz >= band.min && khz < band.max;
+      });
+      if (!inBand) return false;
+    }
+    return true;
+  });
+}
+
+// Pure — exported for unit testing.
+export function sortSpots<T>(spots: T[], sortCol: string | null, sortDir: 'asc' | 'desc' | 'api'): T[] {
+  if (!sortCol || sortDir === 'api') return spots;
+  return [...spots].sort((a, b) => {
+    const aVal = (a as any)[sortCol];
+    const bVal = (b as any)[sortCol];
+    const cmp = typeof aVal === 'number' && typeof bVal === 'number'
+      ? aVal - bVal
+      : String(aVal).localeCompare(String(bVal));
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+}
+
+// Pure — exported for unit testing. A spot is "matched" when its frequency is within
+// 100 Hz of the active VFO — close enough that click-to-tune already landed on it.
+export function computeMatchedSpotIds<T>(
+  spots: T[],
+  freqKhz: (spot: T) => number,
+  idOf: (spot: T) => number,
+  activeVfoMhz: string,
+): Set<number> {
+  const activeHz = Math.round(parseFloat(activeVfoMhz) * 1_000_000);
+  const ids = new Set<number>();
+  for (const spot of spots) {
+    const spotHz = Math.round(freqKhz(spot) * 1000);
+    if (Math.abs(spotHz - activeHz) <= 100) ids.add(idOf(spot));
+  }
+  return ids;
+}
+
+// Pure — exported for unit testing. Matched spots are pinned to the top (in their sorted
+// order) with the full sorted list following, so a spot on-frequency is never hidden below
+// the fold, without ever removing it from the full listing.
+export function pinMatchedSpots<T>(
+  spots: T[],
+  matched: Set<number>,
+  idOf: (spot: T) => number,
+): { spot: T; isPinned: boolean }[] {
+  if (matched.size === 0) return spots.map(s => ({ spot: s, isPinned: false }));
+  const pinned = spots.filter(s => matched.has(idOf(s))).map(s => ({ spot: s, isPinned: true }));
+  const all = spots.map(s => ({ spot: s, isPinned: false }));
+  return [...pinned, ...all];
+}
+
+interface UseSpotSourceOptions<T> {
+  enabled: boolean;
+  fetchUrl: string;
+  logPrefix: string;
+  verboseRef: React.MutableRefObject<boolean>;
+  initialSortCol: string;
+  accessors: SpotAccessors<T>;
+  status: RigStatus;
+  inputVfoA: string;
+  inputVfoB: string;
+}
+
+// Fetch-interval + dedup/filter/sort/matched-frequency pipeline shared by POTA, SOTA, and
+// WWFF — parameterized per spot type via `accessors` (see SpotAccessors above) and
+// `fetchUrl`/`logPrefix`. Each spot type still gets its own independent settings state
+// (pollRate/maxAge/modeFilter/bandFilter/sortCol/sortDir) since those are exposed to
+// callers (App.tsx, settings persistence) as separate, independently-configurable fields.
+function useSpotSource<T>({
+  enabled,
+  fetchUrl,
+  logPrefix,
+  verboseRef,
+  initialSortCol,
+  accessors,
+  status,
+  inputVfoA,
+  inputVfoB,
+}: UseSpotSourceOptions<T>) {
+  const [pollRate, setPollRate] = useState(5);
+  const [maxAge, setMaxAge] = useState(15);
+  const [modeFilter, setModeFilter] = useState<string[]>(ALL_SPOT_MODES);
+  const [bandFilter, setBandFilter] = useState<string[]>(() => POTA_BANDS.map(b => b.label));
+  const [spots, setSpots] = useState<T[]>([]);
+  const [sortCol, setSortCol] = useState<string | null>(initialSortCol);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
+
+  useEffect(() => {
+    if (!enabled) {
+      setSpots([]);
+      return;
+    }
+    const fetchSpots = async () => {
+      const vlog = verboseRef.current;
+      if (vlog) console.log(`[spots:${logPrefix}] Fetching ${fetchUrl}`);
+      try {
+        const res = await fetch(fetchUrl);
+        if (vlog) console.log(`[spots:${logPrefix}] Response: ${res.status} ${res.statusText}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            if (vlog) console.log(`[spots:${logPrefix}] Received ${data.length} spots`);
+            setSpots(data);
+          } else {
+            if (vlog) console.warn(`[spots:${logPrefix}] Response was not an array:`, typeof data);
+          }
+        } else {
+          if (vlog) console.warn(`[spots:${logPrefix}] HTTP error: ${res.status} ${res.statusText}`);
+        }
+      } catch (err) {
+        if (vlog) console.error(`[spots:${logPrefix}] Fetch failed:`, err);
+      }
+    };
+    fetchSpots();
+    const interval = setInterval(fetchSpots, pollRate * 60 * 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, pollRate, fetchUrl, logPrefix]);
+
+  const filteredSpots = useMemo(() => {
+    const result = dedupeAndFilterSpots(spots, accessors, maxAge, modeFilter, bandFilter);
+    if (verboseRef.current) {
+      const cutoff = Date.now() - maxAge * 60 * 1000;
+      if (spots.length > 0) {
+        const sample = spots[0];
+        console.log(`[spots:${logPrefix}] Filter pipeline — raw: ${spots.length}, maxAge: ${maxAge}m, cutoff: ${new Date(cutoff).toISOString()}, sample time: ${new Date(accessors.timeMs(sample)).toISOString()}, freqKhz: ${accessors.freqKhz(sample)}, mode: "${accessors.modeOf(sample)}"`);
+        console.log(`[spots:${logPrefix}] Filters — modeFilter: [${modeFilter}], bandFilter: [${bandFilter}]`);
+      }
+      console.log(`[spots:${logPrefix}] Result: ${result.length} spots (dropped: ${spots.length - result.length})`);
+    }
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spots, maxAge, modeFilter, bandFilter]);
+
+  const sortedSpots = useMemo(
+    () => sortSpots(filteredSpots, sortCol, sortDir),
+    [filteredSpots, sortCol, sortDir]
+  );
+
+  const matchedSpotIds = useMemo(() => {
+    const activeVfoMhz = status.vfo === 'VFOA' ? inputVfoA : inputVfoB;
+    return computeMatchedSpotIds(filteredSpots, accessors.freqKhz, accessors.idOf, activeVfoMhz);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredSpots, inputVfoA, inputVfoB, status.vfo]);
+
+  const displayedSpots = useMemo(
+    () => pinMatchedSpots(sortedSpots, matchedSpotIds, accessors.idOf),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sortedSpots, matchedSpotIds]
+  );
+
+  const handleSort = (col: string) => {
+    if (sortCol !== col) {
+      setSortCol(col);
+      setSortDir('asc');
+    } else if (sortDir === 'asc') {
+      setSortDir('desc');
+    } else {
+      setSortCol(null);
+      setSortDir('api');
+    }
+  };
+
+  return {
+    pollRate, setPollRate,
+    maxAge, setMaxAge,
+    modeFilter, setModeFilter,
+    bandFilter, setBandFilter,
+    sortCol, sortDir, handleSort,
+    filteredSpots, matchedSpotIds, displayedSpots,
+  };
+}
+
 export function usePotaSpots({
   socket,
   connected,
@@ -49,36 +290,11 @@ export function usePotaSpots({
 }: UsePotaSpotsOptions) {
   const ns = (key: string) =>
     callsign ? `${callsign.toUpperCase()}:${key}` : key;
-  // ── POTA state ────────────────────────────────────────────────────────────
-  const [potaPollRate, setPotaPollRate] = useState(5);
-  const [potaMaxAge, setPotaMaxAge] = useState(15);
-  const [potaModeFilter, setPotaModeFilter] = useState<string[]>(ALL_SPOT_MODES);
-  const [potaBandFilter, setPotaBandFilter] = useState<string[]>(() => POTA_BANDS.map(b => b.label));
-  const [potaSpots, setPotaSpots] = useState<PotaSpot[]>([]);
-  const [potaSortCol, setPotaSortCol] = useState<string | null>('spotTime');
-  const [potaSortDir, setPotaSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
+
   const [isCompactPotaSpotsCollapsed, setIsCompactPotaSpotsCollapsed] = usePersistedCollapsed(ns, "compact-pota-spots-collapsed", "pota-spots-collapsed", false, callsign);
   const [isPhonePotaSpotsCollapsed, setIsPhonePotaSpotsCollapsed] = usePersistedCollapsed(ns, "phone-pota-spots-collapsed", "pota-spots-collapsed", false, callsign);
-
-  // ── SOTA state ────────────────────────────────────────────────────────────
-  const [sotaPollRate, setSotaPollRate] = useState(5);
-  const [sotaMaxAge, setSotaMaxAge] = useState(15);
-  const [sotaModeFilter, setSotaModeFilter] = useState<string[]>(ALL_SPOT_MODES);
-  const [sotaBandFilter, setSotaBandFilter] = useState<string[]>(() => POTA_BANDS.map(b => b.label));
-  const [sotaSpots, setSotaSpots] = useState<SotaSpot[]>([]);
-  const [sotaSortCol, setSotaSortCol] = useState<string | null>('timeStamp');
-  const [sotaSortDir, setSotaSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
   const [isCompactSotaSpotsCollapsed, setIsCompactSotaSpotsCollapsed] = usePersistedCollapsed(ns, "compact-sota-spots-collapsed", "sota-spots-collapsed", false, callsign);
   const [isPhoneSotaSpotsCollapsed, setIsPhoneSotaSpotsCollapsed] = usePersistedCollapsed(ns, "phone-sota-spots-collapsed", "sota-spots-collapsed", false, callsign);
-
-  // ── WWFF state ────────────────────────────────────────────────────────────
-  const [wwffPollRate, setWwffPollRate] = useState(5);
-  const [wwffMaxAge, setWwffMaxAge] = useState(15);
-  const [wwffModeFilter, setWwffModeFilter] = useState<string[]>(ALL_SPOT_MODES);
-  const [wwffBandFilter, setWwffBandFilter] = useState<string[]>(() => POTA_BANDS.map(b => b.label));
-  const [wwffSpots, setWwffSpots] = useState<WwffSpot[]>([]);
-  const [wwffSortCol, setWwffSortCol] = useState<string | null>('spot_time');
-  const [wwffSortDir, setWwffSortDir] = useState<'asc' | 'desc' | 'api'>('desc');
   const [isCompactWwffSpotsCollapsed, setIsCompactWwffSpotsCollapsed] = usePersistedCollapsed(ns, "compact-wwff-spots-collapsed", "wwff-spots-collapsed", false, callsign);
   const [isPhoneWwffSpotsCollapsed, setIsPhoneWwffSpotsCollapsed] = usePersistedCollapsed(ns, "phone-wwff-spots-collapsed", "wwff-spots-collapsed", false, callsign);
 
@@ -91,6 +307,35 @@ export function usePotaSpots({
     return () => { socket.off("debug-flags", onDebugFlags); };
   }, [socket]);
 
+  const pota = useSpotSource<PotaSpot>({
+    enabled: potaEnabled,
+    fetchUrl: "https://api.pota.app/spot/",
+    logPrefix: "pota",
+    verboseRef: spotsVerboseRef,
+    initialSortCol: "spotTime",
+    accessors: potaAccessors,
+    status, inputVfoA, inputVfoB,
+  });
+  const sota = useSpotSource<SotaSpot>({
+    enabled: sotaEnabled,
+    // SOTA spotting polls api2.sota.org.uk/api/spots/-1/all (public, no auth).
+    fetchUrl: "https://api2.sota.org.uk/api/spots/-1/all",
+    logPrefix: "sota",
+    verboseRef: spotsVerboseRef,
+    initialSortCol: "timeStamp",
+    accessors: sotaAccessors,
+    status, inputVfoA, inputVfoB,
+  });
+  const wwff = useSpotSource<WwffSpot>({
+    enabled: wwffEnabled,
+    fetchUrl: "https://spots.wwff.co/static/spots.json",
+    logPrefix: "wwff",
+    verboseRef: spotsVerboseRef,
+    initialSortCol: "spot_time",
+    accessors: wwffAccessors,
+    status, inputVfoA, inputVfoB,
+  });
+
   // ── Settings loading from server ─────────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
@@ -101,26 +346,27 @@ export function usePotaSpots({
     };
     const handler = (data: any) => {
       if (data.potaSettings) {
-        if (data.potaSettings.pollRate !== undefined) setPotaPollRate(data.potaSettings.pollRate);
-        if (data.potaSettings.maxAge !== undefined) setPotaMaxAge(data.potaSettings.maxAge);
-        if (data.potaSettings.modeFilter !== undefined) setPotaModeFilter(parseModeFilter(data.potaSettings.modeFilter));
-        if (Array.isArray(data.potaSettings.bandFilter)) setPotaBandFilter(data.potaSettings.bandFilter);
+        if (data.potaSettings.pollRate !== undefined) pota.setPollRate(data.potaSettings.pollRate);
+        if (data.potaSettings.maxAge !== undefined) pota.setMaxAge(data.potaSettings.maxAge);
+        if (data.potaSettings.modeFilter !== undefined) pota.setModeFilter(parseModeFilter(data.potaSettings.modeFilter));
+        if (Array.isArray(data.potaSettings.bandFilter)) pota.setBandFilter(data.potaSettings.bandFilter);
       }
       if (data.sotaSettings) {
-        if (data.sotaSettings.pollRate !== undefined) setSotaPollRate(data.sotaSettings.pollRate);
-        if (data.sotaSettings.maxAge !== undefined) setSotaMaxAge(data.sotaSettings.maxAge);
-        if (data.sotaSettings.modeFilter !== undefined) setSotaModeFilter(parseModeFilter(data.sotaSettings.modeFilter));
-        if (Array.isArray(data.sotaSettings.bandFilter)) setSotaBandFilter(data.sotaSettings.bandFilter);
+        if (data.sotaSettings.pollRate !== undefined) sota.setPollRate(data.sotaSettings.pollRate);
+        if (data.sotaSettings.maxAge !== undefined) sota.setMaxAge(data.sotaSettings.maxAge);
+        if (data.sotaSettings.modeFilter !== undefined) sota.setModeFilter(parseModeFilter(data.sotaSettings.modeFilter));
+        if (Array.isArray(data.sotaSettings.bandFilter)) sota.setBandFilter(data.sotaSettings.bandFilter);
       }
       if (data.wwffSettings) {
-        if (data.wwffSettings.pollRate !== undefined) setWwffPollRate(data.wwffSettings.pollRate);
-        if (data.wwffSettings.maxAge !== undefined) setWwffMaxAge(data.wwffSettings.maxAge);
-        if (data.wwffSettings.modeFilter !== undefined) setWwffModeFilter(parseModeFilter(data.wwffSettings.modeFilter));
-        if (Array.isArray(data.wwffSettings.bandFilter)) setWwffBandFilter(data.wwffSettings.bandFilter);
+        if (data.wwffSettings.pollRate !== undefined) wwff.setPollRate(data.wwffSettings.pollRate);
+        if (data.wwffSettings.maxAge !== undefined) wwff.setMaxAge(data.wwffSettings.maxAge);
+        if (data.wwffSettings.modeFilter !== undefined) wwff.setModeFilter(parseModeFilter(data.wwffSettings.modeFilter));
+        if (Array.isArray(data.wwffSettings.bandFilter)) wwff.setBandFilter(data.wwffSettings.bandFilter);
       }
     };
     socket.on("settings-data", handler);
     return () => { socket.off("settings-data", handler); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
 
   // ── Log enabled state ─────────────────────────────────────────────────────
@@ -130,305 +376,9 @@ export function usePotaSpots({
     }
   }, [potaEnabled, sotaEnabled, wwffEnabled]);
 
-  // ── POTA fetch interval ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (!potaEnabled) {
-      setPotaSpots([]);
-      return;
-    }
-    const fetchSpots = async () => {
-      const vlog = spotsVerboseRef.current;
-      if (vlog) console.log("[spots:pota] Fetching https://api.pota.app/spot/");
-      try {
-        const res = await fetch("https://api.pota.app/spot/");
-        if (vlog) console.log(`[spots:pota] Response: ${res.status} ${res.statusText}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            if (vlog) console.log(`[spots:pota] Received ${data.length} spots`);
-            setPotaSpots(data);
-          } else {
-            if (vlog) console.warn("[spots:pota] Response was not an array:", typeof data);
-          }
-        } else {
-          if (vlog) console.warn(`[spots:pota] HTTP error: ${res.status} ${res.statusText}`);
-        }
-      } catch (err) {
-        if (vlog) console.error("[spots:pota] Fetch failed:", err);
-      }
-    };
-    fetchSpots();
-    const interval = setInterval(fetchSpots, potaPollRate * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [potaEnabled, potaPollRate]);
-
-  // ── SOTA fetch interval ───────────────────────────────────────────────────
-  // SOTA spotting polls api2.sota.org.uk/api/spots/-1/all (public, no auth).
-  useEffect(() => {
-    if (!sotaEnabled) {
-      setSotaSpots([]);
-      return;
-    }
-    const fetchSotaSpots = async () => {
-      const vlog = spotsVerboseRef.current;
-      if (vlog) console.log("[spots:sota] Fetching https://api2.sota.org.uk/api/spots/-1/all");
-      try {
-        const res = await fetch("https://api2.sota.org.uk/api/spots/-1/all");
-        if (vlog) console.log(`[spots:sota] Response: ${res.status} ${res.statusText}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            if (vlog) console.log(`[spots:sota] Received ${data.length} spots`);
-            setSotaSpots(data);
-          } else {
-            if (vlog) console.warn("[spots:sota] Response was not an array:", typeof data);
-          }
-        } else {
-          if (vlog) console.warn(`[spots:sota] HTTP error: ${res.status} ${res.statusText}`);
-        }
-      } catch (err) {
-        if (vlog) console.error("[spots:sota] Fetch failed:", err);
-      }
-    };
-    fetchSotaSpots();
-    const interval = setInterval(fetchSotaSpots, sotaPollRate * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [sotaEnabled, sotaPollRate]);
-
-  // ── WWFF fetch interval ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (!wwffEnabled) {
-      setWwffSpots([]);
-      return;
-    }
-    const fetchWwffSpots = async () => {
-      const vlog = spotsVerboseRef.current;
-      if (vlog) console.log("[spots:wwff] Fetching https://spots.wwff.co/static/spots.json");
-      try {
-        const res = await fetch("https://spots.wwff.co/static/spots.json");
-        if (vlog) console.log(`[spots:wwff] Response: ${res.status} ${res.statusText}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            if (vlog) console.log(`[spots:wwff] Received ${data.length} spots`);
-            setWwffSpots(data);
-          } else {
-            if (vlog) console.warn("[spots:wwff] Response was not an array:", typeof data);
-          }
-        } else {
-          if (vlog) console.warn(`[spots:wwff] HTTP error: ${res.status} ${res.statusText}`);
-        }
-      } catch (err) {
-        if (vlog) console.error("[spots:wwff] Fetch failed:", err);
-      }
-    };
-    fetchWwffSpots();
-    const interval = setInterval(fetchWwffSpots, wwffPollRate * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [wwffEnabled, wwffPollRate]);
-
-  // ── Computed: POTA ────────────────────────────────────────────────────────
-  const filteredSpots = useMemo(() => {
-    const vlog = spotsVerboseRef.current;
-    const latestByActivator = new Map<string, PotaSpot>();
-    for (const spot of potaSpots) {
-      const existing = latestByActivator.get(spot.activator);
-      if (!existing || spot.spotTime > existing.spotTime) {
-        latestByActivator.set(spot.activator, spot);
-      }
-    }
-    const deduped = [...latestByActivator.values()];
-    const cutoff = Date.now() - potaMaxAge * 60 * 1000;
-    const potaAllModes = ALL_SPOT_MODES.every(m => potaModeFilter.includes(m));
-    if (vlog && deduped.length > 0) {
-      const sample = deduped[0];
-      const parsed = new Date(sample.spotTime + 'Z').getTime();
-      console.log(`[spots:pota] Filter pipeline — raw: ${potaSpots.length}, deduped: ${deduped.length}, maxAge: ${potaMaxAge}m, cutoff: ${new Date(cutoff).toISOString()}, sample spotTime: "${sample.spotTime}", parsed: ${new Date(parsed).toISOString()} (${isNaN(parsed) ? 'NaN!' : 'ok'}), freq: ${sample.frequency}, mode: "${sample.mode}"`);
-      console.log(`[spots:pota] Filters — modeFilter: [${potaModeFilter}], allModes: ${potaAllModes}, bandFilter: [${potaBandFilter}]`);
-    }
-    let droppedAge = 0, droppedMode = 0, droppedBand = 0;
-    const result = deduped.filter(s => {
-      if (new Date(s.spotTime + 'Z').getTime() < cutoff) { droppedAge++; return false; }
-      if (!potaAllModes && potaModeFilter.length > 0 && !potaModeFilter.includes(s.mode)) { droppedMode++; return false; }
-      if (potaBandFilter.length > 0) {
-        const inBand = potaBandFilter.some(label => {
-          const band = POTA_BANDS.find(b => b.label === label);
-          return band && s.frequency >= band.min && s.frequency < band.max;
-        });
-        if (!inBand) { droppedBand++; return false; }
-      }
-      return true;
-    });
-    if (vlog) console.log(`[spots:pota] Result: ${result.length} spots (dropped — age: ${droppedAge}, mode: ${droppedMode}, band: ${droppedBand})`);
-    return result;
-  }, [potaSpots, potaMaxAge, potaModeFilter, potaBandFilter]);
-
-  const sortedSpots = useMemo(() => {
-    if (!potaSortCol || potaSortDir === 'api') return filteredSpots;
-    return [...filteredSpots].sort((a, b) => {
-      const aVal = (a as any)[potaSortCol];
-      const bVal = (b as any)[potaSortCol];
-      const cmp = typeof aVal === 'number' && typeof bVal === 'number'
-        ? aVal - bVal
-        : String(aVal).localeCompare(String(bVal));
-      return potaSortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [filteredSpots, potaSortCol, potaSortDir]);
-
-  const matchedSpotIds = useMemo(() => {
-    const activeHz = Math.round(parseFloat(status.vfo === 'VFOA' ? inputVfoA : inputVfoB) * 1_000_000);
-    const ids = new Set<number>();
-    for (const spot of filteredSpots) {
-      const spotHz = Math.round(spot.frequency * 1000);
-      if (Math.abs(spotHz - activeHz) <= 100) ids.add(spot.spotId);
-    }
-    return ids;
-  }, [filteredSpots, inputVfoA, inputVfoB, status.vfo]);
-
-  const displayedSpots = useMemo(() => {
-    if (matchedSpotIds.size === 0) return sortedSpots.map(s => ({ spot: s, isPinned: false }));
-    const pinned = sortedSpots
-      .filter(s => matchedSpotIds.has(s.spotId))
-      .map(s => ({ spot: s, isPinned: true }));
-    const all = sortedSpots.map(s => ({ spot: s, isPinned: false }));
-    return [...pinned, ...all];
-  }, [sortedSpots, matchedSpotIds]);
-
-  // ── Computed: SOTA ────────────────────────────────────────────────────────
-  const filteredSotaSpots = useMemo(() => {
-    const vlog = spotsVerboseRef.current;
-    const latestByActivator = new Map<string, SotaSpot>();
-    for (const spot of sotaSpots) {
-      const existing = latestByActivator.get(spot.activatorCallsign);
-      if (!existing || spot.timeStamp > existing.timeStamp) {
-        latestByActivator.set(spot.activatorCallsign, spot);
-      }
-    }
-    const deduped = [...latestByActivator.values()];
-    const cutoff = Date.now() - sotaMaxAge * 60 * 1000;
-    const sotaAllModes = ALL_SPOT_MODES.every(m => sotaModeFilter.includes(m));
-    if (vlog && deduped.length > 0) {
-      const sample = deduped[0];
-      const parsed = new Date(sample.timeStamp + 'Z').getTime();
-      console.log(`[spots:sota] Filter pipeline — raw: ${sotaSpots.length}, deduped: ${deduped.length}, maxAge: ${sotaMaxAge}m, sample timeStamp: "${sample.timeStamp}", parsed: ${new Date(parsed).toISOString()} (${isNaN(parsed) ? 'NaN!' : 'ok'}), freq: "${sample.frequency}", mode: "${sample.mode}"`);
-    }
-    let droppedAge = 0, droppedMode = 0, droppedBand = 0;
-    const result = deduped.filter(s => {
-      if (new Date(s.timeStamp + 'Z').getTime() < cutoff) { droppedAge++; return false; }
-      if (!sotaAllModes && sotaModeFilter.length > 0 && !sotaModeFilter.includes(s.mode)) { droppedMode++; return false; }
-      if (sotaBandFilter.length > 0) {
-        const freqKhz = parseFloat(s.frequency) * 1000;
-        const inBand = sotaBandFilter.some(label => {
-          const band = POTA_BANDS.find(b => b.label === label);
-          return band && freqKhz >= band.min && freqKhz < band.max;
-        });
-        if (!inBand) { droppedBand++; return false; }
-      }
-      return true;
-    });
-    if (vlog) console.log(`[spots:sota] Result: ${result.length} spots (dropped — age: ${droppedAge}, mode: ${droppedMode}, band: ${droppedBand})`);
-    return result;
-  }, [sotaSpots, sotaMaxAge, sotaModeFilter, sotaBandFilter]);
-
-  const sortedSotaSpots = useMemo(() => {
-    if (!sotaSortCol || sotaSortDir === 'api') return filteredSotaSpots;
-    return [...filteredSotaSpots].sort((a, b) => {
-      const aVal = (a as any)[sotaSortCol];
-      const bVal = (b as any)[sotaSortCol];
-      const cmp = typeof aVal === 'number' && typeof bVal === 'number'
-        ? aVal - bVal
-        : String(aVal).localeCompare(String(bVal));
-      return sotaSortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [filteredSotaSpots, sotaSortCol, sotaSortDir]);
-
-  const matchedSotaSpotIds = useMemo(() => {
-    const activeHz = Math.round(parseFloat(status.vfo === 'VFOA' ? inputVfoA : inputVfoB) * 1_000_000);
-    const ids = new Set<number>();
-    for (const spot of filteredSotaSpots) {
-      const spotHz = Math.round(parseFloat(spot.frequency) * 1_000_000);
-      if (Math.abs(spotHz - activeHz) <= 100) ids.add(spot.id);
-    }
-    return ids;
-  }, [filteredSotaSpots, inputVfoA, inputVfoB, status.vfo]);
-
-  const displayedSotaSpots = useMemo(() => {
-    if (matchedSotaSpotIds.size === 0) return sortedSotaSpots.map(s => ({ spot: s, isPinned: false }));
-    const pinned = sortedSotaSpots
-      .filter(s => matchedSotaSpotIds.has(s.id))
-      .map(s => ({ spot: s, isPinned: true }));
-    const all = sortedSotaSpots.map(s => ({ spot: s, isPinned: false }));
-    return [...pinned, ...all];
-  }, [sortedSotaSpots, matchedSotaSpotIds]);
-
-  // ── Computed: WWFF ────────────────────────────────────────────────────────
-  const filteredWwffSpots = useMemo(() => {
-    const vlog = spotsVerboseRef.current;
-    const latestByActivator = new Map<string, WwffSpot>();
-    for (const spot of wwffSpots) {
-      const existing = latestByActivator.get(spot.activator);
-      if (!existing || spot.spot_time > existing.spot_time) {
-        latestByActivator.set(spot.activator, spot);
-      }
-    }
-    const deduped = [...latestByActivator.values()];
-    const cutoff = Date.now() - wwffMaxAge * 60 * 1000;
-    const wwffAllModes = ALL_SPOT_MODES.every(m => wwffModeFilter.includes(m));
-    if (vlog && deduped.length > 0) {
-      const sample = deduped[0];
-      console.log(`[spots:wwff] Filter pipeline — raw: ${wwffSpots.length}, deduped: ${deduped.length}, maxAge: ${wwffMaxAge}m, sample spot_time: ${sample.spot_time} (${new Date(sample.spot_time * 1000).toISOString()}), freq_khz: ${sample.frequency_khz}, mode: "${sample.mode}"`);
-    }
-    let droppedAge = 0, droppedMode = 0, droppedBand = 0;
-    const result = deduped.filter(s => {
-      if (s.spot_time * 1000 < cutoff) { droppedAge++; return false; }
-      if (!wwffAllModes && wwffModeFilter.length > 0 && !wwffModeFilter.includes(s.mode)) { droppedMode++; return false; }
-      if (wwffBandFilter.length > 0) {
-        const inBand = wwffBandFilter.some(label => {
-          const band = POTA_BANDS.find(b => b.label === label);
-          return band && s.frequency_khz >= band.min && s.frequency_khz < band.max;
-        });
-        if (!inBand) { droppedBand++; return false; }
-      }
-      return true;
-    });
-    if (vlog) console.log(`[spots:wwff] Result: ${result.length} spots (dropped — age: ${droppedAge}, mode: ${droppedMode}, band: ${droppedBand})`);
-    return result;
-  }, [wwffSpots, wwffMaxAge, wwffModeFilter, wwffBandFilter]);
-
-  const sortedWwffSpots = useMemo(() => {
-    if (!wwffSortCol || wwffSortDir === 'api') return filteredWwffSpots;
-    return [...filteredWwffSpots].sort((a, b) => {
-      const aVal = (a as any)[wwffSortCol];
-      const bVal = (b as any)[wwffSortCol];
-      const cmp = typeof aVal === 'number' && typeof bVal === 'number'
-        ? aVal - bVal
-        : String(aVal).localeCompare(String(bVal));
-      return wwffSortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [filteredWwffSpots, wwffSortCol, wwffSortDir]);
-
-  const matchedWwffSpotIds = useMemo(() => {
-    const activeHz = Math.round(parseFloat(status.vfo === 'VFOA' ? inputVfoA : inputVfoB) * 1_000_000);
-    const ids = new Set<number>();
-    for (const spot of filteredWwffSpots) {
-      const spotHz = Math.round(spot.frequency_khz * 1000);
-      if (Math.abs(spotHz - activeHz) <= 100) ids.add(spot.id);
-    }
-    return ids;
-  }, [filteredWwffSpots, inputVfoA, inputVfoB, status.vfo]);
-
-  const displayedWwffSpots = useMemo(() => {
-    if (matchedWwffSpotIds.size === 0) return sortedWwffSpots.map(s => ({ spot: s, isPinned: false }));
-    const pinned = sortedWwffSpots
-      .filter(s => matchedWwffSpotIds.has(s.id))
-      .map(s => ({ spot: s, isPinned: true }));
-    const all = sortedWwffSpots.map(s => ({ spot: s, isPinned: false }));
-    return [...pinned, ...all];
-  }, [sortedWwffSpots, matchedWwffSpotIds]);
-
   // ── Handlers ──────────────────────────────────────────────────────────────
-  const formatSpotAge = (spotTime: string): string => {
-    const diff = Math.floor((Date.now() - new Date(spotTime + 'Z').getTime()) / 60000);
+  const formatSpotAge = (spotTimeMs: number): string => {
+    const diff = Math.floor((Date.now() - spotTimeMs) / 60000);
     return diff <= 0 ? '<1m ago' : `${diff}m ago`;
   };
 
@@ -442,18 +392,6 @@ export function usePotaSpots({
     socket?.emit('tune-to-spot', { freqHz, mode, modeChanged });
   };
 
-  const handlePotaSort = (col: string) => {
-    if (potaSortCol !== col) {
-      setPotaSortCol(col);
-      setPotaSortDir('asc');
-    } else if (potaSortDir === 'asc') {
-      setPotaSortDir('desc');
-    } else {
-      setPotaSortCol(null);
-      setPotaSortDir('api');
-    }
-  };
-
   const handleTuneToSotaSpot = (spot: SotaSpot) => {
     if (!connected) return;
     const freqMhz = parseFloat(spot.frequency);
@@ -465,18 +403,6 @@ export function usePotaSpots({
     socket?.emit('tune-to-spot', { freqHz, mode, modeChanged });
   };
 
-  const handleSotaSort = (col: string) => {
-    if (sotaSortCol !== col) {
-      setSotaSortCol(col);
-      setSotaSortDir('asc');
-    } else if (sotaSortDir === 'asc') {
-      setSotaSortDir('desc');
-    } else {
-      setSotaSortCol(null);
-      setSotaSortDir('api');
-    }
-  };
-
   const handleTuneToWwffSpot = (spot: WwffSpot) => {
     if (!connected) return;
     const freqMhz = spot.frequency_khz / 1000;
@@ -486,18 +412,6 @@ export function usePotaSpots({
     skipPollsCount.current = 1;
     setStatus(prev => ({ ...prev, frequency: freqHz, mode }));
     socket?.emit('tune-to-spot', { freqHz, mode, modeChanged });
-  };
-
-  const handleWwffSort = (col: string) => {
-    if (wwffSortCol !== col) {
-      setWwffSortCol(col);
-      setWwffSortDir('asc');
-    } else if (wwffSortDir === 'asc') {
-      setWwffSortDir('desc');
-    } else {
-      setWwffSortCol(null);
-      setWwffSortDir('api');
-    }
   };
 
   // ── Render functions ──────────────────────────────────────────────────────
@@ -514,28 +428,28 @@ export function usePotaSpots({
           ] as const).map(({ key, label, width }) => (
             <th
               key={key}
-              onClick={() => handlePotaSort(key)}
+              onClick={() => pota.handleSort(key)}
               className={cn("px-2 py-1.5 text-left text-[0.5625rem] uppercase text-[#8e9299] cursor-pointer hover:text-white select-none border-b border-[#2a2b2e]", width)}
             >
               {label}
-              {potaSortCol === key && potaSortDir !== 'api' && (
-                <span className="ml-1 text-emerald-500">{potaSortDir === 'asc' ? '▲' : '▼'}</span>
+              {pota.sortCol === key && pota.sortDir !== 'api' && (
+                <span className="ml-1 text-emerald-500">{pota.sortDir === 'asc' ? '▲' : '▼'}</span>
               )}
             </th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {displayedSpots.length === 0 ? (
+        {pota.displayedSpots.length === 0 ? (
           <tr>
             <td colSpan={5} className="px-2 py-4 text-center text-[#4a4b4e] italic">
-              No POTA spots in the last {potaMaxAge} min...
+              No POTA spots in the last {pota.maxAge} min...
             </td>
           </tr>
         ) : (
-          displayedSpots.map(({ spot, isPinned }, index) => (
+          pota.displayedSpots.map(({ spot, isPinned }, index) => (
             <React.Fragment key={isPinned ? `pinned-${spot.spotId}` : String(spot.spotId)}>
-              {!isPinned && index > 0 && displayedSpots[index - 1].isPinned && (
+              {!isPinned && index > 0 && pota.displayedSpots[index - 1].isPinned && (
                 <tr>
                   <td colSpan={5} className="px-2 py-1 text-center text-[0.5rem] uppercase tracking-widest text-[#4a4b4e] border-t-2 border-[#2a2b2e]">
                     — on frequency —
@@ -544,7 +458,7 @@ export function usePotaSpots({
               )}
               <tr className={cn(
                 "border-b border-[#2a2b2e]/40 transition-colors",
-                matchedSpotIds.has(spot.spotId)
+                pota.matchedSpotIds.has(spot.spotId)
                   ? "bg-red-500/10 hover:bg-red-500/20"
                   : "hover:bg-white/5"
               )}>
@@ -565,7 +479,7 @@ export function usePotaSpots({
                     ? `${spot.locationDesc} · ${spot.reference} · ${spot.name}`
                     : `${spot.locationDesc} · ${spot.reference}`}
                 </td>
-                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(spot.spotTime)}</td>
+                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(potaAccessors.timeMs(spot))}</td>
               </tr>
             </React.Fragment>
           ))
@@ -587,28 +501,28 @@ export function usePotaSpots({
           ] as const).map(({ key, label, width }) => (
             <th
               key={key}
-              onClick={() => handleSotaSort(key)}
+              onClick={() => sota.handleSort(key)}
               className={cn("px-2 py-1.5 text-left text-[0.5625rem] uppercase text-[#8e9299] cursor-pointer hover:text-white select-none border-b border-[#2a2b2e]", width)}
             >
               {label}
-              {sotaSortCol === key && sotaSortDir !== 'api' && (
-                <span className="ml-1 text-amber-500">{sotaSortDir === 'asc' ? '▲' : '▼'}</span>
+              {sota.sortCol === key && sota.sortDir !== 'api' && (
+                <span className="ml-1 text-amber-500">{sota.sortDir === 'asc' ? '▲' : '▼'}</span>
               )}
             </th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {displayedSotaSpots.length === 0 ? (
+        {sota.displayedSpots.length === 0 ? (
           <tr>
             <td colSpan={5} className="px-2 py-4 text-center text-[#4a4b4e] italic">
-              No SOTA spots in the last {sotaMaxAge} min...
+              No SOTA spots in the last {sota.maxAge} min...
             </td>
           </tr>
         ) : (
-          displayedSotaSpots.map(({ spot, isPinned }, index) => (
+          sota.displayedSpots.map(({ spot, isPinned }, index) => (
             <React.Fragment key={isPinned ? `pinned-${spot.id}` : String(spot.id)}>
-              {!isPinned && index > 0 && displayedSotaSpots[index - 1].isPinned && (
+              {!isPinned && index > 0 && sota.displayedSpots[index - 1].isPinned && (
                 <tr>
                   <td colSpan={5} className="px-2 py-1 text-center text-[0.5rem] uppercase tracking-widest text-[#4a4b4e] border-t-2 border-[#2a2b2e]">
                     — on frequency —
@@ -617,7 +531,7 @@ export function usePotaSpots({
               )}
               <tr className={cn(
                 "border-b border-[#2a2b2e]/40 transition-colors",
-                matchedSotaSpotIds.has(spot.id)
+                sota.matchedSpotIds.has(spot.id)
                   ? "bg-red-500/10 hover:bg-red-500/20"
                   : "hover:bg-white/5"
               )}>
@@ -634,7 +548,7 @@ export function usePotaSpots({
                 </td>
                 <td className="px-2 py-1 text-[#e0e0e0] whitespace-nowrap">{spot.mode}</td>
                 <td className="px-2 py-1 text-[#8e9299]">{spot.associationCode}/{spot.summitCode}</td>
-                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(spot.timeStamp)}</td>
+                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(sotaAccessors.timeMs(spot))}</td>
               </tr>
             </React.Fragment>
           ))
@@ -656,28 +570,28 @@ export function usePotaSpots({
           ] as const).map(({ key, label, width }) => (
             <th
               key={key}
-              onClick={() => handleWwffSort(key)}
+              onClick={() => wwff.handleSort(key)}
               className={cn("px-2 py-1.5 text-left text-[0.5625rem] uppercase text-[#8e9299] cursor-pointer hover:text-white select-none border-b border-[#2a2b2e]", width)}
             >
               {label}
-              {wwffSortCol === key && wwffSortDir !== 'api' && (
-                <span className="ml-1 text-sky-500">{wwffSortDir === 'asc' ? '▲' : '▼'}</span>
+              {wwff.sortCol === key && wwff.sortDir !== 'api' && (
+                <span className="ml-1 text-sky-500">{wwff.sortDir === 'asc' ? '▲' : '▼'}</span>
               )}
             </th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {displayedWwffSpots.length === 0 ? (
+        {wwff.displayedSpots.length === 0 ? (
           <tr>
             <td colSpan={5} className="px-2 py-4 text-center text-[#4a4b4e] italic">
-              No WWFF spots in the last {wwffMaxAge} min...
+              No WWFF spots in the last {wwff.maxAge} min...
             </td>
           </tr>
         ) : (
-          displayedWwffSpots.map(({ spot, isPinned }, index) => (
+          wwff.displayedSpots.map(({ spot, isPinned }, index) => (
             <React.Fragment key={isPinned ? `pinned-${spot.id}` : String(spot.id)}>
-              {!isPinned && index > 0 && displayedWwffSpots[index - 1].isPinned && (
+              {!isPinned && index > 0 && wwff.displayedSpots[index - 1].isPinned && (
                 <tr>
                   <td colSpan={5} className="px-2 py-1 text-center text-[0.5rem] uppercase tracking-widest text-[#4a4b4e] border-t-2 border-[#2a2b2e]">
                     — on frequency —
@@ -686,7 +600,7 @@ export function usePotaSpots({
               )}
               <tr className={cn(
                 "border-b border-[#2a2b2e]/40 transition-colors",
-                matchedWwffSpotIds.has(spot.id)
+                wwff.matchedSpotIds.has(spot.id)
                   ? "bg-red-500/10 hover:bg-red-500/20"
                   : "hover:bg-white/5"
               )}>
@@ -703,12 +617,7 @@ export function usePotaSpots({
                 </td>
                 <td className="px-2 py-1 text-[#e0e0e0] whitespace-nowrap">{spot.mode}</td>
                 <td className="px-2 py-1 text-[#8e9299]">{spot.reference} · {spot.reference_name}</td>
-                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">
-                  {(() => {
-                    const diff = Math.floor((Date.now() - spot.spot_time * 1000) / 60000);
-                    return diff <= 0 ? '<1m ago' : `${diff}m ago`;
-                  })()}
-                </td>
+                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{formatSpotAge(wwffAccessors.timeMs(spot))}</td>
               </tr>
             </React.Fragment>
           ))
@@ -719,37 +628,37 @@ export function usePotaSpots({
 
   return {
     // Settings state (App.tsx needs for save-settings emit and layouts)
-    potaPollRate, setPotaPollRate,
-    potaMaxAge, setPotaMaxAge,
-    potaModeFilter, setPotaModeFilter,
-    potaBandFilter, setPotaBandFilter,
-    potaSortCol,
-    potaSortDir,
+    potaPollRate: pota.pollRate, setPotaPollRate: pota.setPollRate,
+    potaMaxAge: pota.maxAge, setPotaMaxAge: pota.setMaxAge,
+    potaModeFilter: pota.modeFilter, setPotaModeFilter: pota.setModeFilter,
+    potaBandFilter: pota.bandFilter, setPotaBandFilter: pota.setBandFilter,
+    potaSortCol: pota.sortCol,
+    potaSortDir: pota.sortDir,
     isCompactPotaSpotsCollapsed, setIsCompactPotaSpotsCollapsed,
     isPhonePotaSpotsCollapsed, setIsPhonePotaSpotsCollapsed,
-    sotaPollRate, setSotaPollRate,
-    sotaMaxAge, setSotaMaxAge,
-    sotaModeFilter, setSotaModeFilter,
-    sotaBandFilter, setSotaBandFilter,
-    sotaSortCol,
-    sotaSortDir,
+    sotaPollRate: sota.pollRate, setSotaPollRate: sota.setPollRate,
+    sotaMaxAge: sota.maxAge, setSotaMaxAge: sota.setMaxAge,
+    sotaModeFilter: sota.modeFilter, setSotaModeFilter: sota.setModeFilter,
+    sotaBandFilter: sota.bandFilter, setSotaBandFilter: sota.setBandFilter,
+    sotaSortCol: sota.sortCol,
+    sotaSortDir: sota.sortDir,
     isCompactSotaSpotsCollapsed, setIsCompactSotaSpotsCollapsed,
     isPhoneSotaSpotsCollapsed, setIsPhoneSotaSpotsCollapsed,
-    wwffPollRate, setWwffPollRate,
-    wwffMaxAge, setWwffMaxAge,
-    wwffModeFilter, setWwffModeFilter,
-    wwffBandFilter, setWwffBandFilter,
-    wwffSortCol,
-    wwffSortDir,
+    wwffPollRate: wwff.pollRate, setWwffPollRate: wwff.setPollRate,
+    wwffMaxAge: wwff.maxAge, setWwffMaxAge: wwff.setMaxAge,
+    wwffModeFilter: wwff.modeFilter, setWwffModeFilter: wwff.setModeFilter,
+    wwffBandFilter: wwff.bandFilter, setWwffBandFilter: wwff.setBandFilter,
+    wwffSortCol: wwff.sortCol,
+    wwffSortDir: wwff.sortDir,
     isCompactWwffSpotsCollapsed, setIsCompactWwffSpotsCollapsed,
     isPhoneWwffSpotsCollapsed, setIsPhoneWwffSpotsCollapsed,
     // Computed
-    filteredSpots,
-    filteredSotaSpots,
-    filteredWwffSpots,
-    displayedSpots,
-    displayedSotaSpots,
-    displayedWwffSpots,
+    filteredSpots: pota.filteredSpots,
+    filteredSotaSpots: sota.filteredSpots,
+    filteredWwffSpots: wwff.filteredSpots,
+    displayedSpots: pota.displayedSpots,
+    displayedSotaSpots: sota.displayedSpots,
+    displayedWwffSpots: wwff.displayedSpots,
     // Render functions
     renderSpotsTable,
     renderSotaSpotsTable,
