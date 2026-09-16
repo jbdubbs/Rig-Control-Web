@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 import { cn } from "../utils";
+import { useFloatingPanel, normalizeSearchText } from "../hooks/useFloatingPanel";
 
 export interface SearchableSelectOption {
   value: string;
@@ -18,12 +19,7 @@ interface SearchableSelectProps {
   className?: string;
 }
 
-function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
 const PANEL_MAX_HEIGHT = 280;
-const PANEL_GAP = 4;
 
 export function SearchableSelect({
   id,
@@ -36,12 +32,24 @@ export function SearchableSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
-  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const activeOptionRef = useRef<HTMLLIElement>(null);
+
+  const closePanel = (restoreFocus: boolean) => {
+    setIsOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  };
+
+  const { panelStyle, positionPanel } = useFloatingPanel({
+    isOpen,
+    triggerRef,
+    panelRef,
+    onClose: () => closePanel(false),
+    panelMaxHeight: PANEL_MAX_HEIGHT,
+  });
 
   const selectedOption = useMemo(
     () => options.find((o) => o.value === value) ?? null,
@@ -49,9 +57,9 @@ export function SearchableSelect({
   );
 
   const filteredOptions = useMemo(() => {
-    const q = normalize(query);
+    const q = normalizeSearchText(query);
     if (!q) return options;
-    return options.filter((o) => normalize(o.searchText ?? o.label).includes(q));
+    return options.filter((o) => normalizeSearchText(o.searchText ?? o.label).includes(q));
   }, [options, query]);
 
   const listboxId = `${id}-listbox`;
@@ -59,36 +67,13 @@ export function SearchableSelect({
     isOpen && filteredOptions[activeIndex] ? `${id}-option-${activeIndex}` : undefined;
 
   const openPanel = () => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      const openAbove = spaceBelow < PANEL_MAX_HEIGHT && spaceAbove > spaceBelow;
-      const maxHeight = Math.min(
-        PANEL_MAX_HEIGHT,
-        (openAbove ? spaceAbove : spaceBelow) - PANEL_GAP * 2
-      );
-      setPanelStyle({
-        position: "fixed",
-        left: rect.left,
-        width: rect.width,
-        maxHeight: Math.max(maxHeight, 100),
-        ...(openAbove
-          ? { bottom: window.innerHeight - rect.top + PANEL_GAP }
-          : { top: rect.bottom + PANEL_GAP }),
-      });
-    }
+    positionPanel();
     setQuery("");
     const initialIndex = selectedOption
       ? options.findIndex((o) => o.value === selectedOption.value)
       : 0;
     setActiveIndex(Math.max(initialIndex, 0));
     setIsOpen(true);
-  };
-
-  const closePanel = (restoreFocus: boolean) => {
-    setIsOpen(false);
-    if (restoreFocus) triggerRef.current?.focus();
   };
 
   const selectOption = (option: SearchableSelectOption) => {
@@ -107,34 +92,6 @@ export function SearchableSelect({
   useEffect(() => {
     activeOptionRef.current?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Node;
-      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
-      closePanel(false);
-    };
-    // Scrolling inside the panel itself (the listbox, or focus/scrollIntoView
-    // nudging the search input into view) must not close the popover — only
-    // a scroll of whatever's underneath (e.g. the modal's overlay) should.
-    const onScroll = (e: Event) => {
-      const target = e.target as Node;
-      if (panelRef.current?.contains(target)) return;
-      closePanel(false);
-    };
-
-    document.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onScroll);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onScroll);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     switch (e.key) {

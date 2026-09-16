@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../utils";
+import { useFloatingPanel, normalizeSearchText } from "../hooks/useFloatingPanel";
 
 export interface SerialPortInputOption {
   value: string;
@@ -18,12 +19,7 @@ interface SerialPortInputProps {
   className?: string;
 }
 
-function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
 const PANEL_MAX_HEIGHT = 240;
-const PANEL_GAP = 4;
 
 // An editable combobox: unlike SearchableSelect (strict pick-from-list, the
 // input's value is just a search query), here the input's value IS the
@@ -42,42 +38,30 @@ export function SerialPortInput({
 }: SerialPortInputProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
 
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const activeOptionRef = useRef<HTMLLIElement>(null);
 
+  const closePanel = () => setIsOpen(false);
+
+  const { panelStyle, positionPanel } = useFloatingPanel({
+    isOpen,
+    triggerRef: inputRef,
+    panelRef,
+    onClose: closePanel,
+    panelMaxHeight: PANEL_MAX_HEIGHT,
+  });
+
   const filteredOptions = useMemo(() => {
-    const q = normalize(value);
+    const q = normalizeSearchText(value);
     if (!q) return options;
-    return options.filter((o) => normalize(o.label).includes(q));
+    return options.filter((o) => normalizeSearchText(o.label).includes(q));
   }, [options, value]);
 
   const listboxId = `${id}-listbox`;
   const activeOptionId =
     isOpen && filteredOptions[activeIndex] ? `${id}-option-${activeIndex}` : undefined;
-
-  const positionPanel = () => {
-    const rect = inputRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-    const openAbove = spaceBelow < PANEL_MAX_HEIGHT && spaceAbove > spaceBelow;
-    const maxHeight = Math.min(
-      PANEL_MAX_HEIGHT,
-      (openAbove ? spaceAbove : spaceBelow) - PANEL_GAP * 2
-    );
-    setPanelStyle({
-      position: "fixed",
-      left: rect.left,
-      width: rect.width,
-      maxHeight: Math.max(maxHeight, 100),
-      ...(openAbove
-        ? { bottom: window.innerHeight - rect.top + PANEL_GAP }
-        : { top: rect.bottom + PANEL_GAP }),
-    });
-  };
 
   const openPanel = () => {
     positionPanel();
@@ -85,8 +69,6 @@ export function SerialPortInput({
     setIsOpen(true);
     onFocus?.();
   };
-
-  const closePanel = () => setIsOpen(false);
 
   const selectOption = (option: SerialPortInputOption) => {
     onChange(option.value);
@@ -102,30 +84,6 @@ export function SerialPortInput({
   useEffect(() => {
     activeOptionRef.current?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Node;
-      if (inputRef.current?.contains(target) || panelRef.current?.contains(target)) return;
-      closePanel();
-    };
-    const onScroll = (e: Event) => {
-      const target = e.target as Node;
-      if (panelRef.current?.contains(target)) return;
-      closePanel();
-    };
-
-    document.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onScroll);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, [isOpen]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     switch (e.key) {
