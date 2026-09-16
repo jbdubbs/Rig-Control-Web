@@ -71,22 +71,36 @@ export function addLog(ctx: ServerContext, data: string): void {
   ctx.io.emit("rigctld-log", lines);
 }
 
-export function stopRigctld(ctx: ServerContext): void {
-  if (ctx.rigctldProcess) {
-    vlog("Stopping rigctld...");
-    const pid = ctx.rigctldProcess.pid;
+export function stopRigctld(ctx: ServerContext): Promise<void> {
+  const proc = ctx.rigctldProcess;
+  if (!proc) return Promise.resolve();
+
+  vlog("Stopping rigctld...");
+  const pid = proc.pid;
+  ctx.rigctldProcess = null;
+  ctx.rigctldStatus = "stopped";
+  emitRigctldStatus(ctx);
+
+  const stopPromise = new Promise<void>((resolve) => {
+    const done = () => resolve();
+    proc.once("close", done);
+    // Fallback in case the process (or, on Windows, taskkill) never reports exit.
+    setTimeout(done, 3000);
     // On Windows, kill() doesn't terminate child process trees. Use taskkill
     // with /T (tree) and /F (force) to ensure rigctld and any spawned children
     // are fully terminated.
     if (process.platform === "win32" && pid) {
       exec(`taskkill /PID ${pid} /T /F`, () => {});
     } else {
-      ctx.rigctldProcess.kill();
+      proc.kill();
     }
-    ctx.rigctldProcess = null;
-    ctx.rigctldStatus = "stopped";
-    emitRigctldStatus(ctx);
-  }
+  });
+
+  ctx.rigctldStopPromise = stopPromise;
+  stopPromise.then(() => {
+    if (ctx.rigctldStopPromise === stopPromise) ctx.rigctldStopPromise = null;
+  });
+  return stopPromise;
 }
 
 export function checkExistingRigctld(): Promise<boolean> {
@@ -202,8 +216,23 @@ export function fetchRadioCapabilities(ctx: ServerContext, rigNumber: string): P
 }
 
 export async function startRigctld(ctx: ServerContext): Promise<void> {
-  if (ctx.rigctldProcess) {
-    stopRigctld(ctx);
+  if (ctx.rigctldStartInFlight) {
+    vlog("[HAMLIB] startRigctld already in progress, ignoring duplicate request");
+    return;
+  }
+  ctx.rigctldStartInFlight = true;
+  try {
+    await startRigctldInternal(ctx);
+  } finally {
+    ctx.rigctldStartInFlight = false;
+  }
+}
+
+async function startRigctldInternal(ctx: ServerContext): Promise<void> {
+  if (ctx.rigctldStopPromise) {
+    await ctx.rigctldStopPromise;
+  } else if (ctx.rigctldProcess) {
+    await stopRigctld(ctx);
   }
 
   ctx.rigctldVersion = await getRigctldVersion(ctx.baseDir);

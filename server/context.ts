@@ -222,6 +222,15 @@ export interface ServerContext {
    *  after repeated get_powerstat failures) is in flight. Guards against the two independent
    *  recovery paths in rigComm.ts racing each other into a double-spawn. */
   rigctldRespawnInFlight: boolean;
+  /** Synchronous re-entrancy guard for startRigctld() itself, set before its first await.
+   *  Unlike rigctldRespawnInFlight (which only guards the two rigComm.ts auto-recovery call
+   *  sites against each other), this covers every caller — socket handlers included — so two
+   *  overlapping start requests can't both spawn a rigctld process. */
+  rigctldStartInFlight: boolean;
+  /** Set while stopRigctld() is waiting for the killed process to actually exit. ctx.rigctldProcess
+   *  is nulled synchronously when a stop begins, so startRigctld() checks this instead to know
+   *  whether it needs to wait for a still-in-flight kill before spawning a replacement. */
+  rigctldStopPromise: Promise<void> | null;
 
   // Diagnostics log (Diagnostics settings tab): merged server console output
   // plus forwarded browser/Electron-renderer console output. Rolling window
@@ -457,6 +466,8 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
     isRigctldVersionSupported: true,
     rigctldLogs: [],
     rigctldRespawnInFlight: false,
+    rigctldStartInFlight: false,
+    rigctldStopPromise: null,
     diagnosticsLog: [],
     diagnosticsLogTimestamps: [],
 
