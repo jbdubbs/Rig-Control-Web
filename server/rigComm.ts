@@ -969,10 +969,15 @@ export function registerRigCommHandlers(socket: Socket, ctx: ServerContext): voi
   socket.on("set-func", async ({ func, state }) => {
     try {
       await sendToRig(ctx, `U ${func} ${state ? "1" : "0"}`, true, true);
-      const key = func.toLowerCase() as any;
-      ctx.lastStatus = { ...ctx.lastStatus, [key]: state };
-      ctx.io.emit("rig-status", ctx.lastStatus);
-      ctx.pendingQuickPolls.add(key);
+      const key = func.toLowerCase() === "tuner" ? "tuner" :
+                  func.toLowerCase() === "nb" ? "nb" :
+                  func.toLowerCase() === "nr" ? "nr" :
+                  func.toLowerCase() === "anf" ? "anf" : null;
+      if (key) {
+        ctx.lastStatus = { ...ctx.lastStatus, [key]: state };
+        ctx.io.emit("rig-status", ctx.lastStatus);
+        ctx.pendingQuickPolls.add(key);
+      }
     } catch (err) {
       socket.emit("rig-op-error", `Failed to set ${func}`);
     }
