@@ -37,6 +37,10 @@ const LOGIN_CALLSIGN_LIMIT_MAX = 10; // higher threshold — admin can unlock, I
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
+function isValidRole(role: unknown): role is "admin" | "regular" {
+  return role === "admin" || role === "regular";
+}
+
 // Rate-limiter entries are otherwise only removed on a successful login/password-change
 // for that exact key, or an admin unlock — an attacker flooding auth:login with distinct
 // callsigns/IPs would otherwise grow these Maps without bound for the life of the process.
@@ -514,6 +518,13 @@ export function registerAdminHandlers(
           });
           return;
         }
+        if (!isValidRole(role)) {
+          socket.emit("admin:op-result", {
+            ok: false,
+            error: "Invalid role",
+          });
+          return;
+        }
         if (password.length < 8) {
           socket.emit("admin:op-result", {
             ok: false,
@@ -604,6 +615,13 @@ export function registerAdminHandlers(
     }) => {
       requireAdmin(socket, ctx, async (authInfo) => {
         const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
+        if (role !== undefined && !isValidRole(role)) {
+          socket.emit("admin:op-result", {
+            ok: false,
+            error: "Invalid role",
+          });
+          return;
+        }
         if (password && password.length < 8) {
           socket.emit("admin:op-result", {
             ok: false,
