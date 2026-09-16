@@ -11,6 +11,10 @@ const MAX_BUFFER_SPOTS = 300;
 // disable/re-enable before trying again, rather than retrying forever.
 const MAX_ATTEMPTS_PER_WINDOW = 3;
 const ATTEMPT_WINDOW_MS = 60000;
+// Guards only the connect/login handshake window, not the connection's whole lifetime — a
+// real feed can legitimately go quiet for a stretch (low-traffic node, quiet band, overnight),
+// so this is disarmed (setTimeout(0)) the moment login succeeds.
+const CONNECT_TIMEOUT_MS = 15000;
 
 // Classic AR-Cluster/DXSpider spot line, unchanged across cluster software
 // for decades:
@@ -118,11 +122,18 @@ export function startDxCluster(ctx: ServerContext, isRetry = false): void {
 
   const sock = new net.Socket();
   ctx.dxClusterSocket = sock;
+  sock.setTimeout(CONNECT_TIMEOUT_MS);
 
   let lineBuffer = "";
 
   sock.on("connect", () => {
     vlogDx(`[DXCLUSTER] TCP connected to ${host}:${port}`);
+  });
+
+  sock.on("timeout", () => {
+    vlogDx(`[DXCLUSTER] Connect/login timed out after ${CONNECT_TIMEOUT_MS}ms — destroying socket`);
+    ctx.dxClusterError = `Timed out waiting for ${host}:${port} to respond`;
+    sock.destroy();
   });
 
   sock.on("data", (chunk: Buffer) => {
@@ -139,6 +150,7 @@ export function startDxCluster(ctx: ServerContext, isRetry = false): void {
       ctx.dxClusterLoggedIn = true;
       ctx.dxClusterConnected = true;
       ctx.dxClusterError = null;
+      sock.setTimeout(0); // handshake complete — a quiet feed afterward isn't a failure
       // A successful login is a real, working connection — reset the
       // attempt budget so a later drop (hours from now) isn't penalized by
       // attempts spent getting this connection established.
