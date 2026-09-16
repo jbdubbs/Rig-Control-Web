@@ -90,7 +90,7 @@ export function executeRigCommand(ctx: ServerContext, cmd: string, useExtended =
           finishWithTiming();
           vlog(`[RIG] Response for "${cmd}": ${responseBuffer.trim()}`);
           const rprtCode = parseInt(rprtMatch[1], 10);
-          if (rprtCode === 0 || rprtCode === 1) {
+          if (rprtCode === 0) {
             try {
               resolve(parseExtendedResponse(responseBuffer));
             } catch (e) {
