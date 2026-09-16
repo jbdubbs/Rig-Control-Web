@@ -89,7 +89,7 @@ export function useLayoutConfig(callsign = "") {
       saveToStorage(storageKey, next);
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const setPhoneLayout = useCallback((layout: ViewLayout) => {
     setConfig(prev => {
@@ -97,7 +97,7 @@ export function useLayoutConfig(callsign = "") {
       saveToStorage(storageKey, next);
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const addPanel = useCallback((view: 'compact' | 'phone', panelType: PanelType, config?: PanelAddConfig) => {
     setConfig(prev => {
@@ -130,7 +130,7 @@ export function useLayoutConfig(callsign = "") {
       saveToStorage(storageKey, next);
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const removePanel = useCallback((view: 'compact' | 'phone', itemId: string) => {
     setConfig(prev => {
@@ -160,7 +160,7 @@ export function useLayoutConfig(callsign = "") {
       saveToStorage(storageKey, next);
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const updateItemPositions = useCallback((view: 'compact' | 'phone', updatedItems: Array<{ i: string; x: number; y: number; w: number; h: number }>) => {
     setConfig(prev => {
@@ -174,7 +174,7 @@ export function useLayoutConfig(callsign = "") {
       saveToStorage(storageKey, next);
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const resetToDefault = useCallback((view?: 'compact' | 'phone') => {
     setConfig(prev => {

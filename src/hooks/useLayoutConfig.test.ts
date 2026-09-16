@@ -87,3 +87,44 @@ describe('useLayoutConfig addPanel — compact column placement', () => {
     expect(added?.y).toBe(1);
   });
 });
+
+// The hook mounts before auth resolves (callsign ""), then re-renders with the real
+// callsign once login completes. setCompactLayout/setPhoneLayout/addPanel/setGridSize/
+// updateItemPositions must pick up the new callsign-derived storage key at that point,
+// not keep writing to the stale unprefixed key captured on first render.
+describe('useLayoutConfig storage key tracks callsign after it resolves post-mount', () => {
+  it('addPanel writes to the callsign-prefixed key, not the stale unprefixed one', () => {
+    const { result, rerender } = renderHook(
+      ({ callsign }: { callsign: string }) => useLayoutConfig(callsign),
+      { initialProps: { callsign: '' } },
+    );
+
+    rerender({ callsign: 'W1AW' });
+
+    act(() => {
+      result.current.addPanel('compact', 'solar');
+    });
+
+    expect(localStorage.getItem('grid-layout-v1')).toBeNull();
+    const stored = JSON.parse(localStorage.getItem('W1AW:grid-layout-v1')!);
+    expect(stored.compact.items.some((i: GridItem) => i.panelType === 'solar')).toBe(true);
+  });
+
+  it('setGridSize writes to the callsign-prefixed key, not the stale unprefixed one', () => {
+    const { result, rerender } = renderHook(
+      ({ callsign }: { callsign: string }) => useLayoutConfig(callsign),
+      { initialProps: { callsign: '' } },
+    );
+
+    rerender({ callsign: 'W1AW' });
+
+    act(() => {
+      result.current.setGridSize('compact', 4, 8);
+    });
+
+    expect(localStorage.getItem('grid-layout-v1')).toBeNull();
+    const stored = JSON.parse(localStorage.getItem('W1AW:grid-layout-v1')!);
+    expect(stored.compact.cols).toBe(4);
+    expect(stored.compact.rows).toBe(8);
+  });
+});
