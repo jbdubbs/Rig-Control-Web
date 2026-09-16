@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cwTick } from './cw.ts';
+import { cwTick, isValidKeyerPort } from './cw.ts';
 
 // cwTick's iambic FSM is exercised here in "rigctld-ptt" keying mode, which
 // sends real "T 1"/"T 0" commands via ctx.sendToRig instead of driving the
@@ -152,5 +152,48 @@ describe('cwTick', () => {
 
     expect(ctx.sendToRig).not.toHaveBeenCalled();
     expect(ctx.cwTickTimer).toBeNull();
+  });
+});
+
+const originalPlatform = process.platform;
+
+function setPlatform(platform: NodeJS.Platform) {
+  Object.defineProperty(process, 'platform', { value: platform });
+}
+
+describe('isValidKeyerPort', () => {
+  afterEach(() => {
+    setPlatform(originalPlatform);
+  });
+
+  it('allows an empty/unconfigured port on any platform', () => {
+    setPlatform('linux');
+    expect(isValidKeyerPort('')).toBe(true);
+    setPlatform('win32');
+    expect(isValidKeyerPort('')).toBe(true);
+  });
+
+  it('accepts real POSIX serial device paths', () => {
+    setPlatform('linux');
+    expect(isValidKeyerPort('/dev/ttyUSB0')).toBe(true);
+    expect(isValidKeyerPort('/dev/ttyACM0')).toBe(true);
+    expect(isValidKeyerPort('/dev/serial/by-id/usb-FTDI_FT232R-if00-port0')).toBe(true);
+    setPlatform('darwin');
+    expect(isValidKeyerPort('/dev/cu.usbserial-1420')).toBe(true);
+  });
+
+  it('rejects arbitrary host paths on POSIX', () => {
+    setPlatform('linux');
+    expect(isValidKeyerPort('/etc/passwd')).toBe(false);
+    expect(isValidKeyerPort('../../etc/passwd')).toBe(false);
+    expect(isValidKeyerPort('not-a-path')).toBe(false);
+  });
+
+  it('accepts COM ports and rejects other values on Windows', () => {
+    setPlatform('win32');
+    expect(isValidKeyerPort('COM4')).toBe(true);
+    expect(isValidKeyerPort('com12')).toBe(true);
+    expect(isValidKeyerPort('/dev/ttyUSB0')).toBe(false);
+    expect(isValidKeyerPort('LPT1')).toBe(false);
   });
 });

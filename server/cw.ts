@@ -32,6 +32,17 @@ export function getCwHelperPath(baseDir: string): string {
   return fullPath;
 }
 
+// Guards against a client-supplied keyerPort reaching the native cw-key-helper binary as an
+// arbitrary host path — restrict to the shape of a real platform serial device identifier.
+// Intentionally permissive (not a strict allowlist against currently-enumerated ports): the
+// KEYER tab's serial port field is free-text-with-autocomplete, since users legitimately
+// configure a port for a device that isn't plugged in yet.
+export function isValidKeyerPort(port: string): boolean {
+  if (!port) return true; // empty/unconfigured
+  if (process.platform === "win32") return /^COM\d+$/i.test(port);
+  return /^\/dev\/[\w.-]+(?:\/[\w.-]+)*$/.test(port);
+}
+
 const setSerialKey = (ctx: ServerContext, active: boolean): Promise<void> => {
   if (!ctx.cwKeyerProcess || ctx.cwKeyerProcess.killed) return Promise.resolve();
   return new Promise((resolve) => {
@@ -193,6 +204,11 @@ export function cwTick(ctx: ServerContext): void {
 export async function openKeyerPort(ctx: ServerContext, portPath: string): Promise<void> {
   await closeKeyerPort(ctx);
   if (!portPath) return;
+  if (!isValidKeyerPort(portPath)) {
+    vlog(`[CW] Rejected keyer port (invalid path): ${portPath}`);
+    ctx.io.emit("cw-port-status", { open: false, port: portPath, error: "Invalid keyer serial port" });
+    return;
+  }
 
   await new Promise<void>((resolve) => {
     let settled = false;
