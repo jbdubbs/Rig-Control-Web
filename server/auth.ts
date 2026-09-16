@@ -35,6 +35,22 @@ const changePasswordAttempts = new Map<string, { count: number; resetAt: number 
 const RATE_LIMIT_MAX = 5;
 const LOGIN_CALLSIGN_LIMIT_MAX = 10; // higher threshold — admin can unlock, IP limit is the flood guard
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const RATE_LIMIT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+// Rate-limiter entries are otherwise only removed on a successful login/password-change
+// for that exact key, or an admin unlock — an attacker flooding auth:login with distinct
+// callsigns/IPs would otherwise grow these Maps without bound for the life of the process.
+function sweepExpiredRateLimitEntries(now: number): void {
+  for (const [key, entry] of loginAttempts) {
+    if (entry.resetAt <= now) loginAttempts.delete(key);
+  }
+  for (const [key, entry] of loginCallsignAttempts) {
+    if (entry.resetAt <= now) loginCallsignAttempts.delete(key);
+  }
+  for (const [key, entry] of changePasswordAttempts) {
+    if (entry.resetAt <= now) changePasswordAttempts.delete(key);
+  }
+}
 
 // bcryptjs silently truncates at 72 bytes — enforce this as an explicit limit
 // so users aren't surprised by two passwords being treated as identical.
@@ -237,6 +253,8 @@ export async function initAuth(ctx: ServerContext): Promise<void> {
       "[AUTH] Default ADMIN user created (password: admin). Change password on first login."
     );
   }
+
+  setInterval(() => sweepExpiredRateLimitEntries(Date.now()), RATE_LIMIT_SWEEP_INTERVAL_MS).unref();
 }
 
 // ─── Auth socket handlers ─────────────────────────────────────────────────────
