@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { KeyRound } from "lucide-react";
 import { cn } from "../utils";
 import type { Socket } from "socket.io-client";
@@ -23,6 +23,26 @@ export default function ChangePasswordModal({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Registered once for the component's lifetime (not per-submit via socket.once) and torn
+  // down on unmount, so a response that arrives after the modal has already unmounted never
+  // calls setState on it, and a second submit never stacks a duplicate listener on the same
+  // generic event name. Mirrors AdminTab.tsx's admin:op-result handling.
+  useEffect(() => {
+    if (!socket) return;
+    const onOpResult = (data: { ok: boolean; error?: string }) => {
+      setSubmitting(false);
+      if (data.ok) {
+        onSuccess();
+      } else {
+        setError(data.error ?? "Failed to change password");
+      }
+    };
+    socket.on("auth:op-result", onOpResult);
+    return () => {
+      socket.off("auth:op-result", onOpResult);
+    };
+  }, [socket, onSuccess]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,14 +71,6 @@ export default function ChangePasswordModal({
 
     setSubmitting(true);
     socket?.emit("auth:change-password", { currentPassword, newPassword });
-    socket?.once("auth:op-result", (data: { ok: boolean; error?: string }) => {
-      setSubmitting(false);
-      if (data.ok) {
-        onSuccess();
-      } else {
-        setError(data.error ?? "Failed to change password");
-      }
-    });
   };
 
   return (
