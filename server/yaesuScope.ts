@@ -6,6 +6,18 @@ import { vlogSpectrum } from "./vlog.ts";
 
 const RESTART_DELAY_MS = 3000;
 const RETRY_BUDGET_MS = 30000;
+const MAX_LINE_BUFFER_BYTES = 8192; // several legit frames' worth (~1.9KB each) of headroom
+
+// Guards against a corrupted or stuck ft4222-scope-reader stream (a chunk with no trailing
+// newline — a crash mid-write or an unexpected frame-format change) growing lineBuffer
+// without bound forever, since the parse loop only drains it when it finds a newline.
+export function guardLineBufferSize(
+  buffer: string,
+  maxBytes: number = MAX_LINE_BUFFER_BYTES
+): { buffer: string; wasReset: boolean } {
+  if (buffer.length <= maxBytes) return { buffer, wasReset: false };
+  return { buffer: "", wasReset: true };
+}
 
 export function getYaesuScopeHelperPath(baseDir: string): string {
   let platformDir: string;
@@ -76,6 +88,13 @@ export function startYaesuScope(ctx: ServerContext, isRetry = false): void {
   proc.stdout!.setEncoding("utf8");
   proc.stdout!.on("data", (chunk: string) => {
     lineBuffer += chunk;
+    const guarded = guardLineBufferSize(lineBuffer);
+    if (guarded.wasReset) {
+      console.warn(`[YAESU-SCOPE] lineBuffer exceeded ${MAX_LINE_BUFFER_BYTES} bytes with no newline — discarding (corrupted/stuck stream?)`);
+      ctx.yaesuScopeError = "Malformed data stream from ft4222-scope-reader — buffer reset";
+      ctx.io.emit("yaesu-scope-status", { running: ctx.yaesuScopeRunning, error: ctx.yaesuScopeError });
+    }
+    lineBuffer = guarded.buffer;
     let newline: number;
     while ((newline = lineBuffer.indexOf("\n")) !== -1) {
       const line = lineBuffer.slice(0, newline).trim();
