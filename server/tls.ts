@@ -15,6 +15,19 @@ export function getLanIPs(): string[] {
   return ips;
 }
 
+// Node's X509Certificate.subjectAltName is a single comma-separated string, e.g.
+// "DNS:localhost, IP Address:127.0.0.1, IP Address:10.0.0.11" — parse it into discrete IP
+// entries so coverage can be checked by exact match instead of a raw substring search (which
+// would wrongly treat "10.0.0.1" as covered by an existing "IP Address:10.0.0.11" entry).
+export function parseSanIPAddresses(san: string): Set<string> {
+  const ips = new Set<string>();
+  for (const entry of san.split(",")) {
+    const match = entry.trim().match(/^IP Address:(.+)$/i);
+    if (match) ips.add(match[1].trim());
+  }
+  return ips;
+}
+
 export async function loadOrGenerateCert(dataDir: string): Promise<{ key: string; cert: string }> {
   const keyPath = path.join(dataDir, "server.key.pem");
   const certPath = path.join(dataDir, "server.cert.pem");
@@ -26,9 +39,9 @@ export async function loadOrGenerateCert(dataDir: string): Promise<{ key: string
       const expiry = new Date(x509.validTo);
       const renewThreshold = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       if (expiry > renewThreshold) {
-        const san = x509.subjectAltName ?? "";
+        const sanIPs = parseSanIPAddresses(x509.subjectAltName ?? "");
         const lanIPs = getLanIPs();
-        const allCovered = lanIPs.every(ip => san.includes(ip));
+        const allCovered = lanIPs.every(ip => sanIPs.has(ip));
         if (allCovered) {
           vlog(`[TLS] Using existing certificate, valid until ${expiry.toDateString()}`);
           return { key: fs.readFileSync(keyPath, "utf8"), cert: certPem };

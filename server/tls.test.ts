@@ -1,7 +1,7 @@
 // @vitest-environment node
 import os from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getLanIPs } from './tls.ts';
+import { getLanIPs, parseSanIPAddresses } from './tls.ts';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -44,5 +44,24 @@ describe('getLanIPs', () => {
     } as any);
 
     expect(getLanIPs()).toEqual(['10.0.0.5']);
+  });
+});
+
+describe('parseSanIPAddresses', () => {
+  it('extracts IP Address entries from a comma-separated SAN string', () => {
+    const san = 'DNS:localhost, IP Address:127.0.0.1, IP Address:10.0.0.11';
+    expect(parseSanIPAddresses(san)).toEqual(new Set(['127.0.0.1', '10.0.0.11']));
+  });
+
+  it('does not treat an IP as covered when it is only a substring of another entry', () => {
+    const san = 'IP Address:127.0.0.1, IP Address:10.0.0.11';
+    const sanIPs = parseSanIPAddresses(san);
+    expect(sanIPs.has('10.0.0.11')).toBe(true);
+    expect(sanIPs.has('10.0.0.1')).toBe(false);
+  });
+
+  it('returns an empty set for an empty or DNS-only SAN', () => {
+    expect(parseSanIPAddresses('')).toEqual(new Set());
+    expect(parseSanIPAddresses('DNS:localhost')).toEqual(new Set());
   });
 });
