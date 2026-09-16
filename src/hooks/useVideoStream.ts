@@ -4,6 +4,11 @@ import { Socket } from "socket.io-client";
 let videoVerbose = false;
 const vlog = (...args: any[]) => { if (videoVerbose) console.log(...args); };
 
+// Caps consecutive VideoDecoder error-callback reinits so a decode error that recurs (e.g.
+// because the AVCC description was lost, or the underlying corruption persists) surfaces a
+// persistent error instead of spinning in a tight synchronous reinit loop.
+const MAX_DECODER_REINIT_ATTEMPTS = 5;
+
 interface UseVideoStreamOptions {
   socket: Socket | null;
   settingsLoaded: boolean;
@@ -35,6 +40,8 @@ export function useVideoStream({ socket, settingsLoaded }: UseVideoStreamOptions
   const videoSettingsRef = useRef({ device: "", videoWidth: 640, videoHeight: 480, framerate: "" });
   const videoDevicesRef = useRef<{ id: string; label: string }[]>([]);
   const videoStreamDimsRef = useRef({ width: 640, height: 480 });
+  const lastAvccDescriptionRef = useRef<ArrayBuffer | undefined>(undefined);
+  const videoDecoderErrorCountRef = useRef(0);
   const resolutionDraftRef = useRef({ width: "640", height: "480" });
   const isResolutionFocusedRef = useRef(false);
   const resolutionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,9 +72,11 @@ export function useVideoStream({ socket, settingsLoaded }: UseVideoStreamOptions
     if (videoDecoderRef.current) {
       try { videoDecoderRef.current.close(); } catch (_) {}
     }
+    if (description) lastAvccDescriptionRef.current = description;
     let frameCount = 0;
     const decoder = new VideoDecoder({
       output: (frame: VideoFrame) => {
+        videoDecoderErrorCountRef.current = 0;
         frameCount++;
         const canvas = videoCanvasRef.current;
         vlog(`[VIDEO] Decoder output frame #${frameCount}: canvas=${canvas ? `${canvas.width}x${canvas.height} (offsetW=${canvas.offsetWidth} offsetH=${canvas.offsetHeight})` : "NULL"}`);
@@ -81,8 +90,14 @@ export function useVideoStream({ socket, settingsLoaded }: UseVideoStreamOptions
       },
       error: (e: DOMException) => {
         console.error("[VIDEO] Decoder error:", e);
+        videoDecoderErrorCountRef.current++;
+        if (videoDecoderErrorCountRef.current > MAX_DECODER_REINIT_ATTEMPTS) {
+          console.error(`[VIDEO] Decoder failed ${videoDecoderErrorCountRef.current} times in a row — giving up until the next keyframe`);
+          setVideoError("Video decoder failed repeatedly — waiting for a new keyframe");
+          return;
+        }
         const { width: w, height: h } = videoStreamDimsRef.current;
-        initVideoDecoder(w, h);
+        initVideoDecoder(w, h, lastAvccDescriptionRef.current);
       }
     });
     const config: VideoDecoderConfig = {
@@ -332,6 +347,8 @@ export function useVideoStream({ socket, settingsLoaded }: UseVideoStreamOptions
       }
       if (chunk.type === "key" && chunk.description) {
         const { width, height } = videoStreamDimsRef.current;
+        videoDecoderErrorCountRef.current = 0; // a real new keyframe is a fresh start, not a retry
+        setVideoError(null);
         initVideoDecoder(width, height, chunk.description);
       }
       if (!videoDecoderRef.current) return;
