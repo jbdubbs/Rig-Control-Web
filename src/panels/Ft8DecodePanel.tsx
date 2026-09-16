@@ -1,6 +1,7 @@
 import React from "react";
 import { cn } from "../utils";
 import type { Ft8Decode, Ft8Depth } from "../ft8Decoder";
+import { getCallingStationCountry } from "../ft8Callsign";
 
 export interface Ft8DecodePanelProps {
   ft8Decodes: Ft8Decode[];
@@ -8,7 +9,7 @@ export interface Ft8DecodePanelProps {
   maxHeightClass?: string;
 }
 
-const COLUMNS = ['Time', 'SNR', 'DT', 'Freq', 'Message'] as const;
+const COLUMNS = ['Time', 'SNR', 'DT', 'Freq', 'Message', 'Country'] as const;
 
 export default function Ft8DecodePanel({ ft8Decodes, ft8ScrollContainerRef, maxHeightClass = 'max-h-64' }: Ft8DecodePanelProps) {
   return (
@@ -34,17 +35,23 @@ export default function Ft8DecodePanel({ ft8Decodes, ft8ScrollContainerRef, maxH
               </td>
             </tr>
           ) : (
-            ft8Decodes.map((d) => (
-              <tr key={d.id} className="border-b border-[#2a2b2e]/40 hover:bg-white/5">
-                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.utcTime}</td>
-                <td className={cn("px-2 py-1 whitespace-nowrap", d.snr >= 0 ? "text-emerald-400" : "text-amber-400")}>
-                  {d.snr > 0 ? `+${d.snr.toFixed(0)}` : d.snr.toFixed(0)}
-                </td>
-                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.dt.toFixed(1)}</td>
-                <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.freqHz.toFixed(0)}</td>
-                <td className="px-2 py-1 text-[#e0e0e0]">{d.message}</td>
-              </tr>
-            ))
+            ft8Decodes.map((d) => {
+              const country = getCallingStationCountry(d.message);
+              return (
+                <tr key={d.id} className="border-b border-[#2a2b2e]/40 hover:bg-white/5">
+                  <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.utcTime}</td>
+                  <td className={cn("px-2 py-1 whitespace-nowrap", d.snr >= 0 ? "text-emerald-400" : "text-amber-400")}>
+                    {d.snr > 0 ? `+${d.snr.toFixed(0)}` : d.snr.toFixed(0)}
+                  </td>
+                  <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.dt.toFixed(1)}</td>
+                  <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.freqHz.toFixed(0)}</td>
+                  <td className="px-2 py-1 text-[#e0e0e0]">{d.message}</td>
+                  <td className={cn("px-2 py-1 whitespace-nowrap", country ? "text-white font-bold text-[0.6875rem]" : "text-[#8e9299]")}>
+                    {country ? country.country : '—'}
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>

@@ -29,6 +29,8 @@ export const PANEL_CONFIG_OPTIONS: Partial<Record<string, PanelConfigOptions>> =
   spectrum_audio: {
     hasHeightSlider: true,
     defaultHeightPx: 200,
+    hasFullWidth: true,
+    defaultFullWidth: false,
   },
   ft8decode: {
     hasFullWidth: true,
