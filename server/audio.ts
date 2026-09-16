@@ -72,6 +72,42 @@ export function sanitizeAudioSettingsUpdate(
   return result;
 }
 
+// Accumulates incoming PCM chunks into fixed-size frames using a preallocated append buffer
+// instead of Buffer.concat per chunk — this fires continuously on a hot, long-running
+// real-time audio path, where a fresh allocation+copy per callback is avoidable GC pressure.
+export class PcmFrameAccumulator {
+  private buffer: Buffer;
+  private length = 0;
+
+  constructor(private readonly frameSizeBytes: number, initialCapacity = 65536) {
+    this.buffer = Buffer.alloc(Math.max(initialCapacity, frameSizeBytes));
+  }
+
+  // Appends a chunk, synchronously invoking onFrame once per complete frame extracted.
+  // Each frame is a view into the accumulator's internal buffer, valid only for the
+  // duration of the onFrame call — the caller must fully consume it (e.g. encode) before
+  // returning, since the buffer is compacted immediately after the last onFrame call.
+  push(chunk: Buffer, onFrame: (frame: Buffer) => void): void {
+    if (this.length + chunk.length > this.buffer.length) {
+      const grown = Buffer.alloc(Math.max(this.buffer.length * 2, this.length + chunk.length));
+      this.buffer.copy(grown, 0, 0, this.length);
+      this.buffer = grown;
+    }
+    chunk.copy(this.buffer, this.length);
+    this.length += chunk.length;
+
+    let offset = 0;
+    while (this.length - offset >= this.frameSizeBytes) {
+      onFrame(this.buffer.subarray(offset, offset + this.frameSizeBytes));
+      offset += this.frameSizeBytes;
+    }
+    if (offset > 0) {
+      this.buffer.copy(this.buffer, 0, offset, this.length);
+      this.length -= offset;
+    }
+  }
+}
+
 export async function initAudioEngine(ctx: ServerContext): Promise<void> {
   try {
     const dynamicImport = new Function('modulePath', 'return import(modulePath)');
@@ -283,22 +319,19 @@ async function startAudioLocked(ctx: ServerContext): Promise<void> {
       });
 
       const FRAME_SIZE_BYTES = 960 * 2;
-      let pcmBuffer = Buffer.alloc(0);
+      const pcmAccumulator = new PcmFrameAccumulator(FRAME_SIZE_BYTES);
 
       ctx.audioInputProcess.on('data', (data: Buffer) => {
         try {
           if (ctx.activeMicClientId && ctx.lastStatus.ptt && !CW_MODES.has(ctx.lastStatus.mode)) return;
-          pcmBuffer = Buffer.concat([pcmBuffer, data]);
-          while (pcmBuffer.length >= FRAME_SIZE_BYTES) {
-            const frame = pcmBuffer.subarray(0, FRAME_SIZE_BYTES);
-            pcmBuffer = pcmBuffer.subarray(FRAME_SIZE_BYTES);
+          pcmAccumulator.push(data, (frame) => {
             try {
               const encodedPacket = ctx.opusEncoder.encode(frame);
               ctx.io.emit("audio-inbound", encodedPacket);
             } catch (err) {
               console.error("[AUDIO] Opus encode error:", err);
             }
-          }
+          });
         } catch (err) {
           console.error("[AUDIO-IN] Unhandled exception in data handler:", err);
         }

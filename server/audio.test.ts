@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { isAudioSettingsChangeAllowed, isControlAudioActionAllowed, sanitizeAudioSettingsUpdate } from './audio.ts';
+import { isAudioSettingsChangeAllowed, isControlAudioActionAllowed, sanitizeAudioSettingsUpdate, PcmFrameAccumulator } from './audio.ts';
 
 describe('isAudioSettingsChangeAllowed', () => {
   it('allows an admin to change backend keys while locked', () => {
@@ -95,5 +95,41 @@ describe('sanitizeAudioSettingsUpdate', () => {
   it('returns an empty object for an empty or garbage payload', () => {
     expect(sanitizeAudioSettingsUpdate({})).toEqual({});
     expect(sanitizeAudioSettingsUpdate(null as any)).toEqual({});
+  });
+});
+
+describe('PcmFrameAccumulator', () => {
+  it('does not emit a frame until enough bytes have accumulated', () => {
+    const acc = new PcmFrameAccumulator(4);
+    const frames: Buffer[] = [];
+    acc.push(Buffer.from([1, 2]), (f) => frames.push(Buffer.from(f)));
+    expect(frames).toEqual([]);
+  });
+
+  it('emits a frame once enough bytes accumulate across multiple pushes, preserving order', () => {
+    const acc = new PcmFrameAccumulator(4);
+    const frames: Buffer[] = [];
+    acc.push(Buffer.from([1, 2]), (f) => frames.push(Buffer.from(f)));
+    acc.push(Buffer.from([3, 4, 5]), (f) => frames.push(Buffer.from(f)));
+    expect(frames).toEqual([Buffer.from([1, 2, 3, 4])]);
+  });
+
+  it('emits multiple frames from a single push and retains the leftover for the next push', () => {
+    const acc = new PcmFrameAccumulator(2);
+    const frames: Buffer[] = [];
+    acc.push(Buffer.from([1, 2, 3, 4, 5]), (f) => frames.push(Buffer.from(f)));
+    expect(frames).toEqual([Buffer.from([1, 2]), Buffer.from([3, 4])]);
+
+    acc.push(Buffer.from([6]), (f) => frames.push(Buffer.from(f)));
+    expect(frames).toEqual([Buffer.from([1, 2]), Buffer.from([3, 4]), Buffer.from([5, 6])]);
+  });
+
+  it('grows its internal buffer to accept a chunk larger than the initial capacity, with no data loss', () => {
+    const acc = new PcmFrameAccumulator(4, 4); // tiny initial capacity forces growth
+    const big = Buffer.from(Array.from({ length: 100 }, (_, i) => i));
+    const frames: Buffer[] = [];
+    acc.push(big, (f) => frames.push(Buffer.from(f)));
+    expect(frames.length).toBe(25);
+    expect(Buffer.concat(frames)).toEqual(big);
   });
 });
