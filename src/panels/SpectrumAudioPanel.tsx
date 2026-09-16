@@ -72,7 +72,7 @@ function lsSet(key: string, value: string): void {
   try { localStorage.setItem(key, value); } catch { /* ignore */ }
 }
 
-export default function SpectrumAudioPanel({
+function SpectrumAudioPanel({
   analyserNodeRef,
   audioStatus,
   isCollapsed,
@@ -435,3 +435,8 @@ export default function SpectrumAudioPanel({
     </>
   );
 }
+
+// bandwidth/mode are derived primitives (compare by value) and analyserNodeRef is a stable
+// ref, so none of this panel's props actually change on the frequent rig-status polling tick
+// that doesn't touch bandwidth/mode — memoizing avoids re-rendering it then.
+export default React.memo(SpectrumAudioPanel);

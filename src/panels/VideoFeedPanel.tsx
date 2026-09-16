@@ -71,7 +71,7 @@ export interface VideoFeedPanelProps {
   videoCanvasRef: React.RefObject<HTMLCanvasElement>;
 }
 
-export default function VideoFeedPanel({
+function VideoFeedPanel({
   variant,
   socket,
   videoStatus,
@@ -140,3 +140,7 @@ export default function VideoFeedPanel({
     </div>
   );
 }
+
+// None of this panel's props (videoStatus, videoError, etc.) are touched by rig-status
+// polling — memoizing avoids re-rendering it on every 2s tick.
+export default React.memo(VideoFeedPanel);

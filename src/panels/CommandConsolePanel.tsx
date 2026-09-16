@@ -11,7 +11,7 @@ export interface CommandConsolePanelProps {
   handleSendRaw: (e: React.FormEvent) => void;
 }
 
-export default function CommandConsolePanel({
+function CommandConsolePanel({
   variant,
   connected,
   consoleLogs,
@@ -82,3 +82,7 @@ export default function CommandConsolePanel({
     </div>
   );
 }
+
+// consoleLogs/rawCommand are independent of rig-status polling, so memoizing avoids
+// re-rendering this panel on every 2s tick.
+export default React.memo(CommandConsolePanel);

@@ -11,7 +11,7 @@ export interface CwDecodePanelProps {
   setIsCollapsed?: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export default function CwDecodePanel({
+function CwDecodePanel({
   variant,
   cwDecodedText,
   setCwDecodedText,
@@ -98,3 +98,7 @@ export default function CwDecodePanel({
     </div>
   );
 }
+
+// cwDecodedText/cwStats update on decoded characters, independent of rig-status polling —
+// memoizing avoids re-rendering this panel on every 2s tick.
+export default React.memo(CwDecodePanel);

@@ -83,7 +83,7 @@ interface Props {
   callsign?: string;
 }
 
-export default function SpectrumHamlibPanel({
+function SpectrumHamlibPanel({
   latestSpectrumRef,
   waterfallHistoryRef,
   spectrumSupported,
@@ -821,3 +821,8 @@ export default function SpectrumHamlibPanel({
     </>
   );
 }
+
+// None of this panel's props depend on the polled status/history objects (its own live
+// spectrum data flows through latestSpectrumRef, drawn via a separate rAF loop, not React
+// props) — memoizing avoids re-rendering it on every 2s rig-status tick.
+export default React.memo(SpectrumHamlibPanel);

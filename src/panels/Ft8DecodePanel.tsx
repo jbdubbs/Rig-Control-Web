@@ -11,7 +11,7 @@ export interface Ft8DecodePanelProps {
 
 const COLUMNS = ['Time', 'SNR', 'DT', 'Freq', 'Message', 'Country'] as const;
 
-export default function Ft8DecodePanel({ ft8Decodes, ft8ScrollContainerRef, maxHeightClass = 'max-h-64' }: Ft8DecodePanelProps) {
+function Ft8DecodePanel({ ft8Decodes, ft8ScrollContainerRef, maxHeightClass = 'max-h-64' }: Ft8DecodePanelProps) {
   return (
     <div ref={ft8ScrollContainerRef} className={cn(maxHeightClass, "overflow-y-auto overflow-x-hidden custom-scrollbar")}>
       <table className="w-full text-[0.625rem] font-mono border-collapse table-auto">
@@ -58,6 +58,10 @@ export default function Ft8DecodePanel({ ft8Decodes, ft8ScrollContainerRef, maxH
     </div>
   );
 }
+
+// ft8Decodes updates on decoded messages, independent of rig-status polling — memoizing
+// avoids re-rendering this panel on every 2s tick.
+export default React.memo(Ft8DecodePanel);
 
 export function Ft8DepthSelect({ depth, onChange }: { depth: Ft8Depth; onChange: (d: Ft8Depth) => void }) {
   return (

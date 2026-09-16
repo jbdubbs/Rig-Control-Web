@@ -73,7 +73,7 @@ function saveView(callsign: string, view: SavedView): void {
 
 interface Props { heightPx?: number; callsign?: string }
 
-export default function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
+function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
   const [savedView] = useState(() => loadSavedView(callsign));
   // Reuse the last fetch's cache-busting key if it's still within CACHE_MS, so
   // collapse/expand (which remounts this panel) doesn't force a re-fetch.
@@ -395,3 +395,7 @@ export default function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }
     </div>
   );
 }
+
+// Props (heightPx, callsign) only change when the panel is added/resized or on login, never
+// on the frequent rig-status/meter ticks — memoizing avoids re-rendering this panel then.
+export default React.memo(MufMapPanel);

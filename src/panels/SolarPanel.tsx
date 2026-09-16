@@ -50,7 +50,7 @@ export function geomagColor(s: string): string {
   return "text-red-400";
 }
 
-export default function SolarPanel({ solarData, onRefresh }: Props) {
+function SolarPanel({ solarData, onRefresh }: Props) {
   const [tab, setTab] = useState<"hf" | "vhf" | "solar">("hf");
 
   if (!solarData) {
@@ -192,3 +192,7 @@ export default function SolarPanel({ solarData, onRefresh }: Props) {
     </div>
   );
 }
+
+// solarData only changes on an hourly server push and rig-status polling has no bearing on
+// it, so memoizing avoids re-rendering this panel on every 2s rig-status tick.
+export default React.memo(SolarPanel);
