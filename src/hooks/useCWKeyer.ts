@@ -354,6 +354,17 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget]);
 
+  // Re-applies a Local Output device change to the sidetone's existing AudioContext without
+  // a full teardown/recreate (which would interrupt scheduleElement's in-flight audio-clock
+  // gain envelope) — initSidetone() only sets the sink once, at creation, and early-returns
+  // on every call after that while the keyer stays enabled.
+  useEffect(() => {
+    const ctx = sidetoneCtxRef.current;
+    if (!ctx || typeof (ctx as any).setSinkId !== 'function') return;
+    const targetSinkId = localAudioOutputDevice && localAudioOutputDevice !== 'default' ? localAudioOutputDevice : '';
+    (ctx as any).setSinkId(targetSinkId).catch((e: unknown) => console.error("Sidetone setSinkId error:", e));
+  }, [localAudioOutputDevice]);
+
   // Keep cwSettingsRef in sync with state
   useEffect(() => {
     cwSettingsRef.current = cwSettings;
