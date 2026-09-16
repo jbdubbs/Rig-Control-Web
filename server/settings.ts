@@ -3,6 +3,11 @@ import { Socket } from "socket.io";
 import type { ServerContext } from "./context.ts";
 import { vlogInfra as vlog, vlogDx, debugFlags, setDebugFlag, type DebugFlags } from "./vlog.ts";
 
+export function sanitizePollRate(value: unknown, fallback = 2000): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 100 ? n : fallback;
+}
+
 export function loadSettings(ctx: ServerContext, settingsFile: string): void {
   if (!fs.existsSync(settingsFile)) return;
   try {
@@ -10,7 +15,7 @@ export function loadSettings(ctx: ServerContext, settingsFile: string): void {
     ctx.rigctldSettings = { ...ctx.rigctldSettings, ...data.settings };
     ctx.autoStartEnabled = data.autoStart || false;
     ctx.videoAutoStart = data.videoAutoStart || false;
-    ctx.pollRate = Number(data.pollRate) || 2000;
+    ctx.pollRate = sanitizePollRate(data.pollRate);
     ctx.autoconnectEligible = data.autoconnectEligible || false;
     ctx.clientHost = data.clientHost || "127.0.0.1";
     ctx.clientPort = Number(data.clientPort) || 4532;
@@ -101,7 +106,7 @@ export function registerSettingsHandlers(
     // else: individual key saves (e.g. spectrumSettings) — never merge into ctx.rigctldSettings
 
     if (data.pollRate !== undefined) {
-      ctx.pollRate = Number(data.pollRate);
+      ctx.pollRate = sanitizePollRate(data.pollRate, ctx.pollRate);
       startPolling();
     }
     if (data.clientHost !== undefined) ctx.clientHost = data.clientHost;
