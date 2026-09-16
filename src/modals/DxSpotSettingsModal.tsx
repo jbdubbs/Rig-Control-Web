@@ -2,8 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Radio, X } from "lucide-react";
 import { cn } from "../utils";
 import { POTA_BANDS } from "../constants";
-
-const ALL_BAND_LABELS = POTA_BANDS.map(b => b.label);
+import { acFor, PillToggleGroup } from "../components/SpotFilterControls";
 
 export function parseFilterTerms(raw: string): string[] {
   return raw.split(",").map(t => t.trim()).filter(Boolean);
@@ -32,12 +31,8 @@ export interface DxSpotSettingsModalProps {
   dxError: string | null;
 }
 
-const ac = {
-  iconBg: 'bg-rose-500/10 text-rose-500',
-  pill: 'bg-rose-500/10 border-rose-500/60 text-rose-400',
-  check: 'accent-rose-500',
-  focus: 'focus:border-rose-500',
-};
+const BAND_OPTIONS = POTA_BANDS.map(b => ({ value: b.label, label: b.label }));
+const ac = acFor('dx');
 
 export default function DxSpotSettingsModal({
   isOpen, onClose,
@@ -63,28 +58,6 @@ export default function DxSpotSettingsModal({
   }, [isOpen]);
 
   if (!isOpen) return null;
-
-  const allBandsChecked = ALL_BAND_LABELS.every(b => dxBandFilter.includes(b));
-  const noBandsChecked = dxBandFilter.length === 0;
-  const bandsIndeterminate = !allBandsChecked && !noBandsChecked;
-
-  const toggleBand = (label: string) => {
-    setDxBandFilter(dxBandFilter.includes(label) ? dxBandFilter.filter(b => b !== label) : [...dxBandFilter, label]);
-  };
-
-  const toggleAllBands = () => {
-    setDxBandFilter(noBandsChecked ? ALL_BAND_LABELS : []);
-  };
-
-  const pillClass = (active: boolean) => cn(
-    "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
-    active ? ac.pill : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-[#4a4b4e] hover:text-white"
-  );
-
-  const allPillClass = (checked: boolean, indeterminate: boolean) => cn(
-    "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
-    checked ? ac.pill : indeterminate ? cn(ac.pill, "opacity-60") : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-[#4a4b4e] hover:text-white"
-  );
 
   const inputClass = cn("w-full bg-[#0a0a0a] border border-[#2a2b2e] rounded px-3 py-2 text-sm text-white focus:outline-none", ac.focus);
 
@@ -194,29 +167,7 @@ export default function DxSpotSettingsModal({
 
           <div className="space-y-2">
             <label className="text-[0.625rem] uppercase text-[#8e9299]">Band Filter</label>
-            <div className="grid grid-cols-4 gap-1.5">
-              <label className={cn(allPillClass(allBandsChecked, bandsIndeterminate), "col-span-1")}>
-                <input
-                  type="checkbox"
-                  checked={allBandsChecked}
-                  ref={el => { if (el) el.indeterminate = bandsIndeterminate; }}
-                  onChange={toggleAllBands}
-                  className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                />
-                <span className="text-[0.5625rem] font-bold uppercase">All</span>
-              </label>
-              {POTA_BANDS.map(({ label }) => (
-                <label key={label} className={pillClass(dxBandFilter.includes(label))}>
-                  <input
-                    type="checkbox"
-                    checked={dxBandFilter.includes(label)}
-                    onChange={() => toggleBand(label)}
-                    className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                  />
-                  <span className="text-[0.5625rem] font-bold uppercase">{label}</span>
-                </label>
-              ))}
-            </div>
+            <PillToggleGroup ac={ac} options={BAND_OPTIONS} selected={dxBandFilter} onChange={setDxBandFilter} layout="grid-4" />
           </div>
         </div>
 

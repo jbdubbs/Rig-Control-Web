@@ -1,10 +1,8 @@
 import React from "react";
 import { MapPin, X } from "lucide-react";
 import { cn } from "../utils";
-import { POTA_BANDS } from "../constants";
-
-const SPOT_MODES = ['SSB', 'CW', 'FT8', 'FT4'] as const;
-const ALL_BAND_LABELS = POTA_BANDS.map(b => b.label);
+import { POTA_BANDS, SPOT_MODES } from "../constants";
+import { acFor, PillToggleGroup } from "../components/SpotFilterControls";
 
 export interface SpotSettingsModalProps {
   isOpen: boolean;
@@ -20,6 +18,9 @@ export interface SpotSettingsModalProps {
   setBandFilter: (v: string[]) => void;
 }
 
+const MODE_OPTIONS = SPOT_MODES.map(m => ({ value: m, label: m }));
+const BAND_OPTIONS = POTA_BANDS.map(b => ({ value: b.label, label: b.label }));
+
 export default function SpotSettingsModal({
   isOpen, onClose, type,
   pollRate, setPollRate,
@@ -29,48 +30,8 @@ export default function SpotSettingsModal({
 }: SpotSettingsModalProps) {
   if (!isOpen) return null;
 
-  const isPota = type === 'pota';
-  const isWwff = type === 'wwff';
-  const ac = isPota
-    ? { iconBg: 'bg-emerald-500/10 text-emerald-500', pill: 'bg-emerald-500/10 border-emerald-500/60 text-emerald-400', check: 'accent-emerald-500', focus: 'focus:border-emerald-500' }
-    : isWwff
-    ? { iconBg: 'bg-sky-500/10 text-sky-500', pill: 'bg-sky-500/10 border-sky-500/60 text-sky-400', check: 'accent-sky-500', focus: 'focus:border-sky-500' }
-    : { iconBg: 'bg-amber-500/10 text-amber-500', pill: 'bg-amber-500/10 border-amber-500/60 text-amber-400', check: 'accent-amber-500', focus: 'focus:border-amber-500' };
-
-  const title = isPota ? 'POTA Spots Settings' : isWwff ? 'WWFF Spots Settings' : 'SOTA Spots Settings';
-
-  const allModesChecked = SPOT_MODES.every(m => modeFilter.includes(m));
-  const noModesChecked = modeFilter.length === 0;
-  const modesIndeterminate = !allModesChecked && !noModesChecked;
-  const allBandsChecked = ALL_BAND_LABELS.every(b => bandFilter.includes(b));
-  const noBandsChecked = bandFilter.length === 0;
-  const bandsIndeterminate = !allBandsChecked && !noBandsChecked;
-
-  const toggleMode = (m: string) => {
-    setModeFilter(modeFilter.includes(m) ? modeFilter.filter(x => x !== m) : [...modeFilter, m]);
-  };
-
-  const toggleBand = (label: string) => {
-    setBandFilter(bandFilter.includes(label) ? bandFilter.filter(b => b !== label) : [...bandFilter, label]);
-  };
-
-  const toggleAllModes = () => {
-    setModeFilter(noModesChecked ? [...SPOT_MODES] : []);
-  };
-
-  const toggleAllBands = () => {
-    setBandFilter(noBandsChecked ? ALL_BAND_LABELS : []);
-  };
-
-  const pillClass = (active: boolean) => cn(
-    "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
-    active ? ac.pill : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-[#4a4b4e] hover:text-white"
-  );
-
-  const allPillClass = (checked: boolean, indeterminate: boolean) => cn(
-    "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
-    checked ? ac.pill : indeterminate ? cn(ac.pill, "opacity-60") : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-[#4a4b4e] hover:text-white"
-  );
+  const ac = acFor(type);
+  const title = type === 'pota' ? 'POTA Spots Settings' : type === 'wwff' ? 'WWFF Spots Settings' : 'SOTA Spots Settings';
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
@@ -118,57 +79,13 @@ export default function SpotSettingsModal({
           {/* Mode Filter */}
           <div className="space-y-2">
             <label className="text-[0.625rem] uppercase text-[#8e9299]">Mode Filter</label>
-            <div className="flex gap-2 flex-wrap">
-              <label className={allPillClass(allModesChecked, modesIndeterminate)}>
-                <input
-                  type="checkbox"
-                  checked={allModesChecked}
-                  ref={el => { if (el) el.indeterminate = modesIndeterminate; }}
-                  onChange={toggleAllModes}
-                  className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                />
-                <span className="text-[0.5625rem] font-bold uppercase">All</span>
-              </label>
-              {SPOT_MODES.map(m => (
-                <label key={m} className={pillClass(modeFilter.includes(m))}>
-                  <input
-                    type="checkbox"
-                    checked={modeFilter.includes(m)}
-                    onChange={() => toggleMode(m)}
-                    className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                  />
-                  <span className="text-[0.5625rem] font-bold uppercase">{m}</span>
-                </label>
-              ))}
-            </div>
+            <PillToggleGroup ac={ac} options={MODE_OPTIONS} selected={modeFilter} onChange={setModeFilter} layout="wrap" />
           </div>
 
           {/* Band Filter */}
           <div className="space-y-2">
             <label className="text-[0.625rem] uppercase text-[#8e9299]">Band Filter</label>
-            <div className="grid grid-cols-4 gap-1.5">
-              <label className={cn(allPillClass(allBandsChecked, bandsIndeterminate), "col-span-1")}>
-                <input
-                  type="checkbox"
-                  checked={allBandsChecked}
-                  ref={el => { if (el) el.indeterminate = bandsIndeterminate; }}
-                  onChange={toggleAllBands}
-                  className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                />
-                <span className="text-[0.5625rem] font-bold uppercase">All</span>
-              </label>
-              {POTA_BANDS.map(({ label }) => (
-                <label key={label} className={pillClass(bandFilter.includes(label))}>
-                  <input
-                    type="checkbox"
-                    checked={bandFilter.includes(label)}
-                    onChange={() => toggleBand(label)}
-                    className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                  />
-                  <span className="text-[0.5625rem] font-bold uppercase">{label}</span>
-                </label>
-              ))}
-            </div>
+            <PillToggleGroup ac={ac} options={BAND_OPTIONS} selected={bandFilter} onChange={setBandFilter} layout="grid-4" />
           </div>
         </div>
 

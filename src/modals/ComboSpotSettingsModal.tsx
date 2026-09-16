@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { MapPin, X } from "lucide-react";
 import { cn } from "../utils";
-import { POTA_BANDS } from "../constants";
+import { POTA_BANDS, SPOT_MODES } from "../constants";
+import { acFor, PillToggleGroup, type SpotSourceType } from "../components/SpotFilterControls";
 import { parseFilterTerms } from "./DxSpotSettingsModal";
 
-const SPOT_MODES = ['SSB', 'CW', 'FT8', 'FT4'] as const;
-const ALL_BAND_LABELS = POTA_BANDS.map(b => b.label);
-
-type Tab = 'pota' | 'sota' | 'wwff' | 'dx';
+type Tab = SpotSourceType;
 
 const TABS: { key: Tab; label: string; ac: ReturnType<typeof acFor> }[] = [
   { key: 'pota', label: 'POTA', ac: acFor('pota') },
@@ -16,36 +14,8 @@ const TABS: { key: Tab; label: string; ac: ReturnType<typeof acFor> }[] = [
   { key: 'dx', label: 'DX', ac: acFor('dx') },
 ];
 
-function acFor(type: Tab) {
-  if (type === 'pota') return {
-    iconBg: 'bg-emerald-500/10 text-emerald-500',
-    pill: 'bg-emerald-500/10 border-emerald-500/60 text-emerald-400',
-    check: 'accent-emerald-500',
-    focus: 'focus:border-emerald-500',
-    activeTab: 'text-emerald-400 border-emerald-500',
-  };
-  if (type === 'wwff') return {
-    iconBg: 'bg-sky-500/10 text-sky-500',
-    pill: 'bg-sky-500/10 border-sky-500/60 text-sky-400',
-    check: 'accent-sky-500',
-    focus: 'focus:border-sky-500',
-    activeTab: 'text-sky-400 border-sky-500',
-  };
-  if (type === 'dx') return {
-    iconBg: 'bg-rose-500/10 text-rose-500',
-    pill: 'bg-rose-500/10 border-rose-500/60 text-rose-400',
-    check: 'accent-rose-500',
-    focus: 'focus:border-rose-500',
-    activeTab: 'text-rose-400 border-rose-500',
-  };
-  return {
-    iconBg: 'bg-amber-500/10 text-amber-500',
-    pill: 'bg-amber-500/10 border-amber-500/60 text-amber-400',
-    check: 'accent-amber-500',
-    focus: 'focus:border-amber-500',
-    activeTab: 'text-amber-400 border-amber-500',
-  };
-}
+const MODE_OPTIONS = SPOT_MODES.map(m => ({ value: m, label: m }));
+const BAND_OPTIONS = POTA_BANDS.map(b => ({ value: b.label, label: b.label }));
 
 export interface ComboSpotSettingsModalProps {
   isOpen: boolean;
@@ -110,43 +80,8 @@ export default function ComboSpotSettingsModal(props: ComboSpotSettingsModalProp
     bandFilter: props.wwffBandFilter, setBandFilter: props.setWwffBandFilter,
   } : null;
 
-  const allModesChecked = nonDxConfig ? SPOT_MODES.every(m => nonDxConfig.modeFilter.includes(m)) : false;
-  const noModesChecked = nonDxConfig ? nonDxConfig.modeFilter.length === 0 : false;
-  const modesIndeterminate = !allModesChecked && !noModesChecked;
-
   const activeBandFilter = activeTab === 'dx' ? props.dxBandFilter : (nonDxConfig?.bandFilter ?? []);
   const setActiveBandFilter = activeTab === 'dx' ? props.setDxBandFilter : (nonDxConfig?.setBandFilter ?? (() => {}));
-  const allBandsChecked = ALL_BAND_LABELS.every(b => activeBandFilter.includes(b));
-  const noBandsChecked = activeBandFilter.length === 0;
-  const bandsIndeterminate = !allBandsChecked && !noBandsChecked;
-
-  const toggleMode = (m: string) => {
-    if (!nonDxConfig) return;
-    nonDxConfig.setModeFilter(nonDxConfig.modeFilter.includes(m) ? nonDxConfig.modeFilter.filter(x => x !== m) : [...nonDxConfig.modeFilter, m]);
-  };
-
-  const toggleBand = (label: string) => {
-    setActiveBandFilter(activeBandFilter.includes(label) ? activeBandFilter.filter(b => b !== label) : [...activeBandFilter, label]);
-  };
-
-  const toggleAllModes = () => {
-    if (!nonDxConfig) return;
-    nonDxConfig.setModeFilter(noModesChecked ? [...SPOT_MODES] : []);
-  };
-
-  const toggleAllBands = () => {
-    setActiveBandFilter(noBandsChecked ? ALL_BAND_LABELS : []);
-  };
-
-  const pillClass = (active: boolean) => cn(
-    "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
-    active ? ac.pill : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-[#4a4b4e] hover:text-white"
-  );
-
-  const allPillClass = (checked: boolean, indeterminate: boolean) => cn(
-    "flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-all select-none",
-    checked ? ac.pill : indeterminate ? cn(ac.pill, "opacity-60") : "bg-[#0a0a0a] border-[#2a2b2e] text-[#8e9299] hover:border-[#4a4b4e] hover:text-white"
-  );
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
@@ -283,58 +218,14 @@ export default function ComboSpotSettingsModal(props: ComboSpotSettingsModalProp
 
               <div className="space-y-2">
                 <label className="text-[0.625rem] uppercase text-[#8e9299]">Mode Filter</label>
-                <div className="flex gap-2 flex-wrap">
-                  <label className={allPillClass(allModesChecked, modesIndeterminate)}>
-                    <input
-                      type="checkbox"
-                      checked={allModesChecked}
-                      ref={el => { if (el) el.indeterminate = modesIndeterminate; }}
-                      onChange={toggleAllModes}
-                      className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                    />
-                    <span className="text-[0.5625rem] font-bold uppercase">All</span>
-                  </label>
-                  {SPOT_MODES.map(m => (
-                    <label key={m} className={pillClass(nonDxConfig.modeFilter.includes(m))}>
-                      <input
-                        type="checkbox"
-                        checked={nonDxConfig.modeFilter.includes(m)}
-                        onChange={() => toggleMode(m)}
-                        className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                      />
-                      <span className="text-[0.5625rem] font-bold uppercase">{m}</span>
-                    </label>
-                  ))}
-                </div>
+                <PillToggleGroup ac={ac} options={MODE_OPTIONS} selected={nonDxConfig.modeFilter} onChange={nonDxConfig.setModeFilter} layout="wrap" />
               </div>
             </>
           )}
 
           <div className="space-y-2">
             <label className="text-[0.625rem] uppercase text-[#8e9299]">Band Filter</label>
-            <div className="grid grid-cols-4 gap-1.5">
-              <label className={cn(allPillClass(allBandsChecked, bandsIndeterminate), "col-span-1")}>
-                <input
-                  type="checkbox"
-                  checked={allBandsChecked}
-                  ref={el => { if (el) el.indeterminate = bandsIndeterminate; }}
-                  onChange={toggleAllBands}
-                  className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                />
-                <span className="text-[0.5625rem] font-bold uppercase">All</span>
-              </label>
-              {POTA_BANDS.map(({ label }) => (
-                <label key={label} className={pillClass(activeBandFilter.includes(label))}>
-                  <input
-                    type="checkbox"
-                    checked={activeBandFilter.includes(label)}
-                    onChange={() => toggleBand(label)}
-                    className={cn("w-3 h-3 cursor-pointer flex-shrink-0", ac.check)}
-                  />
-                  <span className="text-[0.5625rem] font-bold uppercase">{label}</span>
-                </label>
-              ))}
-            </div>
+            <PillToggleGroup ac={ac} options={BAND_OPTIONS} selected={activeBandFilter} onChange={setActiveBandFilter} layout="grid-4" />
           </div>
         </div>
 

@@ -21,6 +21,11 @@ export const MODES_FALLBACK = [
   "USB", "LSB", "CW", "AM", "FM", "RTTY"
 ];
 
+// Shared by SpotSettingsModal/ComboSpotSettingsModal's Mode Filter pill group (see
+// src/components/SpotFilterControls.tsx, which also derives band-filter options from
+// POTA_BANDS directly — no separate ALL_BAND_LABELS constant needed).
+export const SPOT_MODES = ['SSB', 'CW', 'FT8', 'FT4'] as const;
+
 export const VOICE_MODES = new Set([
   "LSB", "USB", "PKTUSB", "PKTLSB", "AM", "AMN", "FM", "FMN", "FM-D", "PKTFMN"
 ]);
