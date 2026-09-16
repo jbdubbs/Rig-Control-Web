@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { isAudioSettingsChangeAllowed, isControlAudioActionAllowed } from './audio.ts';
+import { isAudioSettingsChangeAllowed, isControlAudioActionAllowed, sanitizeAudioSettingsUpdate } from './audio.ts';
 
 describe('isAudioSettingsChangeAllowed', () => {
   it('allows an admin to change backend keys while locked', () => {
@@ -58,5 +58,42 @@ describe('isControlAudioActionAllowed', () => {
 
   it('rejects an unauthenticated caller when locked', () => {
     expect(isControlAudioActionAllowed(true, undefined)).toBe(false);
+  });
+});
+
+describe('sanitizeAudioSettingsUpdate', () => {
+  it('passes through valid keys with correct types unchanged', () => {
+    expect(sanitizeAudioSettingsUpdate({
+      inputDevice: 'hw:1,0',
+      outputDevice: 'hw:2,0',
+      inboundEnabled: true,
+      outboundEnabled: false,
+      backendLockedToAdmin: true,
+    })).toEqual({
+      inputDevice: 'hw:1,0',
+      outputDevice: 'hw:2,0',
+      inboundEnabled: true,
+      outboundEnabled: false,
+      backendLockedToAdmin: true,
+    });
+  });
+
+  it('drops unknown extra keys', () => {
+    expect(sanitizeAudioSettingsUpdate({
+      inputDevice: 'hw:1,0',
+      evil: { nested: true },
+    } as any)).toEqual({ inputDevice: 'hw:1,0' });
+  });
+
+  it('drops known keys with the wrong type instead of coercing them', () => {
+    expect(sanitizeAudioSettingsUpdate({
+      outboundEnabled: 'yes',
+      inputDevice: 123,
+    } as any)).toEqual({});
+  });
+
+  it('returns an empty object for an empty or garbage payload', () => {
+    expect(sanitizeAudioSettingsUpdate({})).toEqual({});
+    expect(sanitizeAudioSettingsUpdate(null as any)).toEqual({});
   });
 });

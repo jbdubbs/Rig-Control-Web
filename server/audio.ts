@@ -52,6 +52,26 @@ export function isControlAudioActionAllowed(locked: boolean, role: "admin" | "re
   return role === "admin" || !locked;
 }
 
+// update-audio-settings accepts an entirely client-supplied object; whitelist the known keys
+// and their types before merging into ctx.audioSettings, which is persisted to settings.json
+// and rebroadcast verbatim to every connected client.
+const AUDIO_SETTINGS_STRING_KEYS = new Set(["inputDevice", "outputDevice"]);
+const AUDIO_SETTINGS_BOOLEAN_KEYS = new Set(["inboundEnabled", "outboundEnabled", "backendLockedToAdmin"]);
+
+export function sanitizeAudioSettingsUpdate(
+  settings: Record<string, unknown>
+): Partial<ServerContext["audioSettings"]> {
+  const result: Partial<ServerContext["audioSettings"]> = {};
+  for (const [key, value] of Object.entries(settings ?? {})) {
+    if (AUDIO_SETTINGS_STRING_KEYS.has(key) && typeof value === "string") {
+      (result as any)[key] = value;
+    } else if (AUDIO_SETTINGS_BOOLEAN_KEYS.has(key) && typeof value === "boolean") {
+      (result as any)[key] = value;
+    }
+  }
+  return result;
+}
+
 export async function initAudioEngine(ctx: ServerContext): Promise<void> {
   try {
     const dynamicImport = new Function('modulePath', 'return import(modulePath)');
@@ -391,8 +411,9 @@ export function registerAudioHandlers(socket: Socket, ctx: ServerContext, client
       });
       return;
     }
+    const sanitized = sanitizeAudioSettingsUpdate(settings);
     const wasPlaying = ctx.audioStatus === "playing";
-    ctx.audioSettings = { ...ctx.audioSettings, ...settings };
+    ctx.audioSettings = { ...ctx.audioSettings, ...sanitized };
     ctx.saveSettings();
     ctx.io.emit("settings-data", { audioSettings: ctx.audioSettings });
     if (wasPlaying) {
