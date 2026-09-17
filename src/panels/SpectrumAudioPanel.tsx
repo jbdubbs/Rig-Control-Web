@@ -6,6 +6,7 @@ import { scrollCanvasDown } from "../utils";
 import { lsGet, lsSet, drawDbGridLines, drawFilledSpectrumLine, paintWaterfallRow, paintWaterfallFull } from "../utils/spectrumCanvas";
 import { useAutoLevel } from "../hooks/useAutoLevel";
 import type { AutoLevelOptions } from "../utils/autoLevel";
+import { averagePowerFrames, binAveragePower, dbToPower, flattenLinearDetrend } from "../utils/wsjtxWaterfall";
 
 const DEFAULT_HEIGHT = 200;
 const SPECTRUM_RATIO = 0.3;
@@ -13,6 +14,31 @@ const FLOOR_DEFAULT = -55;
 const CEILING_DEFAULT = 0;
 const WATERFALL_MAX_LINES = 300;
 const LS_PREFIX = "spectrum-audio-";
+
+// "WSJT-X" waterfall mode fixed preset — mimics WSJT-X's default Wide Graph
+// settings (Bins/Pixel 4, N Avg 2, Flatten on). WSJTX_MEASUREMENT_INTERVAL_MS
+// approximates WSJT-X's own per-half-symbol raw-spectrum cadence
+// (widgets/widegraph.cpp's dataSink2() is called once per half-symbol and
+// averages N Avg calls together before pushing a row). For FT8 — the mode
+// this was calibrated against — symbol period is 0.16s, so a half-symbol is
+// 80ms; N Avg 2 × 80ms ≈ 160ms/row (~6 rows/sec) matches real WSJT-X's FT8
+// waterfall speed, versus this panel's normal one-row-per-rAF-tick
+// (~60/sec) "Live" behavior. Other WSJT-X modes (FT4, JT65, MSK144, ...)
+// use a different symbol period and would imply a different interval —
+// this is deliberately tuned to FT8 specifically, not a universal constant.
+const WSJTX_BINS_PER_PIXEL = 4;
+const WSJTX_N_AVG = 2;
+const WSJTX_MEASUREMENT_INTERVAL_MS = 80;
+
+// Native frequency resolution (Hz/bin = sampleRate / fftSize) is what
+// actually limits waterfall detail, independent of Bins/Pixel. Live mode
+// keeps the original 4096 (fast ~85ms time response). WSJT-X mode raises
+// this to the Web Audio spec's max (32768) — an 8x finer native resolution
+// (~1.46 Hz/bin @ 48kHz, versus WSJT-X's own ~0.73 Hz/bin) — accepting a
+// ~683ms analysis window in exchange, a trade-off only worth paying in the
+// slower-scrolling WSJT-X mode.
+const LIVE_FFT_SIZE = 4096;
+const WSJTX_FFT_SIZE = 32768;
 
 // autoLevel.ts's default floorMarginDb (5) renders the noise floor 5dB
 // *above* the bottom edge — appropriate when the goal is "don't clip the
@@ -81,16 +107,46 @@ function SpectrumAudioPanel({
     (key: string) => (callsign ? `${callsign.toUpperCase()}:${LS_PREFIX}${key}` : `${LS_PREFIX}${key}`),
     [callsign]
   );
+  const containerRef = useRef<HTMLDivElement>(null);
   const spectrumCanvasRef = useRef<HTMLCanvasElement>(null);
   const waterfallCanvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
   const waterfallLinesRef = useRef<Float32Array[]>([]);
   const freqDataBufRef = useRef<Float32Array | null>(null);
   const prevDisplayBwRef = useRef<number>(0);
+  const prevWaterfallModeRef = useRef<string>("live");
+
+  // "wsjtx" mode accumulators: power-domain sum for the in-progress ~500ms
+  // measurement window, plus up to WSJTX_N_AVG completed measurements
+  // awaiting averaging into the next displayed row.
+  const powerAccumRef = useRef<Float64Array | null>(null);
+  const powerAccumCountRef = useRef(0);
+  const intervalStartMsRef = useRef(0);
+  const measurementsRef = useRef<Float32Array[]>([]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [colorMapId, setColorMapId] = useState(() => lsGet(lsKey("colormap"), "classic"));
   const [bwOverride, setBwOverride] = useState<string>(() => lsGet(lsKey("bwOverride"), "auto"));
+  const [waterfallMode, setWaterfallMode] = useState<"live" | "wsjtx">(
+    () => (lsGet(lsKey("waterfallMode"), "live") === "wsjtx" ? "wsjtx" : "live")
+  );
+  // CSS width of the canvases' container, in CSS px — combined with
+  // devicePixelRatio to size the canvas bitmaps for crisp rendering at
+  // whatever width the panel actually renders at, instead of a fixed
+  // buffer stretched (and blurred) to fit. 600 is just a sane pre-measure
+  // fallback so the first paint isn't 0-width.
+  const [canvasCssWidth, setCanvasCssWidth] = useState(600);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect.width;
+      if (w && w > 0) setCanvasCssWidth(Math.round(w));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const autoLevel = useAutoLevel({
     lsKey,
@@ -117,9 +173,13 @@ function SpectrumAudioPanel({
   useEffect(() => {
     if (isCollapsed || audioStatus !== "playing") return;
 
-    if (displayBandwidth !== prevDisplayBwRef.current) {
+    if (displayBandwidth !== prevDisplayBwRef.current || waterfallMode !== prevWaterfallModeRef.current) {
       waterfallLinesRef.current = [];
       prevDisplayBwRef.current = displayBandwidth;
+      prevWaterfallModeRef.current = waterfallMode;
+      powerAccumRef.current = null;
+      powerAccumCountRef.current = 0;
+      measurementsRef.current = [];
     }
 
     const colorMap = COLORMAPS[colorMapId] ?? COLORMAPS.classic;
@@ -128,6 +188,7 @@ function SpectrumAudioPanel({
     // change or panel resize shows the complete, correctly-colored history immediately
     // instead of only affecting rows painted from that point forward.
     let wfPainted = false;
+    let fftSizeApplied = false;
 
     const draw = () => {
       const analyser = analyserNodeRef.current;
@@ -137,6 +198,15 @@ function SpectrumAudioPanel({
       if (!analyser || !specCanvas || !wfCanvas) {
         animFrameRef.current = requestAnimationFrame(draw);
         return;
+      }
+
+      if (!fftSizeApplied) {
+        // Reassigning fftSize clears the AnalyserNode's internal buffer, so this
+        // must run at most once per effect run (mode/bandwidth change), never
+        // per-tick.
+        const desiredFftSize = waterfallMode === "wsjtx" ? WSJTX_FFT_SIZE : LIVE_FFT_SIZE;
+        if (analyser.fftSize !== desiredFftSize) analyser.fftSize = desiredFftSize;
+        fftSizeApplied = true;
       }
 
       const totalBins = analyser.frequencyBinCount;
@@ -152,12 +222,63 @@ function SpectrumAudioPanel({
       analyser.getFloatFrequencyData(freqDataBufRef.current);
       const freqData = freqDataBufRef.current;
 
+      // frame/length actually handed to the paint helpers below. In "live" mode this is
+      // just the raw per-tick freqData (unchanged behavior). In "wsjtx" mode a new frame
+      // only becomes available once per ~160ms (WSJTX_N_AVG measurements, each accumulated
+      // over WSJTX_MEASUREMENT_INTERVAL_MS) — most ticks have nothing new to paint.
+      let displayFrame: ArrayLike<number> | null = null;
+      let effectiveLength = endBin;
+
+      if (waterfallMode === "wsjtx") {
+        if (!powerAccumRef.current || powerAccumRef.current.length !== endBin) {
+          powerAccumRef.current = new Float64Array(endBin);
+          powerAccumCountRef.current = 0;
+          intervalStartMsRef.current = performance.now();
+          measurementsRef.current = [];
+        }
+        const accum = powerAccumRef.current;
+        for (let i = 0; i < endBin; i++) accum[i] += dbToPower(freqData[i]);
+        powerAccumCountRef.current += 1;
+
+        const now = performance.now();
+        if (now - intervalStartMsRef.current >= WSJTX_MEASUREMENT_INTERVAL_MS) {
+          const count = powerAccumCountRef.current || 1;
+          const measurement = new Float32Array(endBin);
+          for (let i = 0; i < endBin; i++) measurement[i] = 10 * Math.log10(Math.max(accum[i] / count, 1e-300));
+          measurementsRef.current = [...measurementsRef.current, measurement].slice(-WSJTX_N_AVG);
+
+          accum.fill(0);
+          powerAccumCountRef.current = 0;
+          intervalStartMsRef.current = now;
+
+          if (measurementsRef.current.length >= WSJTX_N_AVG) {
+            const avgDb = averagePowerFrames(measurementsRef.current);
+            const binned = binAveragePower(avgDb, endBin, WSJTX_BINS_PER_PIXEL);
+            displayFrame = flattenLinearDetrend(binned);
+            effectiveLength = displayFrame.length;
+            measurementsRef.current = [];
+          }
+        }
+      } else {
+        displayFrame = freqData;
+        effectiveLength = endBin;
+      }
+
+      if (!displayFrame) {
+        // Still accumulating this measurement/row — nothing new to paint this tick.
+        animFrameRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
       waterfallLinesRef.current = [
-        freqData.slice(),
+        waterfallMode === "wsjtx" ? (displayFrame as Float32Array) : freqData.slice(),
         ...waterfallLinesRef.current,
       ].slice(0, WATERFALL_MAX_LINES);
 
-      autoLevelRef.current.sampleFrame(freqData.subarray(0, endBin), performance.now());
+      autoLevelRef.current.sampleFrame(
+        waterfallMode === "wsjtx" ? displayFrame : freqData.subarray(0, endBin),
+        performance.now()
+      );
       const effFloor = autoLevelRef.current.getEffectiveFloor();
       const effCeiling = autoLevelRef.current.getEffectiveCeiling();
 
@@ -171,10 +292,11 @@ function SpectrumAudioPanel({
 
         drawDbGridLines(sCtx, w, sh, effFloor, effCeiling);
 
-        const step = endBin / w;
+        const step = effectiveLength / w;
+        const frame = displayFrame;
         drawFilledSpectrumLine(
           sCtx, w, sh, w,
-          col => col, col => freqData[Math.min(endBin - 1, Math.floor(col * step))],
+          col => col, col => frame[Math.min(effectiveLength - 1, Math.floor(col * step))],
           effFloor, effCeiling,
           "#3b82f6", "rgba(59,130,246,0.25)"
         );
@@ -192,15 +314,16 @@ function SpectrumAudioPanel({
           // One-time full repaint for this effect run — a fresh mount, colorMapId/bandwidth
           // change, or panel resize should show the complete, correctly-colored history
           // immediately.
-          paintWaterfallFull(wfCtx, w, wh, lines, endBin, toDb, effFloor, effCeiling, colorMap);
+          paintWaterfallFull(wfCtx, w, wh, lines, effectiveLength, toDb, effFloor, effCeiling, colorMap);
           wfPainted = true;
         } else {
           // Steady state: scroll the existing image down one row and paint only the newest
           // row — O(width) instead of rebuilding the full width*height ImageData every frame
-          // (this file pushes a new row on every rAF tick, so this is the hot path).
+          // ("live" mode pushes a new row on every rAF tick, so this is its hot path;
+          // "wsjtx" mode reaches here only once per new averaged row).
           const newest = lines[0];
           const rowBuf = new Uint32Array(w);
-          paintWaterfallRow(rowBuf, newest, endBin, w, toDb, effFloor, effCeiling, colorMap);
+          paintWaterfallRow(rowBuf, newest, effectiveLength, w, toDb, effFloor, effCeiling, colorMap);
           scrollCanvasDown(wfCtx, w, wh, rowBuf);
         }
       }
@@ -212,7 +335,7 @@ function SpectrumAudioPanel({
     return () => {
       cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isCollapsed, audioStatus, colorMapId, analyserNodeRef, bandwidth, mode, displayBandwidth, bwOverride, spectrumHeight, waterfallHeight]);
+  }, [isCollapsed, audioStatus, colorMapId, analyserNodeRef, bandwidth, mode, displayBandwidth, bwOverride, waterfallMode, spectrumHeight, waterfallHeight, canvasCssWidth]);
 
   const freqAxisContent = (
     <div className="relative h-5 text-[0.5rem] text-gray-400 select-none">
@@ -267,6 +390,35 @@ function SpectrumAudioPanel({
         </div>
 
         <div className="p-5 space-y-5">
+          {/* Waterfall style */}
+          <div className="space-y-2">
+            <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Waterfall Style</label>
+            <div className="grid grid-cols-2 gap-1 bg-[#0a0a0a] rounded-lg p-1 border border-[#2a2b2e]">
+              {(["live", "wsjtx"] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setWaterfallMode(m);
+                    lsSet(lsKey("waterfallMode"), m);
+                    waterfallLinesRef.current = [];
+                  }}
+                  className={`py-1.5 px-2 rounded text-[0.625rem] font-semibold transition-colors ${
+                    waterfallMode === m
+                      ? "bg-emerald-600 text-white"
+                      : "text-[#8e9299] hover:text-[#e0e0e0]"
+                  }`}
+                >
+                  {m === "live" ? "Live" : "WSJT-X"}
+                </button>
+              ))}
+            </div>
+            {waterfallMode === "wsjtx" && (
+              <p className="text-[0.5rem] text-[#4a4b4e] uppercase font-bold">
+                Mimics WSJT-X's default FT8 Wide Graph: Bins/Pixel 4, N Avg 2, Flatten on — scrolls ~6 rows/sec
+              </p>
+            )}
+          </div>
+
           {/* Bandwidth */}
           <div className="space-y-2">
             <label className="text-[0.625rem] uppercase text-[#8e9299] font-bold">Display Bandwidth</label>
@@ -376,19 +528,21 @@ function SpectrumAudioPanel({
         </div>
       );
     }
+    const dpr = window.devicePixelRatio || 1;
+    const canvasPxWidth = Math.round(canvasCssWidth * dpr);
     return (
-      <div className="flex flex-col gap-0">
+      <div ref={containerRef} className="flex flex-col gap-0">
         <canvas
           ref={spectrumCanvasRef}
-          width={600}
-          height={spectrumHeight}
+          width={canvasPxWidth}
+          height={Math.round(spectrumHeight * dpr)}
           className="w-full"
           style={{ height: spectrumHeight }}
         />
         <canvas
           ref={waterfallCanvasRef}
-          width={600}
-          height={waterfallHeight}
+          width={canvasPxWidth}
+          height={Math.round(waterfallHeight * dpr)}
           className="w-full"
           style={{ height: waterfallHeight }}
         />
