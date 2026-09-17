@@ -698,14 +698,14 @@ function SpectrumHamlibPanel({
               <>
                 <div>• Yaesu FT-710 connected via USB</div>
                 <div>• libft4222 must be installed (FTDI FT4222 driver)</div>
-                <div>• <a href="https://github.com/jbdubbs/Rig-Control-Web/blob/main/docs/ft4222-spectrum-setup.md" target="_blank" rel="noreferrer" className="text-emerald-400 underline hover:text-emerald-300">See wiki for setup instructions</a></div>
+                <div>• <a href="https://github.com/jbdubbs/Rig-Control-Web/wiki/Spectrum-Scope-FT-710" target="_blank" rel="noreferrer" className="text-emerald-400 underline hover:text-emerald-300">See wiki for setup instructions</a></div>
               </>
             ) : (
               <>
                 <div>• A radio with a baseband I/Q output (tested: Xiegu G90) wired to a stereo USB audio interface's Line-In — never Mic-In, which can carry bias voltage that may stress the radio's low-level output</div>
                 <div>• The displayed span equals the selected sample rate, but a radio's real usable I/Q bandwidth is fixed by its own hardware — sampling faster doesn't create more real spectrum, only more headroom against aliasing</div>
                 <div>• If the displayed spectrum is mirrored (a signal appears on the wrong side of center), toggle Swap I/Q</div>
-                <div>• <a href="https://github.com/jbdubbs/Rig-Control-Web/blob/main/docs/iq-spectrum-setup.md" target="_blank" rel="noreferrer" className="text-emerald-400 underline hover:text-emerald-300">See wiki for setup instructions</a></div>
+                <div>• <a href="https://github.com/jbdubbs/Rig-Control-Web/wiki/Spectrum-Scope-Audio-IQ" target="_blank" rel="noreferrer" className="text-emerald-400 underline hover:text-emerald-300">See wiki for setup instructions</a></div>
               </>
             )}
           </div>
