@@ -3,8 +3,9 @@ import { Activity, RefreshCw, Settings, X } from "lucide-react";
 import type { Socket } from "socket.io-client";
 import PanelChrome from "../components/PanelChrome";
 import type { SpectrumData, SpectrumSettings } from "../types";
-import { COLORMAPS, COLORMAP_NAMES, amplitudeToPixel } from "../utils/spectrumColors";
+import { COLORMAPS, COLORMAP_NAMES } from "../utils/spectrumColors";
 import { scrollCanvasDown } from "../utils";
+import { lsGet, lsSet, drawDbGridLines, drawFilledSpectrumLine, paintWaterfallRow } from "../utils/spectrumCanvas";
 import { useAutoLevel } from "../hooks/useAutoLevel";
 import type { AutoLevelOptions } from "../utils/autoLevel";
 
@@ -60,13 +61,6 @@ const SOURCE_ALGORITHM_OPTIONS: Partial<Record<SpectrumSettings["source"], Parti
 };
 
 const IQ_SAMPLE_RATE_OPTIONS = [48000, 96000, 192000];
-
-function lsGet(key: string, fallback: string): string {
-  try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
-}
-function lsSet(key: string, value: string): void {
-  try { localStorage.setItem(key, value); } catch { /* ignore */ }
-}
 
 interface Props {
   latestSpectrumRef: React.MutableRefObject<SpectrumData | null>;
@@ -258,37 +252,15 @@ function SpectrumHamlibPanel({
         const sh = specCanvas.height;
         sCtx.clearRect(0, 0, w, sh);
 
-        sCtx.strokeStyle = "rgba(255,255,255,0.08)";
-        sCtx.lineWidth = 1;
-        for (let db = Math.ceil(effFloor / 10) * 10; db <= effCeiling; db += 10) {
-          const y = sh - ((db - effFloor) / (effCeiling - effFloor)) * sh;
-          sCtx.beginPath();
-          sCtx.moveTo(0, y);
-          sCtx.lineTo(w, y);
-          sCtx.stroke();
-        }
-
-        sCtx.beginPath();
-        sCtx.strokeStyle = "#22c55e";
-        sCtx.fillStyle = "rgba(34,197,94,0.25)";
-        sCtx.lineWidth = 1.5;
+        drawDbGridLines(sCtx, w, sh, effFloor, effCeiling);
 
         const step = w / data.amplitudes.length;
-        for (let i = 0; i < data.amplitudes.length; i++) {
-          const norm = Math.max(0, Math.min(1, (dbValues[i] - effFloor) / (effCeiling - effFloor)));
-          const x = i * step;
-          const y = sh - norm * sh;
-          if (i === 0) {
-            sCtx.moveTo(x, sh);
-            sCtx.lineTo(x, y);
-          } else {
-            sCtx.lineTo(x, y);
-          }
-        }
-        sCtx.lineTo(w, sh);
-        sCtx.closePath();
-        sCtx.fill();
-        sCtx.stroke();
+        drawFilledSpectrumLine(
+          sCtx, w, sh, data.amplitudes.length,
+          i => i * step, i => dbValues[i],
+          effFloor, effCeiling,
+          "#22c55e", "rgba(34,197,94,0.25)"
+        );
 
         // Center frequency marker line
         sCtx.save();
@@ -311,6 +283,8 @@ function SpectrumHamlibPanel({
         const wh = wfCanvas.height;
         const lines = waterfallHistoryRef.current;
 
+        const toDb = (raw: number) => data.minLevel + (raw / 255) * ampRange;
+
         if (!wfPainted) {
           // One-time full repaint for this effect run — a fresh mount, colorMapId change, or
           // panel resize should show the complete, correctly-colored history immediately.
@@ -320,13 +294,7 @@ function SpectrumHamlibPanel({
 
           for (let row = 0; row < visibleLines; row++) {
             const line = lines[row];
-            const step = line.length / w;
-            for (let col = 0; col < w; col++) {
-              const ampIdx = Math.min(line.length - 1, Math.floor(col * step));
-              const dbm = data.minLevel + (line[ampIdx] / 255) * ampRange;
-              const norm = Math.max(0, Math.min(1, (dbm - effFloor) / (effCeiling - effFloor)));
-              buf32[row * w + col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
-            }
+            paintWaterfallRow(buf32.subarray(row * w, row * w + w), line, line.length, w, toDb, effFloor, effCeiling, colorMap);
           }
 
           wfCtx.putImageData(imageData, 0, 0);
@@ -336,13 +304,7 @@ function SpectrumHamlibPanel({
           // row — O(width) instead of rebuilding the full width*height ImageData every frame.
           const newest = lines[0];
           const rowBuf = new Uint32Array(w);
-          const step = newest.length / w;
-          for (let col = 0; col < w; col++) {
-            const ampIdx = Math.min(newest.length - 1, Math.floor(col * step));
-            const dbm = data.minLevel + (newest[ampIdx] / 255) * ampRange;
-            const norm = Math.max(0, Math.min(1, (dbm - effFloor) / (effCeiling - effFloor)));
-            rowBuf[col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
-          }
+          paintWaterfallRow(rowBuf, newest, newest.length, w, toDb, effFloor, effCeiling, colorMap);
           scrollCanvasDown(wfCtx, w, wh, rowBuf);
         }
       }

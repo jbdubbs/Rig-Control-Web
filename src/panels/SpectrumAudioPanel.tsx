@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import { RefreshCw, Settings, Waves, X } from "lucide-react";
 import PanelChrome from "../components/PanelChrome";
-import { COLORMAPS, COLORMAP_NAMES, amplitudeToPixel } from "../utils/spectrumColors";
+import { COLORMAPS, COLORMAP_NAMES } from "../utils/spectrumColors";
 import { scrollCanvasDown } from "../utils";
+import { lsGet, lsSet, drawDbGridLines, drawFilledSpectrumLine, paintWaterfallRow, paintWaterfallFull } from "../utils/spectrumCanvas";
 import { useAutoLevel } from "../hooks/useAutoLevel";
 import type { AutoLevelOptions } from "../utils/autoLevel";
 
@@ -64,13 +65,6 @@ export function computeDisplayBandwidth(bandwidth: number, mode: string, maxHz: 
   if (isCw) return Math.min(1400, maxHz);
   const bw = bandwidth === 0 ? 3000 : bandwidth;
   return Math.min(bw + 300, maxHz);
-}
-
-function lsGet(key: string, fallback: string): string {
-  try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
-}
-function lsSet(key: string, value: string): void {
-  try { localStorage.setItem(key, value); } catch { /* ignore */ }
 }
 
 function SpectrumAudioPanel({
@@ -175,38 +169,15 @@ function SpectrumAudioPanel({
         const sh = specCanvas.height;
         sCtx.clearRect(0, 0, w, sh);
 
-        sCtx.strokeStyle = "rgba(255,255,255,0.08)";
-        sCtx.lineWidth = 1;
-        for (let db = Math.ceil(effFloor / 10) * 10; db <= effCeiling; db += 10) {
-          const y = sh - ((db - effFloor) / (effCeiling - effFloor)) * sh;
-          sCtx.beginPath();
-          sCtx.moveTo(0, y);
-          sCtx.lineTo(w, y);
-          sCtx.stroke();
-        }
-
-        sCtx.beginPath();
-        sCtx.strokeStyle = "#3b82f6";
-        sCtx.fillStyle = "rgba(59,130,246,0.25)";
-        sCtx.lineWidth = 1.5;
+        drawDbGridLines(sCtx, w, sh, effFloor, effCeiling);
 
         const step = endBin / w;
-        for (let col = 0; col < w; col++) {
-          const binIdx = Math.min(endBin - 1, Math.floor(col * step));
-          const dbfs = freqData[binIdx];
-          const norm = Math.max(0, Math.min(1, (dbfs - effFloor) / (effCeiling - effFloor)));
-          const y = sh - norm * sh;
-          if (col === 0) {
-            sCtx.moveTo(col, sh);
-            sCtx.lineTo(col, y);
-          } else {
-            sCtx.lineTo(col, y);
-          }
-        }
-        sCtx.lineTo(w, sh);
-        sCtx.closePath();
-        sCtx.fill();
-        sCtx.stroke();
+        drawFilledSpectrumLine(
+          sCtx, w, sh, w,
+          col => col, col => freqData[Math.min(endBin - 1, Math.floor(col * step))],
+          effFloor, effCeiling,
+          "#3b82f6", "rgba(59,130,246,0.25)"
+        );
       }
 
       // --- Waterfall ---
@@ -215,26 +186,13 @@ function SpectrumAudioPanel({
         const wh = wfCanvas.height;
         const lines = waterfallLinesRef.current;
 
+        const toDb = (raw: number) => raw;
+
         if (!wfPainted) {
           // One-time full repaint for this effect run — a fresh mount, colorMapId/bandwidth
           // change, or panel resize should show the complete, correctly-colored history
           // immediately.
-          const visibleLines = Math.min(lines.length, wh);
-          const imageData = wfCtx.createImageData(w, wh);
-          const buf32 = new Uint32Array(imageData.data.buffer);
-
-          for (let row = 0; row < visibleLines; row++) {
-            const line = lines[row];
-            const step = endBin / w;
-            for (let col = 0; col < w; col++) {
-              const binIdx = Math.min(endBin - 1, Math.floor(col * step));
-              const dbfs = line[binIdx];
-              const norm = Math.max(0, Math.min(1, (dbfs - effFloor) / (effCeiling - effFloor)));
-              buf32[row * w + col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
-            }
-          }
-
-          wfCtx.putImageData(imageData, 0, 0);
+          paintWaterfallFull(wfCtx, w, wh, lines, endBin, toDb, effFloor, effCeiling, colorMap);
           wfPainted = true;
         } else {
           // Steady state: scroll the existing image down one row and paint only the newest
@@ -242,13 +200,7 @@ function SpectrumAudioPanel({
           // (this file pushes a new row on every rAF tick, so this is the hot path).
           const newest = lines[0];
           const rowBuf = new Uint32Array(w);
-          const step = endBin / w;
-          for (let col = 0; col < w; col++) {
-            const binIdx = Math.min(endBin - 1, Math.floor(col * step));
-            const dbfs = newest[binIdx];
-            const norm = Math.max(0, Math.min(1, (dbfs - effFloor) / (effCeiling - effFloor)));
-            rowBuf[col] = amplitudeToPixel(Math.round(norm * 255), 0, 255, colorMap);
-          }
+          paintWaterfallRow(rowBuf, newest, endBin, w, toDb, effFloor, effCeiling, colorMap);
           scrollCanvasDown(wfCtx, w, wh, rowBuf);
         }
       }
