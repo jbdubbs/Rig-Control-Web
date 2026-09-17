@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 
 import { Socket } from "socket.io-client";
 import type { GGMorseDecoder } from "../ggmorseDecoder";
 import type { Ft8Decoder } from "../ft8Decoder";
-import { shouldAttemptAutoJoin, splitLocalAudioDevices } from "../utils";
+import { shouldAttemptAutoJoin, shouldRecoverAudioPipeline, splitLocalAudioDevices } from "../utils";
 
 let audioVerbose = false;
 let wsjtxAudioVerbose = false;
@@ -443,7 +443,13 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, ft8DecodeEn
               }
               audioData.close();
             },
-            error: (e: any) => console.error("[AUDIO] Decoder error:", e)
+            error: (e: any) => {
+              console.error("[AUDIO] Decoder error:", e);
+              // A codec reclaimed/killed by the browser (e.g. a backgrounded
+              // tab — see the recovery effect below) surfaces here; rebuild
+              // immediately rather than leaving playback silently dead.
+              recoverPipelineIfUnhealthy();
+            }
           });
 
           decoder.configure({
@@ -509,6 +515,37 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, ft8DecodeEn
       window.removeEventListener('keydown', onGesture);
     };
   }, [attemptAutoJoin]);
+
+  // Recovery from a backgrounded/frozen tab (issue #113): a hidden tab can be
+  // frozen by the browser (Chrome Energy Saver freezes silent hidden tabs
+  // after ~5 min — a muted GainNode, this app's normal posture for
+  // background FT8 decoding, doesn't count as "audible" and isn't exempt),
+  // and independently of freezing, Chromium can reclaim an actively-decoding
+  // WebCodecs AudioDecoder in a backgrounded tab outright. Neither case makes
+  // the server report audio-status "stopped" (naudiodon keeps running fine
+  // server-side), so nothing else would ever notice or rebuild the pipeline.
+  const recoverPipelineIfUnhealthy = useCallback(() => {
+    const shouldRecover = shouldRecoverAudioPipeline({
+      documentVisible: document.visibilityState === "visible",
+      audioStatus: audioStatusRef.current,
+      localAudioReady: localAudioReadyRef.current,
+      audioContextState: audioContextRef.current?.state ?? null,
+      decoderState: opusDecoderRef.current?.state ?? null,
+    });
+    if (!shouldRecover) return;
+    vlog("[AUDIO] Pipeline unhealthy after backgrounding/reclamation — rebuilding");
+    initLocalAudioPipeline();
+    // The FT8 worker's own slot-boundary tracking would eventually notice the
+    // resulting gap in samples and resync itself (ft8SlotSync.ts), but reset()
+    // makes that immediate instead of waiting for the next chunk's gap check.
+    ft8DecoderRef.current?.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initLocalAudioPipeline]);
+
+  useEffect(() => {
+    document.addEventListener('visibilitychange', recoverPipelineIfUnhealthy);
+    return () => document.removeEventListener('visibilitychange', recoverPipelineIfUnhealthy);
+  }, [recoverPipelineIfUnhealthy]);
 
   const updateWsjtxOutput = useCallback(async (deviceId: string) => {
     vlogWsjtx(`updateWsjtxOutput called, deviceId=${deviceId || "(none)"}`);

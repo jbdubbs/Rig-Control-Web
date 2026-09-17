@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAudioDeviceOption, formatStep, shouldAttemptAutoJoin, shouldReacquireWakeLock, splitLocalAudioDevices } from './utils';
+import { formatAudioDeviceOption, formatStep, shouldAttemptAutoJoin, shouldReacquireWakeLock, shouldRecoverAudioPipeline, splitLocalAudioDevices } from './utils';
 
 describe('formatStep', () => {
   it('formats values >= 1 as MHz', () => {
@@ -142,5 +142,41 @@ describe('shouldReacquireWakeLock', () => {
 
   it('does not reacquire when a sentinel is already held', () => {
     expect(shouldReacquireWakeLock({ documentVisible: true, isActive: true, hasSentinel: true })).toBe(false);
+  });
+});
+
+describe('shouldRecoverAudioPipeline', () => {
+  const healthy = {
+    documentVisible: true,
+    audioStatus: 'playing' as const,
+    localAudioReady: true,
+    audioContextState: 'running' as AudioContextState,
+    decoderState: 'configured' as const,
+  };
+
+  it('does not recover when everything is healthy', () => {
+    expect(shouldRecoverAudioPipeline(healthy)).toBe(false);
+  });
+
+  it('recovers when the AudioContext is no longer running', () => {
+    expect(shouldRecoverAudioPipeline({ ...healthy, audioContextState: 'suspended' })).toBe(true);
+    expect(shouldRecoverAudioPipeline({ ...healthy, audioContextState: 'closed' })).toBe(true);
+  });
+
+  it('recovers when the decoder is no longer configured (reclaimed/errored)', () => {
+    expect(shouldRecoverAudioPipeline({ ...healthy, decoderState: 'closed' })).toBe(true);
+  });
+
+  it('does not recover while the tab is hidden', () => {
+    expect(shouldRecoverAudioPipeline({ ...healthy, documentVisible: false, audioContextState: 'closed' })).toBe(false);
+  });
+
+  it('does not recover before local audio has ever been joined', () => {
+    expect(shouldRecoverAudioPipeline({ ...healthy, localAudioReady: false, audioContextState: 'closed' })).toBe(false);
+  });
+
+  it('does not recover while backend audio is stopped or in cooldown', () => {
+    expect(shouldRecoverAudioPipeline({ ...healthy, audioStatus: 'stopped', audioContextState: 'closed' })).toBe(false);
+    expect(shouldRecoverAudioPipeline({ ...healthy, audioStatus: 'cooldown', audioContextState: 'closed' })).toBe(false);
   });
 });

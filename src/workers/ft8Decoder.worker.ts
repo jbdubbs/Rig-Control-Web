@@ -3,6 +3,7 @@
 // calls into the ft8-decoder WASM module (native/ft8-decoder) to decode each one.
 // Blocking this thread during a decode call is fine — that's the point of a Worker.
 import { parseResultLine, type RawFt8Decode } from './ft8ResultParser';
+import { shouldResyncSlot } from './ft8SlotSync';
 export type { RawFt8Decode };
 
 const FT8_SAMPLE_RATE = 12000;
@@ -99,6 +100,10 @@ let decimatedSamplesInWindow = 0;
 let queue: number[] = [];
 let queueStartMs: number | null = null;
 let nextBoundaryMs: number | null = null;
+// Wall-clock time (Date.now()) the last 'samples' message was processed at —
+// used only to detect a stalled stream (see ft8SlotSync.ts), never to derive
+// slot boundaries directly.
+let lastChunkWallClockMs: number | null = null;
 
 function resetSlotState(): void {
   queue = [];
@@ -204,6 +209,13 @@ function tryExtractWindow(): void {
 
 function onSamples(pcm: Float32Array): void {
   const chunkEndMs = Date.now();
+
+  if (shouldResyncSlot(lastChunkWallClockMs, chunkEndMs)) {
+    log(`[FT8-WINDOW] resync: ${chunkEndMs - lastChunkWallClockMs!}ms gap since last chunk (backgrounded/frozen tab or stalled audio) — dropping accumulated queue and re-anchoring`);
+    resetSlotState();
+  }
+  lastChunkWallClockMs = chunkEndMs;
+
   const decimated = resampleTo12k(pcm);
 
   if (verbose) {

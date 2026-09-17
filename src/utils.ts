@@ -65,6 +65,27 @@ export function shouldReacquireWakeLock(input: {
   return input.documentVisible && input.isActive && !input.hasSentinel;
 }
 
+// Pure go/no-go check for rebuilding the local audio playback pipeline
+// (issue #113): a backgrounded/frozen tab can leave the AudioContext
+// suspended or have its WebCodecs AudioDecoder reclaimed by the browser
+// entirely, independent of the server ever reporting "stopped" — neither
+// case flips localAudioReady back to false on its own, so nothing would
+// otherwise notice the pipeline is dead and rebuild it.
+export function shouldRecoverAudioPipeline(input: {
+  documentVisible: boolean;
+  audioStatus: "playing" | "stopped" | "cooldown";
+  localAudioReady: boolean;
+  audioContextState: AudioContextState | null;
+  decoderState: "unconfigured" | "configured" | "closed" | null;
+}): boolean {
+  return (
+    input.documentVisible &&
+    input.audioStatus === "playing" &&
+    input.localAudioReady &&
+    (input.audioContextState !== "running" || input.decoderState !== "configured")
+  );
+}
+
 // Shared by SpectrumHamlibPanel/SpectrumAudioPanel's waterfall canvases: shifts the existing
 // pixel content down by one row (dropping the bottom row) and paints newRowPixels at the top —
 // O(width) work per call instead of rebuilding the full width*height ImageData every frame.
