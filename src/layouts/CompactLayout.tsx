@@ -1,15 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
 import { Monitor, Radio, Settings, ChevronDown, ChevronUp, Sun, Map, MapPin } from "lucide-react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { cn } from "../utils";
 import type {
   RigStatus,
@@ -34,6 +25,7 @@ import EditToolbar from "../components/EditToolbar";
 import PanelPicker from "../components/PanelPicker";
 import CommandConsolePanel from "../panels/CommandConsolePanel";
 import RfLevelsPanel from "../panels/RfLevelsPanel";
+import { MeterHistoryChart } from "../panels/TabbedMeterPanel";
 import VfoPanel, { VfoCollapsedHeader } from "../panels/VfoPanel";
 import VideoFeedPanel, { VideoFeedHeaderActions } from "../panels/VideoFeedPanel";
 import { AudioFeedHeaderActions } from "../panels/AudioFeedPanel";
@@ -598,80 +590,7 @@ function CompactLayout({
             </div>
             {!isCompactSMeterCollapsed && (
               <div className="p-2 h-[120px]" data-testid="meter-chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={history}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2b2e" vertical={false} opacity={0.3} />
-                    <XAxis dataKey="time" hide />
-                    {activeMeter === 'signal' ? (
-                      <>
-                        <YAxis yAxisId="rx" domain={[-54, 0]} hide />
-                        <YAxis yAxisId="tx" domain={[0, 1]} orientation="right" hide />
-                      </>
-                    ) : (
-                      <YAxis
-                        domain={
-                          activeMeter === 'swr' ? [1, 4] :
-                          activeMeter === 'vdd' ? [11, 16] : [0, 1]
-                        }
-                        hide={activeMeter !== 'swr' && activeMeter !== 'vdd'}
-                        ticks={activeMeter === 'swr' ? [1, 2, 3, 4] : activeMeter === 'vdd' ? [11, 12, 13, 14, 15, 16] : undefined}
-                        width={15}
-                        style={{ fontSize: '6px', fill: '#4a4b4e' }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                    )}
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#151619', border: '1px solid #2a2b2e', fontSize: '8px' }}
-                      formatter={(val: number, name: string, props: any) => {
-                        if (activeMeter === 'signal') {
-                          if (name === 'smeterGraph') {
-                            const rawVal = props.payload?.smeter ?? val;
-                            return [rawVal > 0 ? `S9+${rawVal}dB` : `S${Math.round((rawVal + 54) / 6)}`, 'SIGNAL'];
-                          }
-                          return [`${Math.round((val ?? 0) * 100)}W`, 'POWER'];
-                        }
-                        if (activeMeter === 'swr') return [(props.payload?.swr ?? 1).toFixed(2), 'SWR'];
-                        if (activeMeter === 'vdd') return [`${(val ?? 0).toFixed(1)}V`, 'VDD'];
-                        return [(val ?? 0).toFixed(activeMeter === 'alc' ? 5 : 2), activeMeter.toUpperCase()];
-                      }}
-                    />
-                    {activeMeter === 'signal' ? (
-                      <>
-                        <Line
-                          yAxisId="rx"
-                          type="monotone"
-                          dataKey="smeterGraph"
-                          stroke="#10b981"
-                          strokeWidth={1.5}
-                          dot={false}
-                          isAnimationActive={false}
-                        />
-                        <Line
-                          yAxisId="tx"
-                          type="monotone"
-                          dataKey="powerMeter"
-                          stroke="#ef4444"
-                          strokeWidth={1.5}
-                          dot={false}
-                          isAnimationActive={false}
-                        />
-                      </>
-                    ) : (
-                      <Line
-                        type="monotone"
-                        dataKey={activeMeter === 'swr' ? 'swrGraph' : activeMeter}
-                        stroke={
-                          activeMeter === 'swr' ? ((status.swr ?? 1) > 3 ? '#ef4444' : '#f59e0b') :
-                          activeMeter === 'alc' ? '#3b82f6' : '#10b981'
-                        }
-                        strokeWidth={1.5}
-                        dot={false}
-                        isAnimationActive={false}
-                      />
-                    )}
-                  </LineChart>
-                </ResponsiveContainer>
+                <MeterHistoryChart status={status} history={history} meterTab={activeMeter} dense />
               </div>
             )}
           </div>

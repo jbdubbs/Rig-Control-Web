@@ -1,15 +1,8 @@
-import React from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import React, { useRef, useState } from "react";
 import { cn } from "../utils";
 import type { RigStatus } from "../types";
+
+export type MeterTab = "signal" | "swr" | "alc" | "vdd";
 
 export interface TabbedMeterHeaderContentProps {
   isCollapsed: boolean;
@@ -113,106 +106,241 @@ export function TabbedMeterHeaderContent({
   );
 }
 
+interface ChartLineSpec {
+  key: "smeterGraph" | "powerMeter" | "swrGraph" | "vdd" | "alc";
+  domain: [number, number];
+  color: string;
+}
+
+interface TooltipLine {
+  label: string;
+  value: string;
+}
+
+function formatTooltipLines(meterTab: MeterTab, point: any): TooltipLine[] {
+  if (meterTab === "signal") {
+    const rawSmeter = point.smeter ?? -54;
+    return [
+      {
+        label: "SIGNAL",
+        value: rawSmeter > 0 ? `S9+${rawSmeter}dB` : `S${Math.round((rawSmeter + 54) / 6)}`,
+      },
+      { label: "POWER", value: `${Math.round((point.powerMeter ?? 0) * 100)}W` },
+    ];
+  }
+  if (meterTab === "swr") {
+    return [{ label: "SWR", value: (point.swr ?? 1).toFixed(2) }];
+  }
+  if (meterTab === "vdd") {
+    return [{ label: "VDD", value: `${(point.vdd ?? 0).toFixed(1)}V` }];
+  }
+  return [{ label: "ALC", value: (point.alc ?? 0).toFixed(5) }];
+}
+
+// Dependency-free replacement for the recharts <LineChart> this panel used to render.
+// Recharts v3 pulls in a full Redux Toolkit state-management stack plus the entire
+// d3 scale/shape/time/color/array set (~870 kB pre-minification, see issue #109) just to
+// draw 1-2 sparkline traces with a hover tooltip and no animation — this SVG hand-rolls
+// that same behavior with zero extra dependencies.
+const VIEWBOX_W = 400;
+const VIEWBOX_H = 100;
+
+export function MeterHistoryChart({
+  status,
+  history,
+  meterTab,
+  dense = false,
+}: {
+  status: RigStatus;
+  history: any[];
+  meterTab: MeterTab;
+  dense?: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hoverFrac, setHoverFrac] = useState<number | null>(null);
+
+  let lines: ChartLineSpec[];
+  let tickDomain: [number, number] = [0, 1];
+  let ticks: number[] = [];
+
+  switch (meterTab) {
+    case "signal":
+      lines = [
+        { key: "smeterGraph", domain: [-54, 0], color: "#10b981" },
+        { key: "powerMeter", domain: [0, 1], color: "#ef4444" },
+      ];
+      break;
+    case "swr":
+      tickDomain = [1, 4];
+      ticks = [1, 2, 3, 4];
+      lines = [
+        { key: "swrGraph", domain: tickDomain, color: (status.swr ?? 1) > 3 ? "#ef4444" : "#f59e0b" },
+      ];
+      break;
+    case "vdd":
+      tickDomain = [11, 16];
+      ticks = [11, 12, 13, 14, 15, 16];
+      lines = [{ key: "vdd", domain: tickDomain, color: "#10b981" }];
+      break;
+    case "alc":
+    default:
+      lines = [{ key: "alc", domain: [0, 1], color: "#3b82f6" }];
+      break;
+  }
+
+  const showTicks = dense && (meterTab === "swr" || meterTab === "vdd");
+  const leftPad = showTicks ? 26 : 6;
+  const rightPad = 6;
+  const topPad = 8;
+  const bottomPad = 8;
+  const plotW = VIEWBOX_W - leftPad - rightPad;
+  const plotH = VIEWBOX_H - topPad - bottomPad;
+  const n = history.length;
+
+  const xAt = (i: number) => (n <= 1 ? leftPad : leftPad + (i / (n - 1)) * plotW);
+  const yAt = (val: number, domain: [number, number]) => {
+    const [lo, hi] = domain;
+    const clamped = Math.min(hi, Math.max(lo, val));
+    const t = hi === lo ? 0 : (clamped - lo) / (hi - lo);
+    return topPad + (1 - t) * plotH;
+  };
+
+  const buildPath = (line: ChartLineSpec) => {
+    if (n === 0) return "";
+    return history
+      .map((pt, i) => {
+        const raw = pt[line.key];
+        const y = yAt(typeof raw === "number" ? raw : line.domain[0], line.domain);
+        return `${i === 0 ? "M" : "L"}${xAt(i).toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+  };
+
+  const gridLineYs = showTicks
+    ? ticks.map((t) => yAt(t, tickDomain))
+    : [0, 0.25, 0.5, 0.75, 1].map((f) => topPad + f * plotH);
+
+  const hoverIndex =
+    hoverFrac !== null && n > 0
+      ? Math.min(
+          n - 1,
+          Math.max(0, Math.round(((hoverFrac * VIEWBOX_W - leftPad) / plotW) * (n - 1)))
+        )
+      : null;
+  const hoverPoint = hoverIndex !== null ? history[hoverIndex] : null;
+  const tooltipLines = hoverPoint ? formatTooltipLines(meterTab, hoverPoint) : null;
+
+  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (n === 0 || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    if (rect.width === 0) return;
+    setHoverFrac(Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)));
+  };
+
+  const strokeWidth = dense ? 1.5 : 2;
+  const tickFontSize = dense ? 9 : 11;
+  const tooltipFontSize = dense ? "0.5rem" : "0.75rem";
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full h-full"
+      onMouseMove={handleMove}
+      onMouseLeave={() => setHoverFrac(null)}
+    >
+      <svg
+        viewBox={`0 0 ${VIEWBOX_W} ${VIEWBOX_H}`}
+        preserveAspectRatio="none"
+        width="100%"
+        height="100%"
+      >
+        {gridLineYs.map((y, i) => (
+          <line
+            key={i}
+            x1={leftPad}
+            x2={VIEWBOX_W - rightPad}
+            y1={y}
+            y2={y}
+            stroke="#2a2b2e"
+            strokeOpacity={0.3}
+            strokeDasharray="3 3"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        {showTicks &&
+          ticks.map((t, i) => (
+            <text
+              key={i}
+              x={leftPad - 4}
+              y={yAt(t, tickDomain)}
+              textAnchor="end"
+              dominantBaseline="middle"
+              fontSize={tickFontSize}
+              fill="#4a4b4e"
+            >
+              {t}
+            </text>
+          ))}
+        {hoverPoint && (
+          <line
+            x1={xAt(hoverIndex!)}
+            x2={xAt(hoverIndex!)}
+            y1={topPad}
+            y2={VIEWBOX_H - bottomPad}
+            stroke="#4a4b4e"
+            strokeOpacity={0.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+        {lines.map((line) => (
+          <path
+            key={line.key}
+            d={buildPath(line)}
+            fill="none"
+            stroke={line.color}
+            strokeWidth={strokeWidth}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+      {tooltipLines && (
+        <div
+          className="absolute top-1 px-1.5 py-1 rounded bg-[#151619] border border-[#2a2b2e] pointer-events-none whitespace-nowrap"
+          style={{
+            left: `${Math.min(85, Math.max(2, hoverFrac! * 100))}%`,
+            fontSize: tooltipFontSize,
+          }}
+        >
+          {tooltipLines.map((l) => (
+            <div key={l.label} className="text-[#8e9299] font-mono">
+              <span className="text-[#5a5b5e]">{l.label}</span>{" "}
+              <span className="text-white font-bold">{l.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface TabbedMeterPanelProps {
   status: RigStatus;
   history: any[];
-  meterTab: "signal" | "swr" | "alc";
+  meterTab: MeterTab;
+  dense?: boolean;
 }
 
 export default function TabbedMeterPanel({
   status,
   history,
   meterTab,
+  dense = false,
 }: TabbedMeterPanelProps) {
   return (
     <div className="h-40">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={history}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#2a2b2e"
-            vertical={false}
-            opacity={0.3}
-          />
-          <XAxis dataKey="time" hide />
-          {meterTab === "signal" ? (
-            <>
-              <YAxis yAxisId="rx" domain={[-54, 0]} hide />
-              <YAxis yAxisId="tx" domain={[0, 1]} orientation="right" hide />
-            </>
-          ) : (
-            <YAxis
-              domain={meterTab === "swr" ? [1, 4] : [0, 1]}
-              hide
-            />
-          )}
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#151619",
-              border: "1px solid #2a2b2e",
-              fontSize: "12px",
-            }}
-            formatter={(val: number, name: string, props: any) => {
-              if (meterTab === "signal") {
-                if (name === "smeterGraph") {
-                  const rawVal = props.payload?.smeter ?? val;
-                  return [
-                    rawVal > 0
-                      ? `S9+${rawVal}dB`
-                      : `S${Math.round((rawVal + 54) / 6)}`,
-                    "SIGNAL",
-                  ];
-                }
-                return [`${Math.round((val ?? 0) * 100)}W`, "POWER"];
-              }
-              if (meterTab === "swr") {
-                return [(props.payload?.swr ?? 1).toFixed(2), "SWR"];
-              }
-              return [
-                (val ?? 0).toFixed(meterTab === "alc" ? 5 : 2),
-                meterTab.toUpperCase(),
-              ];
-            }}
-          />
-          {meterTab === "signal" ? (
-            <>
-              <Line
-                yAxisId="rx"
-                type="monotone"
-                dataKey="smeterGraph"
-                stroke="#10b981"
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-              />
-              <Line
-                yAxisId="tx"
-                type="monotone"
-                dataKey="powerMeter"
-                stroke="#ef4444"
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </>
-          ) : (
-            <Line
-              type="monotone"
-              dataKey={meterTab === "swr" ? "swrGraph" : "alc"}
-              stroke={
-                meterTab === "swr"
-                  ? (status.swr ?? 1) > 3
-                    ? "#ef4444"
-                    : "#f59e0b"
-                  : "#3b82f6"
-              }
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
+      <MeterHistoryChart status={status} history={history} meterTab={meterTab} dense={dense} />
     </div>
   );
 }
