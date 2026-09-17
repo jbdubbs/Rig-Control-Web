@@ -96,6 +96,7 @@ function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ mx: 0, my: 0, tx: 0, ty: 0 });
   const lastTouchDistRef = useRef<number | null>(null);
+  const prevSizeRef = useRef<{ cw: number; ch: number } | null>(null);
 
   // Clamp (x, y) so the scaled image always covers the container — no panning into empty space.
   // The wrapper is physically cw*scale × ch*scale. Translate keeps it covering [0, cw] × [0, ch].
@@ -164,12 +165,39 @@ function MufMapPanel({ heightPx = DEFAULT_HEIGHT, callsign = "" }: Props) {
     setError(false);
   }, [metric, timeSlot]);
 
-  // Re-clamp a restored pan position now that the container has real dimensions
-  // (unknown at initial state creation, before first layout).
+  // Track the container's size and react whenever it changes — both the initial
+  // measurement (unknown at state-creation time, before first layout, so a restored
+  // pan position needs re-clamping against real dimensions) and every subsequent
+  // resize (e.g. the browser window widening/narrowing the panel's grid column,
+  // issue #108). The zoomable wrapper's own pixel size already tracks the container
+  // via `scale * 100%` in its inline style below, but the translate offset is stored
+  // in absolute pixels and does NOT auto-adjust — without this, resizing the
+  // container leaves the same x/y pointing at a totally different fraction of the
+  // (now differently-sized) image, so the visible pan position jumps.
   useEffect(() => {
-    if (transformRef.current.scale > 1) {
-      applyTransform(transformRef.current);
-    }
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleResize = () => {
+      const cw = el.clientWidth;
+      const ch = el.clientHeight;
+      const prev = prevSizeRef.current;
+      prevSizeRef.current = { cw, ch };
+
+      if (transformRef.current.scale <= 1) return;
+      if (!prev || prev.cw === 0 || prev.ch === 0 || (prev.cw === cw && prev.ch === ch)) {
+        applyTransform(transformRef.current);
+        return;
+      }
+      // Rescale the pixel offset proportionally so the same relative region of the
+      // map stays in view instead of jumping.
+      const { scale, x, y } = transformRef.current;
+      applyTransform({ scale, x: x * (cw / prev.cw), y: y * (ch / prev.ch) });
+    };
+
+    const ro = new ResizeObserver(handleResize);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [applyTransform]);
 
   // Persist tab selection + pan/zoom + refresh cache, debounced so drag/wheel

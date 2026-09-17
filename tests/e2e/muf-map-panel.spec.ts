@@ -76,4 +76,68 @@ test.describe('MufMapPanel with a mocked prop.kc2g.com feed', () => {
 
     await expect(page.getByText('Map unavailable — check connection')).toBeVisible({ timeout: 10_000 });
   });
+
+  // Issue #108: the pan/zoom translate offset is stored in raw pixels while the
+  // zoomable wrapper's own size tracks the container via `scale * 100%` — resizing
+  // the container without rescaling the offset made the visible pan position jump.
+  test('rescales the pan offset proportionally when the container is resized while zoomed', async ({ page }) => {
+    await routeMufMap(page);
+    await page.goto('/');
+    await expandMufMapPanel(page);
+    await expect(page.getByAltText('MUFD world map')).toBeVisible();
+
+    const mapSelector = '.overflow-hidden.bg-white';
+    const map = page.locator(mapSelector).first();
+    const wrapper = map.locator('> div').first();
+    const box = await map.boundingBox();
+    if (!box) throw new Error('map container has no bounding box');
+
+    const readTransform = async () => {
+      const style = await wrapper.getAttribute('style');
+      const match = style?.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+      if (!match) throw new Error(`no translate() in style: ${style}`);
+      return { x: parseFloat(match[1]), y: parseFloat(match[2]) };
+    };
+
+    // Dispatch synthetic wheel/mouse events directly on the container rather than
+    // relying on OS-level input timing — the handlers (MufMapPanel.tsx) read
+    // e.clientX/clientY and don't care whether the event was OS-generated or
+    // script-dispatched, and this sidesteps flakiness from the loading overlay
+    // briefly intercepting real pointer input at the same viewport coordinates.
+    await page.evaluate(({ selector, cx, cy }) => {
+      const el = document.querySelector(selector)!;
+      for (let i = 0; i < 6; i++) {
+        el.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, clientX: cx, clientY: cy, bubbles: true, cancelable: true }));
+      }
+    }, { selector: mapSelector, cx: box.x + box.width * 0.25, cy: box.y + box.height * 0.5 });
+    await page.waitForTimeout(100);
+
+    // Pan off-center so both x and y are non-trivial.
+    await page.evaluate(({ selector, sx, sy, ex, ey }) => {
+      const el = document.querySelector(selector)!;
+      el.dispatchEvent(new MouseEvent('mousedown', { clientX: sx, clientY: sy, bubbles: true, cancelable: true }));
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: ex, clientY: ey, bubbles: true, cancelable: true }));
+      document.dispatchEvent(new MouseEvent('mouseup', { clientX: ex, clientY: ey, bubbles: true, cancelable: true }));
+    }, {
+      selector: mapSelector,
+      sx: box.x + box.width * 0.5, sy: box.y + box.height * 0.5,
+      ex: box.x + box.width * 0.5 - 40, ey: box.y + box.height * 0.5 - 20,
+    });
+    await page.waitForTimeout(100);
+
+    const before = await readTransform();
+    expect(before.x).not.toBe(0);
+
+    const viewportBefore = page.viewportSize();
+    if (!viewportBefore) throw new Error('no viewport size');
+    const widerWidth = viewportBefore.width + 400;
+    await page.setViewportSize({ width: widerWidth, height: viewportBefore.height });
+
+    const boxAfter = await map.boundingBox();
+    if (!boxAfter) throw new Error('map container has no bounding box after resize');
+    const widthRatio = boxAfter.width / box.width;
+
+    const after = await readTransform();
+    expect(after.x).toBeCloseTo(before.x * widthRatio, 0);
+  });
 });
