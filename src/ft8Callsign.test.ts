@@ -105,6 +105,14 @@ describe('lookupCountry / getCallingStationCountry', () => {
     expect(lookupCountry('XY1ABC')).toBeNull();
   });
 
+  it('resolves a real captured CQ message with a grid that looks like a callsign prefix to Chile (issue #110)', () => {
+    // "FG40" is a valid grid square AND happens to share a letter pair with
+    // the Guadeloupe prefix "FG" -- extractTransmittingToken must still pick
+    // XQ2OP as the caller, and XQ (missing from the table pre-fix) must
+    // resolve to Chile.
+    expect(getCallingStationCountry('CQ XQ2OP FG40')).toMatchObject({ country: 'Chile' });
+  });
+
   it('returns null end-to-end for an unparseable message', () => {
     expect(getCallingStationCountry('CQ FD AB1CD 1A NNJ')).toBeNull();
   });
