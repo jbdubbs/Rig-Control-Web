@@ -9,18 +9,18 @@ export interface Ft8DecodePanelProps {
   maxHeightClass?: string;
 }
 
-const COLUMNS = ['Time', 'SNR', 'DT', 'Freq', 'Message', 'Country'] as const;
+const COLUMNS = ['SNR', 'DT', 'Freq', 'Message', 'Country'] as const;
 
 function Ft8DecodePanel({ ft8Decodes, ft8ScrollContainerRef, maxHeightClass = 'max-h-64' }: Ft8DecodePanelProps) {
   return (
     <div ref={ft8ScrollContainerRef} className={cn(maxHeightClass, "overflow-y-auto overflow-x-hidden custom-scrollbar")}>
-      <table className="w-full text-[0.625rem] font-mono border-collapse table-auto">
+      <table className="w-full text-[0.625rem] font-mono border-separate border-spacing-0 table-auto">
         <thead>
           <tr className="bg-[#0a0a0a]">
             {COLUMNS.map((label) => (
               <th
                 key={label}
-                className="px-2 py-1.5 text-left text-[0.5625rem] uppercase text-[#8e9299] border-b border-[#2a2b2e]"
+                className="sticky top-0 z-10 px-2 py-1.5 text-left text-[0.5625rem] uppercase text-[#8e9299] bg-[#0a0a0a] border-b border-[#2a2b2e]"
               >
                 {label}
               </th>
@@ -35,21 +35,30 @@ function Ft8DecodePanel({ ft8Decodes, ft8ScrollContainerRef, maxHeightClass = 'm
               </td>
             </tr>
           ) : (
-            ft8Decodes.map((d) => {
+            ft8Decodes.map((d, index) => {
               const country = getCallingStationCountry(d.message);
+              const isNewTimeslot = index === 0 || ft8Decodes[index - 1].utcTime !== d.utcTime;
               return (
-                <tr key={d.id} className="border-b border-[#2a2b2e]/40 hover:bg-white/5">
-                  <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.utcTime}</td>
-                  <td className={cn("px-2 py-1 whitespace-nowrap", d.snr >= 0 ? "text-emerald-400" : "text-amber-400")}>
-                    {d.snr > 0 ? `+${d.snr.toFixed(0)}` : d.snr.toFixed(0)}
-                  </td>
-                  <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.dt.toFixed(1)}</td>
-                  <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.freqHz.toFixed(0)}</td>
-                  <td className="px-2 py-1 text-[#e0e0e0]">{d.message}</td>
-                  <td className={cn("px-2 py-1 whitespace-nowrap", country ? "text-white font-bold text-[0.6875rem]" : "text-[#8e9299]")}>
-                    {country ? country.country : '—'}
-                  </td>
-                </tr>
+                <React.Fragment key={d.id}>
+                  {isNewTimeslot && (
+                    <tr>
+                      <td colSpan={COLUMNS.length} className="px-2 py-1 text-center text-[0.6875rem] uppercase tracking-widest text-[#e0e0e0] border-t-2 border-[#2a2b2e]">
+                        — {d.utcTime} UTC —
+                      </td>
+                    </tr>
+                  )}
+                  <tr className="border-b border-[#2a2b2e]/40 hover:bg-white/5">
+                    <td className={cn("px-2 py-1 whitespace-nowrap", d.snr >= 0 ? "text-emerald-400" : "text-amber-400")}>
+                      {d.snr > 0 ? `+${d.snr.toFixed(0)}` : d.snr.toFixed(0)}
+                    </td>
+                    <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.dt.toFixed(1)}</td>
+                    <td className="px-2 py-1 text-[#8e9299] whitespace-nowrap">{d.freqHz.toFixed(0)}</td>
+                    <td className="px-2 py-1 text-[#e0e0e0]">{d.message}</td>
+                    <td className={cn("px-2 py-1 whitespace-nowrap", country ? "text-white font-bold text-[0.6875rem]" : "text-[#8e9299]")}>
+                      {country ? country.country : '—'}
+                    </td>
+                  </tr>
+                </React.Fragment>
               );
             })
           )}
