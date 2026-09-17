@@ -41,6 +41,10 @@ function isValidRole(role: unknown): role is "admin" | "regular" {
   return role === "admin" || role === "regular";
 }
 
+function normalizeCallsign(raw: unknown): string {
+  return (typeof raw === "string" ? raw : "").toUpperCase().trim();
+}
+
 // Rate-limiter entries are otherwise only removed on a successful login/password-change
 // for that exact key, or an admin unlock — an attacker flooding auth:login with distinct
 // callsigns/IPs would otherwise grow these Maps without bound for the life of the process.
@@ -278,7 +282,7 @@ export function registerAuthHandlers(
       password: string;
     }) => {
       const ip = socket.handshake.address;
-      const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
+      const normalizedCallsign = normalizeCallsign(callsign);
       const now = Date.now();
 
       // IP flood guard
@@ -510,7 +514,7 @@ export function registerAdminHandlers(
       role: "admin" | "regular";
     }) => {
       requireAdmin(socket, ctx, async (authInfo) => {
-        const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
+        const normalizedCallsign = normalizeCallsign(callsign);
         if (!normalizedCallsign || !password || !role) {
           socket.emit("admin:op-result", {
             ok: false,
@@ -574,7 +578,7 @@ export function registerAdminHandlers(
 
   socket.on("admin:delete-user", withErrorGuard(socket, "admin:op-result", ({ callsign }: { callsign: string }) => {
     requireAdmin(socket, ctx, (authInfo) => {
-      const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
+      const normalizedCallsign = normalizeCallsign(callsign);
       if (normalizedCallsign === authInfo.callsign) {
         socket.emit("admin:op-result", {
           ok: false,
@@ -614,7 +618,7 @@ export function registerAdminHandlers(
       password?: string;
     }) => {
       requireAdmin(socket, ctx, async (authInfo) => {
-        const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
+        const normalizedCallsign = normalizeCallsign(callsign);
         if (role !== undefined && !isValidRole(role)) {
           socket.emit("admin:op-result", {
             ok: false,
@@ -667,7 +671,7 @@ export function registerAdminHandlers(
     "admin:clear-preferences",
     withErrorGuard(socket, "admin:op-result", ({ callsign }: { callsign: string }) => {
       requireAdmin(socket, ctx, (authInfo) => {
-        const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
+        const normalizedCallsign = normalizeCallsign(callsign);
         const users = loadUsers(ctx);
         const idx = users.findIndex((u) => u.callsign === normalizedCallsign);
         if (idx === -1) {
@@ -795,7 +799,7 @@ export function registerAdminHandlers(
 
   socket.on("admin:unlock-callsign", withErrorGuard(socket, "admin:op-result", ({ callsign }: { callsign: string }) => {
     requireAdmin(socket, ctx, (authInfo) => {
-      const normalizedCallsign = (callsign ?? "").toUpperCase().trim();
+      const normalizedCallsign = normalizeCallsign(callsign);
       loginCallsignAttempts.delete(normalizedCallsign);
       changePasswordAttempts.delete(normalizedCallsign);
       appendAudit(ctx, {
