@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from "react";
 import { io, Socket } from "socket.io-client";
 import {
   Plug,
@@ -18,9 +18,11 @@ import { cn } from "./utils";
 import PhoneLayout from "./layouts/PhoneLayout";
 import CompactLayout from "./layouts/CompactLayout";
 import PhoneStickyBar from "./layouts/PhoneStickyBar";
-import SettingsModal from "./modals/SettingsModal";
-import VideoSettingsModal from "./modals/VideoSettingsModal";
-import AudioSettingsModal from "./modals/AudioSettingsModal";
+// Lazy-loaded: only opened via explicit user action (gear icons), so there's no reason
+// to ship their JS in the initial bundle (see issue #109).
+const SettingsModal = lazy(() => import("./modals/SettingsModal"));
+const VideoSettingsModal = lazy(() => import("./modals/VideoSettingsModal"));
+const AudioSettingsModal = lazy(() => import("./modals/AudioSettingsModal"));
 import LoginScreen from "./components/LoginScreen";
 import ChangePasswordModal from "./components/ChangePasswordModal";
 import PhoneHeaderMenu from "./components/PhoneHeaderMenu";
@@ -1454,102 +1456,114 @@ export default function App() {
         )}
 
         {/* Video Settings Modal */}
-        <VideoSettingsModal
-          isOpen={isVideoSettingsOpen}
-          onClose={() => setIsVideoSettingsOpen(false)}
-          socket={socket}
-          videoDevices={videoDevices}
-          videoSettings={videoSettings}
-          setVideoSettings={setVideoSettings}
-          videoStatus={videoStatus}
-          isElectronSource={isElectronSource}
-          resolutionDraft={resolutionDraft}
-          setResolutionDraft={setResolutionDraft}
-          isResolutionFocusedRef={isResolutionFocusedRef}
-          resolutionDebounceRef={resolutionDebounceRef}
-          resolutionDraftRef={resolutionDraftRef}
-          videoSettingsRef={videoSettingsRef}
-        />
+        {isVideoSettingsOpen && (
+          <Suspense fallback={null}>
+            <VideoSettingsModal
+              isOpen={isVideoSettingsOpen}
+              onClose={() => setIsVideoSettingsOpen(false)}
+              socket={socket}
+              videoDevices={videoDevices}
+              videoSettings={videoSettings}
+              setVideoSettings={setVideoSettings}
+              videoStatus={videoStatus}
+              isElectronSource={isElectronSource}
+              resolutionDraft={resolutionDraft}
+              setResolutionDraft={setResolutionDraft}
+              isResolutionFocusedRef={isResolutionFocusedRef}
+              resolutionDebounceRef={resolutionDebounceRef}
+              resolutionDraftRef={resolutionDraftRef}
+              videoSettingsRef={videoSettingsRef}
+            />
+          </Suspense>
+        )}
 
         {/* Audio Settings Modal */}
-        <AudioSettingsModal
-          isOpen={isAudioSettingsOpen}
-          onClose={() => setIsAudioSettingsOpen(false)}
-          socket={socket}
-          audioStatus={audioStatus}
-          audioSettings={audioSettings}
-          setAudioSettings={setAudioSettings}
-          audioSettingsDenied={audioSettingsDenied}
-          role={currentUser?.role ?? "regular"}
-          localAudioDevices={localAudioDevices}
-          setLocalAudioDevices={setLocalAudioDevices}
-          localAudioSettings={localAudioSettings}
-          setLocalAudioSettings={setLocalAudioSettings}
-          inboundVolume={inboundVolume}
-          setInboundVolume={setInboundVolume}
-          audioContextRef={audioContextRef}
-          sidetoneCtxRef={sidetoneCtxRef}
-          inboundGainRef={inboundGainRef}
-          audioEngineState={audioEngineState}
-          isBackendEngineCollapsed={isBackendEngineCollapsed}
-          onToggleBackendEngineCollapsed={toggleBackendEngineCollapsed}
-          handleStartAudio={handleStartAudio}
-          startMicCapture={startMicCapture}
-          stopMicCapture={stopMicCapture}
-          activeMicClientId={activeMicClientId}
-          clientId={clientId}
-          inboundMuted={inboundMuted}
-          outboundMuted={outboundMuted}
-          localAudioReady={localAudioReady}
-          audioDevices={audioDevices}
-          updateWsjtxOutput={updateWsjtxOutput}
-          wsjtxBridgeEnabled={bridgeEnabled}
-          setWsjtxBridgeEnabled={setBridgeEnabled}
-          wsjtxBridgeConnected={bridgeConnected}
-          wsjtxWsPort={wsjtxWsPort}
-          setWsjtxWsPort={setWsjtxWsPort}
-          wsjtxAutoSetupWarning={wsjtxAutoSetupWarning}
-          wsjtxAutoSetupActive={wsjtxAutoSetupActive}
-        />
+        {isAudioSettingsOpen && (
+          <Suspense fallback={null}>
+            <AudioSettingsModal
+              isOpen={isAudioSettingsOpen}
+              onClose={() => setIsAudioSettingsOpen(false)}
+              socket={socket}
+              audioStatus={audioStatus}
+              audioSettings={audioSettings}
+              setAudioSettings={setAudioSettings}
+              audioSettingsDenied={audioSettingsDenied}
+              role={currentUser?.role ?? "regular"}
+              localAudioDevices={localAudioDevices}
+              setLocalAudioDevices={setLocalAudioDevices}
+              localAudioSettings={localAudioSettings}
+              setLocalAudioSettings={setLocalAudioSettings}
+              inboundVolume={inboundVolume}
+              setInboundVolume={setInboundVolume}
+              audioContextRef={audioContextRef}
+              sidetoneCtxRef={sidetoneCtxRef}
+              inboundGainRef={inboundGainRef}
+              audioEngineState={audioEngineState}
+              isBackendEngineCollapsed={isBackendEngineCollapsed}
+              onToggleBackendEngineCollapsed={toggleBackendEngineCollapsed}
+              handleStartAudio={handleStartAudio}
+              startMicCapture={startMicCapture}
+              stopMicCapture={stopMicCapture}
+              activeMicClientId={activeMicClientId}
+              clientId={clientId}
+              inboundMuted={inboundMuted}
+              outboundMuted={outboundMuted}
+              localAudioReady={localAudioReady}
+              audioDevices={audioDevices}
+              updateWsjtxOutput={updateWsjtxOutput}
+              wsjtxBridgeEnabled={bridgeEnabled}
+              setWsjtxBridgeEnabled={setBridgeEnabled}
+              wsjtxBridgeConnected={bridgeConnected}
+              wsjtxWsPort={wsjtxWsPort}
+              setWsjtxWsPort={setWsjtxWsPort}
+              wsjtxAutoSetupWarning={wsjtxAutoSetupWarning}
+              wsjtxAutoSetupActive={wsjtxAutoSetupActive}
+            />
+          </Suspense>
+        )}
 
         {/* Rigctld Settings Modal */}
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          socket={socket}
-          callsign={currentUser?.callsign ?? ""}
-          role={currentUser?.role ?? "regular"}
-          activeSettingsTab={activeSettingsTab}
-          setActiveSettingsTab={setActiveSettingsTab}
-          rigctldSettings={rigctldSettings}
-          setRigctldSettings={setRigctldSettings}
-          rigctldProcessStatus={rigctldProcessStatus}
-          rigctldLogs={rigctldLogs}
-          setRigctldLogs={setRigctldLogs}
-          testResult={testResult}
-          radios={radios}
-          serialPorts={serialPorts}
-          host={host}
-          setHost={setHost}
-          port={port}
-          setPort={setPort}
-          pollRate={pollRate}
-          handlePollRateChange={handlePollRateChange}
-          rigctldVersionInfo={rigctldVersionInfo}
-          appVersion={appVersion}
-          logEndRef={logEndRef}
-          cwSettings={cwSettings}
-          setCwSettings={setCwSettings}
-          cwSettingsRef={cwSettingsRef}
-          cwPortStatus={cwPortStatus}
-          sidetoneOscRef={sidetoneOscRef}
-          rebindTarget={rebindTarget}
-          setRebindTarget={setRebindTarget}
-          cwRebindError={cwRebindError}
-          pttRebindActive={pttRebindActive}
-          setPttRebindActive={setPttRebindActive}
-          pttRebindError={pttRebindError}
-        />
+        {isSettingsOpen && (
+          <Suspense fallback={null}>
+            <SettingsModal
+              isOpen={isSettingsOpen}
+              onClose={() => setIsSettingsOpen(false)}
+              socket={socket}
+              callsign={currentUser?.callsign ?? ""}
+              role={currentUser?.role ?? "regular"}
+              activeSettingsTab={activeSettingsTab}
+              setActiveSettingsTab={setActiveSettingsTab}
+              rigctldSettings={rigctldSettings}
+              setRigctldSettings={setRigctldSettings}
+              rigctldProcessStatus={rigctldProcessStatus}
+              rigctldLogs={rigctldLogs}
+              setRigctldLogs={setRigctldLogs}
+              testResult={testResult}
+              radios={radios}
+              serialPorts={serialPorts}
+              host={host}
+              setHost={setHost}
+              port={port}
+              setPort={setPort}
+              pollRate={pollRate}
+              handlePollRateChange={handlePollRateChange}
+              rigctldVersionInfo={rigctldVersionInfo}
+              appVersion={appVersion}
+              logEndRef={logEndRef}
+              cwSettings={cwSettings}
+              setCwSettings={setCwSettings}
+              cwSettingsRef={cwSettingsRef}
+              cwPortStatus={cwPortStatus}
+              sidetoneOscRef={sidetoneOscRef}
+              rebindTarget={rebindTarget}
+              setRebindTarget={setRebindTarget}
+              cwRebindError={cwRebindError}
+              pttRebindActive={pttRebindActive}
+              setPttRebindActive={setPttRebindActive}
+              pttRebindError={pttRebindError}
+            />
+          </Suspense>
+        )}
       </div>
 
       {/* Phone sticky PTT/CW bar */}

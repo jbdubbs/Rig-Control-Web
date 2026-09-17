@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState, lazy, Suspense } from "react";
 import type { Socket } from "socket.io-client";
 import { Monitor, Radio, Settings, ChevronDown, ChevronUp, Sun, Map, MapPin } from "lucide-react";
 import { cn } from "../utils";
@@ -35,9 +35,10 @@ import Ft8DecodePanel, { Ft8DepthSelect } from "../panels/Ft8DecodePanel";
 import type { Ft8Decode, Ft8Depth } from "../ft8Decoder";
 import { SpotSettingsGear } from "../panels/SpotsPanel";
 import SpotComboPanel from "../panels/SpotComboPanel";
-import SpotSettingsModal from "../modals/SpotSettingsModal";
-import ComboSpotSettingsModal from "../modals/ComboSpotSettingsModal";
-import DxSpotSettingsModal from "../modals/DxSpotSettingsModal";
+// Lazy-loaded: only opened via explicit user action (settings gear icons), see issue #109.
+const SpotSettingsModal = lazy(() => import("../modals/SpotSettingsModal"));
+const ComboSpotSettingsModal = lazy(() => import("../modals/ComboSpotSettingsModal"));
+const DxSpotSettingsModal = lazy(() => import("../modals/DxSpotSettingsModal"));
 
 export type { GridLayoutCallbacks };
 
@@ -1184,73 +1185,91 @@ function CompactLayout({
         </>
       )}
 
-      <SpotSettingsModal
-        isOpen={showPotaSettings}
-        onClose={() => setShowPotaSettings(false)}
-        type="pota"
-        pollRate={potaPollRate} setPollRate={setPotaPollRate}
-        maxAge={potaMaxAge} setMaxAge={setPotaMaxAge}
-        modeFilter={potaModeFilter} setModeFilter={setPotaModeFilter}
-        bandFilter={potaBandFilter} setBandFilter={setPotaBandFilter}
-      />
-      <SpotSettingsModal
-        isOpen={showSotaSettings}
-        onClose={() => setShowSotaSettings(false)}
-        type="sota"
-        pollRate={sotaPollRate} setPollRate={setSotaPollRate}
-        maxAge={sotaMaxAge} setMaxAge={setSotaMaxAge}
-        modeFilter={sotaModeFilter} setModeFilter={setSotaModeFilter}
-        bandFilter={sotaBandFilter} setBandFilter={setSotaBandFilter}
-      />
-      <SpotSettingsModal
-        isOpen={showWwffSettings}
-        onClose={() => setShowWwffSettings(false)}
-        type="wwff"
-        pollRate={wwffPollRate} setPollRate={setWwffPollRate}
-        maxAge={wwffMaxAge} setMaxAge={setWwffMaxAge}
-        modeFilter={wwffModeFilter} setModeFilter={setWwffModeFilter}
-        bandFilter={wwffBandFilter} setBandFilter={setWwffBandFilter}
-      />
-      <DxSpotSettingsModal
-        isOpen={showDxSettings}
-        onClose={() => setShowDxSettings(false)}
-        dxClusterEnabled={dxClusterEnabled} setDxClusterEnabled={setDxClusterEnabled}
-        dxHost={dxHost} setDxHost={setDxHost}
-        dxPort={dxPort} setDxPort={setDxPort}
-        dxLoginCallsign={dxLoginCallsign} setDxLoginCallsign={setDxLoginCallsign}
-        dxMaxAge={dxMaxAge} setDxMaxAge={setDxMaxAge}
-        dxCallsignFilter={dxCallsignFilter} setDxCallsignFilter={setDxCallsignFilter}
-        dxKeywordFilter={dxKeywordFilter} setDxKeywordFilter={setDxKeywordFilter}
-        dxBandFilter={dxBandFilter} setDxBandFilter={setDxBandFilter}
-        dxConnected={dxConnected}
-        dxError={dxError}
-      />
-      <ComboSpotSettingsModal
-        isOpen={showComboSettings}
-        onClose={() => setShowComboSettings(false)}
-        potaPollRate={potaPollRate} setPotaPollRate={setPotaPollRate}
-        potaMaxAge={potaMaxAge} setPotaMaxAge={setPotaMaxAge}
-        potaModeFilter={potaModeFilter} setPotaModeFilter={setPotaModeFilter}
-        potaBandFilter={potaBandFilter} setPotaBandFilter={setPotaBandFilter}
-        sotaPollRate={sotaPollRate} setSotaPollRate={setSotaPollRate}
-        sotaMaxAge={sotaMaxAge} setSotaMaxAge={setSotaMaxAge}
-        sotaModeFilter={sotaModeFilter} setSotaModeFilter={setSotaModeFilter}
-        sotaBandFilter={sotaBandFilter} setSotaBandFilter={setSotaBandFilter}
-        wwffPollRate={wwffPollRate} setWwffPollRate={setWwffPollRate}
-        wwffMaxAge={wwffMaxAge} setWwffMaxAge={setWwffMaxAge}
-        wwffModeFilter={wwffModeFilter} setWwffModeFilter={setWwffModeFilter}
-        wwffBandFilter={wwffBandFilter} setWwffBandFilter={setWwffBandFilter}
-        dxClusterEnabled={dxClusterEnabled} setDxClusterEnabled={setDxClusterEnabled}
-        dxHost={dxHost} setDxHost={setDxHost}
-        dxPort={dxPort} setDxPort={setDxPort}
-        dxLoginCallsign={dxLoginCallsign} setDxLoginCallsign={setDxLoginCallsign}
-        dxMaxAge={dxMaxAge} setDxMaxAge={setDxMaxAge}
-        dxCallsignFilter={dxCallsignFilter} setDxCallsignFilter={setDxCallsignFilter}
-        dxKeywordFilter={dxKeywordFilter} setDxKeywordFilter={setDxKeywordFilter}
-        dxBandFilter={dxBandFilter} setDxBandFilter={setDxBandFilter}
-        dxConnected={dxConnected}
-        dxError={dxError}
-      />
+      {(showPotaSettings || showSotaSettings || showWwffSettings) && (
+        <Suspense fallback={null}>
+          {showPotaSettings && (
+            <SpotSettingsModal
+              isOpen={showPotaSettings}
+              onClose={() => setShowPotaSettings(false)}
+              type="pota"
+              pollRate={potaPollRate} setPollRate={setPotaPollRate}
+              maxAge={potaMaxAge} setMaxAge={setPotaMaxAge}
+              modeFilter={potaModeFilter} setModeFilter={setPotaModeFilter}
+              bandFilter={potaBandFilter} setBandFilter={setPotaBandFilter}
+            />
+          )}
+          {showSotaSettings && (
+            <SpotSettingsModal
+              isOpen={showSotaSettings}
+              onClose={() => setShowSotaSettings(false)}
+              type="sota"
+              pollRate={sotaPollRate} setPollRate={setSotaPollRate}
+              maxAge={sotaMaxAge} setMaxAge={setSotaMaxAge}
+              modeFilter={sotaModeFilter} setModeFilter={setSotaModeFilter}
+              bandFilter={sotaBandFilter} setBandFilter={setSotaBandFilter}
+            />
+          )}
+          {showWwffSettings && (
+            <SpotSettingsModal
+              isOpen={showWwffSettings}
+              onClose={() => setShowWwffSettings(false)}
+              type="wwff"
+              pollRate={wwffPollRate} setPollRate={setWwffPollRate}
+              maxAge={wwffMaxAge} setMaxAge={setWwffMaxAge}
+              modeFilter={wwffModeFilter} setModeFilter={setWwffModeFilter}
+              bandFilter={wwffBandFilter} setBandFilter={setWwffBandFilter}
+            />
+          )}
+        </Suspense>
+      )}
+      {showDxSettings && (
+        <Suspense fallback={null}>
+          <DxSpotSettingsModal
+            isOpen={showDxSettings}
+            onClose={() => setShowDxSettings(false)}
+            dxClusterEnabled={dxClusterEnabled} setDxClusterEnabled={setDxClusterEnabled}
+            dxHost={dxHost} setDxHost={setDxHost}
+            dxPort={dxPort} setDxPort={setDxPort}
+            dxLoginCallsign={dxLoginCallsign} setDxLoginCallsign={setDxLoginCallsign}
+            dxMaxAge={dxMaxAge} setDxMaxAge={setDxMaxAge}
+            dxCallsignFilter={dxCallsignFilter} setDxCallsignFilter={setDxCallsignFilter}
+            dxKeywordFilter={dxKeywordFilter} setDxKeywordFilter={setDxKeywordFilter}
+            dxBandFilter={dxBandFilter} setDxBandFilter={setDxBandFilter}
+            dxConnected={dxConnected}
+            dxError={dxError}
+          />
+        </Suspense>
+      )}
+      {showComboSettings && (
+        <Suspense fallback={null}>
+          <ComboSpotSettingsModal
+            isOpen={showComboSettings}
+            onClose={() => setShowComboSettings(false)}
+            potaPollRate={potaPollRate} setPotaPollRate={setPotaPollRate}
+            potaMaxAge={potaMaxAge} setPotaMaxAge={setPotaMaxAge}
+            potaModeFilter={potaModeFilter} setPotaModeFilter={setPotaModeFilter}
+            potaBandFilter={potaBandFilter} setPotaBandFilter={setPotaBandFilter}
+            sotaPollRate={sotaPollRate} setSotaPollRate={setSotaPollRate}
+            sotaMaxAge={sotaMaxAge} setSotaMaxAge={setSotaMaxAge}
+            sotaModeFilter={sotaModeFilter} setSotaModeFilter={setSotaModeFilter}
+            sotaBandFilter={sotaBandFilter} setSotaBandFilter={setSotaBandFilter}
+            wwffPollRate={wwffPollRate} setWwffPollRate={setWwffPollRate}
+            wwffMaxAge={wwffMaxAge} setWwffMaxAge={setWwffMaxAge}
+            wwffModeFilter={wwffModeFilter} setWwffModeFilter={setWwffModeFilter}
+            wwffBandFilter={wwffBandFilter} setWwffBandFilter={setWwffBandFilter}
+            dxClusterEnabled={dxClusterEnabled} setDxClusterEnabled={setDxClusterEnabled}
+            dxHost={dxHost} setDxHost={setDxHost}
+            dxPort={dxPort} setDxPort={setDxPort}
+            dxLoginCallsign={dxLoginCallsign} setDxLoginCallsign={setDxLoginCallsign}
+            dxMaxAge={dxMaxAge} setDxMaxAge={setDxMaxAge}
+            dxCallsignFilter={dxCallsignFilter} setDxCallsignFilter={setDxCallsignFilter}
+            dxKeywordFilter={dxKeywordFilter} setDxKeywordFilter={setDxKeywordFilter}
+            dxBandFilter={dxBandFilter} setDxBandFilter={setDxBandFilter}
+            dxConnected={dxConnected}
+            dxError={dxError}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
