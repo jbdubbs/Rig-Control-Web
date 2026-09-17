@@ -113,6 +113,20 @@ describe('lookupCountry / getCallingStationCountry', () => {
     expect(getCallingStationCountry('CQ XQ2OP FG40')).toMatchObject({ country: 'Chile' });
   });
 
+  it('resolves an Alaska compound-prefix call to Alaska, not generic United States', () => {
+    // AL7/KL7/NL7/WL7 are all Alaska under the FCC scheme; AL was previously
+    // (incorrectly) mapped to United States in the table.
+    expect(lookupCountry('AL7ABC')).toMatchObject({ country: 'Alaska' });
+  });
+
+  it('resolves N/W-prefixed US territory calls to their DXCC entity, not generic United States', () => {
+    // Only the K-prefixed forms (KP4, KH2, ...) were in the table; the
+    // equally-valid N/W-prefixed forms fell through to the bare "N"/"W"
+    // United States entry.
+    expect(lookupCountry('NP4XYZ')).toMatchObject({ country: 'Puerto Rico' });
+    expect(lookupCountry('WH2ABC')).toMatchObject({ country: 'Guam' });
+  });
+
   it('returns null end-to-end for an unparseable message', () => {
     expect(getCallingStationCountry('CQ FD AB1CD 1A NNJ')).toBeNull();
   });
