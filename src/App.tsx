@@ -272,6 +272,7 @@ export default function App() {
     agcLevels,
     rigctldLogs, setRigctldLogs,
     rigctldVersionInfo,
+    appVersion,
     testResult,
     nbCapabilities,
     nrCapabilities,
@@ -1535,6 +1536,7 @@ export default function App() {
           pollRate={pollRate}
           handlePollRateChange={handlePollRateChange}
           rigctldVersionInfo={rigctldVersionInfo}
+          appVersion={appVersion}
           logEndRef={logEndRef}
           cwSettings={cwSettings}
           setCwSettings={setCwSettings}

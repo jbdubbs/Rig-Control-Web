@@ -141,6 +141,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     }
 
     socket.emit("settings-data", {
+      appVersion: getAppVersion(baseDir),
       settings: ctx.rigctldSettings,
       autoStart: ctx.autoStartEnabled,
       videoAutoStart: ctx.videoAutoStart,

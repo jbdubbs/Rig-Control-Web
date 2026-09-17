@@ -58,6 +58,7 @@ export function useRigctld({ socket }: UseRigctldOptions) {
   const [agcLevels, setAgcLevels] = useState<string[]>([]);
   const [rigctldLogs, setRigctldLogs] = useState<string[]>([]);
   const [rigctldVersionInfo, setRigctldVersionInfo] = useState<{ version: string | null; isSupported: boolean }>({ version: null, isSupported: true });
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // ── Capability state (set by rigctld socket events, used by level sliders) ─
@@ -74,6 +75,7 @@ export function useRigctld({ socket }: UseRigctldOptions) {
     if (!socket) return;
 
     const onSettingsData = (data: any) => {
+      if (data.appVersion) setAppVersion(data.appVersion);
       if (data.settings) {
         setRigctldSettings(data.settings);
         if (data.settings.preampCapabilities) setPreampLevels(data.settings.preampCapabilities);
@@ -212,6 +214,7 @@ export function useRigctld({ socket }: UseRigctldOptions) {
     agcLevels,
     rigctldLogs, setRigctldLogs,
     rigctldVersionInfo,
+    appVersion,
     testResult,
     // Capability state
     nbCapabilities,
