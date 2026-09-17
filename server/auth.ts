@@ -64,6 +64,12 @@ function sweepExpiredRateLimitEntries(now: number): void {
 // so users aren't surprised by two passwords being treated as identical.
 const MAX_PASSWORD_LENGTH = 72;
 
+function validatePassword(password: string | undefined | null): string | null {
+  if (!password || password.length < 8) return "Password must be at least 8 characters";
+  if (password.length > MAX_PASSWORD_LENGTH) return `Password must be ${MAX_PASSWORD_LENGTH} characters or fewer`;
+  return null;
+}
+
 // ─── File paths ───────────────────────────────────────────────────────────────
 
 function usersFilePath(ctx: ServerContext) {
@@ -421,18 +427,9 @@ export function registerAuthHandlers(
           return;
         }
 
-        if (!newPassword || newPassword.length < 8) {
-          socket.emit("auth:op-result", {
-            ok: false,
-            error: "Password must be at least 8 characters",
-          });
-          return;
-        }
-        if (newPassword.length > MAX_PASSWORD_LENGTH) {
-          socket.emit("auth:op-result", {
-            ok: false,
-            error: `Password must be ${MAX_PASSWORD_LENGTH} characters or fewer`,
-          });
+        const passwordError = validatePassword(newPassword);
+        if (passwordError) {
+          socket.emit("auth:op-result", { ok: false, error: passwordError });
           return;
         }
         if (newPassword === currentPassword) {
@@ -529,18 +526,9 @@ export function registerAdminHandlers(
           });
           return;
         }
-        if (password.length < 8) {
-          socket.emit("admin:op-result", {
-            ok: false,
-            error: "Password must be at least 8 characters",
-          });
-          return;
-        }
-        if (password.length > MAX_PASSWORD_LENGTH) {
-          socket.emit("admin:op-result", {
-            ok: false,
-            error: `Password must be ${MAX_PASSWORD_LENGTH} characters or fewer`,
-          });
+        const passwordError = validatePassword(password);
+        if (passwordError) {
+          socket.emit("admin:op-result", { ok: false, error: passwordError });
           return;
         }
 
@@ -626,19 +614,12 @@ export function registerAdminHandlers(
           });
           return;
         }
-        if (password && password.length < 8) {
-          socket.emit("admin:op-result", {
-            ok: false,
-            error: "Password must be at least 8 characters",
-          });
-          return;
-        }
-        if (password && password.length > MAX_PASSWORD_LENGTH) {
-          socket.emit("admin:op-result", {
-            ok: false,
-            error: `Password must be ${MAX_PASSWORD_LENGTH} characters or fewer`,
-          });
-          return;
+        if (password) {
+          const passwordError = validatePassword(password);
+          if (passwordError) {
+            socket.emit("admin:op-result", { ok: false, error: passwordError });
+            return;
+          }
         }
 
         const users = loadUsers(ctx);
