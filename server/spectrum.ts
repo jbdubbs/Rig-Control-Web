@@ -44,10 +44,11 @@ export function startSpectrumListener(ctx: ServerContext): void {
     vlogSpectrum(`[SPECTRUM] seq=${packet.seq} type=${spectrum.type} centerFreq=${spectrum.centerFreq} length=${spectrum.length} dataLen=${(spectrum.data ?? "").length}`);
 
     const hexData: string = spectrum.data || "";
-    const amplitudes: number[] = [];
-    for (let i = 0; i + 1 < hexData.length; i += 2) {
-      amplitudes.push(parseInt(hexData.slice(i, i + 2), 16));
+    if (hexData.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hexData)) {
+      console.error(`[SPECTRUM] Malformed hex amplitude data (length=${hexData.length}) from ${rinfo.address}:${rinfo.port} — dropping packet`);
+      return;
     }
+    const amplitudes: number[] = Array.from(Buffer.from(hexData, "hex"));
     vlogSpectrum(`[SPECTRUM] Decoded ${amplitudes.length} amplitude points`);
 
     const clientCount = ctx.io.sockets.sockets.size;
