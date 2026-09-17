@@ -8,9 +8,27 @@ const RESTART_DELAY_MS = 3000;
 const RETRY_BUDGET_MS = 30000;
 const MAX_LINE_BUFFER_BYTES = 8192; // several legit frames' worth (~1.9KB each) of headroom
 
+// Splits every complete (newline-terminated) line off the front of buffer, returning them
+// in order plus whatever incomplete trailing partial line is left over. A single stdout
+// 'data' chunk can legitimately bundle several ~1.9KB NDJSON frames at once — Node hands
+// over whatever the pipe delivered, not one line at a time — so callers must drain
+// complete lines this way before ever judging the buffer's total size.
+export function splitCompleteLines(buffer: string): { lines: string[]; remainder: string } {
+  const lines: string[] = [];
+  let rest = buffer;
+  let newline: number;
+  while ((newline = rest.indexOf("\n")) !== -1) {
+    lines.push(rest.slice(0, newline));
+    rest = rest.slice(newline + 1);
+  }
+  return { lines, remainder: rest };
+}
+
 // Guards against a corrupted or stuck ft4222-scope-reader stream (a chunk with no trailing
 // newline — a crash mid-write or an unexpected frame-format change) growing lineBuffer
-// without bound forever, since the parse loop only drains it when it finds a newline.
+// without bound forever. Must only ever be called on the post-splitCompleteLines()
+// remainder, never the raw buffer — otherwise it discards perfectly valid, complete lines
+// just because several of them together exceed maxBytes.
 export function guardLineBufferSize(
   buffer: string,
   maxBytes: number = MAX_LINE_BUFFER_BYTES
@@ -88,17 +106,14 @@ export function startYaesuScope(ctx: ServerContext, isRetry = false): void {
   proc.stdout!.setEncoding("utf8");
   proc.stdout!.on("data", (chunk: string) => {
     lineBuffer += chunk;
-    const guarded = guardLineBufferSize(lineBuffer);
-    if (guarded.wasReset) {
-      console.warn(`[YAESU-SCOPE] lineBuffer exceeded ${MAX_LINE_BUFFER_BYTES} bytes with no newline — discarding (corrupted/stuck stream?)`);
-      ctx.yaesuScopeError = "Malformed data stream from ft4222-scope-reader — buffer reset";
-      ctx.io.emit("yaesu-scope-status", { running: ctx.yaesuScopeRunning, error: ctx.yaesuScopeError });
-    }
-    lineBuffer = guarded.buffer;
-    let newline: number;
-    while ((newline = lineBuffer.indexOf("\n")) !== -1) {
-      const line = lineBuffer.slice(0, newline).trim();
-      lineBuffer = lineBuffer.slice(newline + 1);
+    // Drain every complete line first — a single 'data' chunk can legitimately bundle
+    // several ~1.9KB frames (Node delivers whatever the pipe handed it, not one line at a
+    // time), so the size guard below must only ever see the leftover partial-line
+    // remainder, never the pre-drain buffer, or it discards perfectly valid data.
+    const split = splitCompleteLines(lineBuffer);
+    lineBuffer = split.remainder;
+    for (const rawLine of split.lines) {
+      const line = rawLine.trim();
       if (!line) continue;
 
       if (!started) {
@@ -178,6 +193,17 @@ export function startYaesuScope(ctx: ServerContext, isRetry = false): void {
         timestamp: Date.now(),
       });
     }
+
+    // Whatever's left in lineBuffer now is a partial line with no newline yet — the only
+    // thing that can legitimately grow without bound (a crash mid-write, a stuck stream, or
+    // an unexpected frame-format change).
+    const guarded = guardLineBufferSize(lineBuffer);
+    if (guarded.wasReset) {
+      console.warn(`[YAESU-SCOPE] lineBuffer exceeded ${MAX_LINE_BUFFER_BYTES} bytes with no newline — discarding (corrupted/stuck stream?)`);
+      ctx.yaesuScopeError = "Malformed data stream from ft4222-scope-reader — buffer reset";
+      ctx.io.emit("yaesu-scope-status", { running: ctx.yaesuScopeRunning, error: ctx.yaesuScopeError });
+    }
+    lineBuffer = guarded.buffer;
   });
 
   proc.stderr!.setEncoding("utf8");
