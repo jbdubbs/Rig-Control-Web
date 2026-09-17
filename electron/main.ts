@@ -66,6 +66,31 @@ function buildDesktopFile(appImagePath: string): string {
   ].join('\n') + '\n';
 }
 
+const DESKTOP_FILE_NAME = 'rigcontrol-web.desktop';
+const ICON_FILE_NAME = 'rigcontrol-web.png';
+
+function getDesktopIntegrationPaths(home: string) {
+  const hicolorDir = path.join(home, '.local', 'share', 'icons', 'hicolor');
+  const iconDir = path.join(hicolorDir, '512x512', 'apps');
+  const desktopDir = path.join(home, '.local', 'share', 'applications');
+  return {
+    hicolorDir,
+    iconDir,
+    desktopDir,
+    iconDest: path.join(iconDir, ICON_FILE_NAME),
+    desktopDest: path.join(desktopDir, DESKTOP_FILE_NAME),
+  };
+}
+
+function getBundledIconSrc(appDir: string): string {
+  return path.join(appDir, 'resources', 'app.asar', 'assets', 'icons', 'rcw_512x512.png');
+}
+
+function refreshDesktopCaches(desktopDir: string, hicolorDir: string): void {
+  try { execSync(`update-desktop-database "${desktopDir}"`); } catch {}
+  try { execSync(`gtk-update-icon-cache -f -t "${hicolorDir}"`); } catch {}
+}
+
 function installDesktopIntegration(): void {
   const appImagePath = process.env.APPIMAGE;
   const appDir = process.env.APPDIR;
@@ -76,21 +101,15 @@ function installDesktopIntegration(): void {
   }
 
   const home = os.homedir();
-  const hicolorDir = path.join(home, '.local', 'share', 'icons', 'hicolor');
-  const iconDir = path.join(hicolorDir, '512x512', 'apps');
-  const desktopDir = path.join(home, '.local', 'share', 'applications');
-  const iconDest = path.join(iconDir, 'rigcontrol-web.png');
-  const desktopDest = path.join(desktopDir, 'rigcontrol-web.desktop');
+  const { hicolorDir, iconDir, desktopDir, iconDest, desktopDest } = getDesktopIntegrationPaths(home);
 
   fs.mkdirSync(iconDir, { recursive: true });
   fs.mkdirSync(desktopDir, { recursive: true });
 
-  const iconSrc = path.join(appDir, 'resources', 'app.asar', 'assets', 'icons', 'rcw_512x512.png');
-  fs.writeFileSync(iconDest, fs.readFileSync(iconSrc));
+  fs.writeFileSync(iconDest, fs.readFileSync(getBundledIconSrc(appDir)));
   fs.writeFileSync(desktopDest, buildDesktopFile(appImagePath));
 
-  try { execSync(`update-desktop-database "${desktopDir}"`); } catch {}
-  try { execSync(`gtk-update-icon-cache -f -t "${hicolorDir}"`); } catch {}
+  refreshDesktopCaches(desktopDir, hicolorDir);
 
   console.log('RigControl Web has been integrated into your desktop.');
   console.log(`  Icon:    ${iconDest}`);
@@ -105,23 +124,17 @@ function autoInstallDesktopIntegration(): void {
   if (!appImagePath || !appDir) return;
 
   const home = os.homedir();
-  const desktopDest = path.join(home, '.local', 'share', 'applications', 'rigcontrol-web.desktop');
+  const { hicolorDir, iconDir, desktopDir, iconDest, desktopDest } = getDesktopIntegrationPaths(home);
   if (fs.existsSync(desktopDest)) return;
 
   try {
-    const hicolorDir = path.join(home, '.local', 'share', 'icons', 'hicolor');
-    const iconDir = path.join(hicolorDir, '512x512', 'apps');
-    const iconDest = path.join(iconDir, 'rigcontrol-web.png');
-
     fs.mkdirSync(iconDir, { recursive: true });
-    fs.mkdirSync(path.dirname(desktopDest), { recursive: true });
+    fs.mkdirSync(desktopDir, { recursive: true });
 
-    const iconSrc = path.join(appDir, 'resources', 'app.asar', 'assets', 'icons', 'rcw_512x512.png');
-    fs.writeFileSync(iconDest, fs.readFileSync(iconSrc));
+    fs.writeFileSync(iconDest, fs.readFileSync(getBundledIconSrc(appDir)));
     fs.writeFileSync(desktopDest, buildDesktopFile(appImagePath));
 
-    try { execSync(`update-desktop-database "${path.dirname(desktopDest)}"`); } catch {}
-    try { execSync(`gtk-update-icon-cache -f -t "${hicolorDir}"`); } catch {}
+    refreshDesktopCaches(desktopDir, hicolorDir);
 
     console.log('[desktop] Integration installed automatically.');
   } catch (err) {
@@ -131,9 +144,7 @@ function autoInstallDesktopIntegration(): void {
 
 function uninstallDesktopIntegration(): void {
   const home = os.homedir();
-  const hicolorDir = path.join(home, '.local', 'share', 'icons', 'hicolor');
-  const iconDest = path.join(hicolorDir, '512x512', 'apps', 'rigcontrol-web.png');
-  const desktopDest = path.join(home, '.local', 'share', 'applications', 'rigcontrol-web.desktop');
+  const { hicolorDir, desktopDir, iconDest, desktopDest } = getDesktopIntegrationPaths(home);
 
   let removed = false;
 
@@ -145,8 +156,7 @@ function uninstallDesktopIntegration(): void {
     return;
   }
 
-  try { execSync(`update-desktop-database "${path.dirname(desktopDest)}"`); } catch {}
-  try { execSync(`gtk-update-icon-cache -f -t "${hicolorDir}"`); } catch {}
+  refreshDesktopCaches(desktopDir, hicolorDir);
 
   console.log('RigControl Web desktop integration has been removed.');
 }
