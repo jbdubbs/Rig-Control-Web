@@ -49,6 +49,14 @@ export function parseExtendedResponse(resp: string): string {
   return values.join("\n");
 }
 
+// A serial-link glitch or misbehaving rigctld that streams data without ever emitting an RPRT
+// terminator would otherwise let responseBuffer/buffer grow unbounded for the whole command
+// timeout window (up to 25s for power-on). These caps are generous margins over real response
+// sizes — ordinary extended/simple commands return a handful of short lines, while dump_caps for
+// complex rigs (long frequency-range/channel lists) can legitimately run to tens of KB.
+const MAX_RESPONSE_BUFFER_BYTES = 8192;
+const MAX_DUMP_CAPS_BUFFER_BYTES = 131072;
+
 export function executeRigCommand(ctx: ServerContext, cmd: string, useExtended = false, timeoutMs = 10000): Promise<string> {
   const finalCmd = useExtended ? formatExtendedCommand(cmd) : cmd;
   const startMs = Date.now();
@@ -80,6 +88,19 @@ export function executeRigCommand(ctx: ServerContext, cmd: string, useExtended =
 
     const onData = (data: Buffer) => {
       responseBuffer += data.toString();
+
+      if (responseBuffer.length > MAX_RESPONSE_BUFFER_BYTES) {
+        clearTimeout(timeout);
+        ctx.rigSocket?.removeListener("data", onData);
+        ctx.rigSocket?.removeListener("error", onError);
+        console.warn(`[${ts()}] [RIG] Response for "${cmd}" exceeded ${MAX_RESPONSE_BUFFER_BYTES} bytes without a terminator — destroying socket to reset state`);
+        if (ctx.rigSocket) {
+          ctx.rigSocket.destroy();
+          ctx.isConnected = false;
+        }
+        reject(`Rig response exceeded ${MAX_RESPONSE_BUFFER_BYTES} bytes without a terminator: "${cmd}"`);
+        return;
+      }
 
       if (useExtended) {
         const rprtMatch = responseBuffer.match(/RPRT (-?\d+)/);
@@ -179,6 +200,13 @@ async function probeDumpCaps(ctx: ServerContext): Promise<string> {
 
       const onData = (data: Buffer) => {
         buffer += data.toString();
+        if (buffer.length > MAX_DUMP_CAPS_BUFFER_BYTES) {
+          clearTimeout(timeout);
+          ctx.rigSocket?.removeListener("data", onData);
+          ctx.rigSocket?.removeListener("error", onError);
+          reject(`dump_caps response exceeded ${MAX_DUMP_CAPS_BUFFER_BYTES} bytes without a terminator`);
+          return;
+        }
         if (/RPRT -?\d+/.test(buffer)) {
           clearTimeout(timeout);
           ctx.rigSocket?.removeListener("data", onData);
