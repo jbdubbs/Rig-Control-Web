@@ -45,6 +45,12 @@ function saveWindowState(state: any) {
   }
 }
 
+function persistWindowState(win: BrowserWindow): void {
+  const [width, height] = win.getSize();
+  const [x, y] = win.getPosition();
+  saveWindowState({ width, height, x, y });
+}
+
 function buildDesktopFile(appImagePath: string): string {
   return [
     '[Desktop Entry]',
@@ -202,32 +208,18 @@ async function createWindow() {
       const [currentWidth, currentHeight] = win.getContentSize();
       if (currentWidth !== width || currentHeight !== height) {
         win.setContentSize(Math.round(width), Math.round(height), true);
-        
+
         // Save the new size
-        const [w, h] = win.getSize();
-        const [x, y] = win.getPosition();
-        saveWindowState({ width: w, height: h, x, y });
+        persistWindowState(win);
       }
     }
   });
 
-  win.on('resize', () => {
-    const [width, height] = win.getSize();
-    const [x, y] = win.getPosition();
-    saveWindowState({ width, height, x, y });
-  });
+  win.on('resize', () => persistWindowState(win));
 
-  win.on('move', () => {
-    const [width, height] = win.getSize();
-    const [x, y] = win.getPosition();
-    saveWindowState({ width, height, x, y });
-  });
+  win.on('move', () => persistWindowState(win));
 
-  win.on('close', () => {
-    const [width, height] = win.getSize();
-    const [x, y] = win.getPosition();
-    saveWindowState({ width, height, x, y });
-  });
+  win.on('close', () => persistWindowState(win));
 
   // Clear cache to ensure the latest version is loaded
   await win.webContents.session.clearCache();
