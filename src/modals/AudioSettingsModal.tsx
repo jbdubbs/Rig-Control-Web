@@ -351,7 +351,7 @@ function AudioSettingsModal({
                     Run wsjtx-bridge helper on this machine. In WSJTX, set Rig to "Hamlib NET rigctl" → localhost:4540.{" "}
                     <a href="https://jbdubbs.github.io/Rig-Control-Web/downloads/" target="_blank" rel="noreferrer" className="text-emerald-400 underline hover:text-emerald-300 normal-case">Download Helper</a>
                     {" · "}
-                    <a href="https://github.com/jbdubbs/Rig-Control-Web/blob/main/docs/wsjtx-integration.md" target="_blank" rel="noreferrer" className="text-emerald-400 underline hover:text-emerald-300 normal-case">Setup Guide</a>
+                    <a href="https://github.com/jbdubbs/Rig-Control-Web/wiki/WSJTX-Integration" target="_blank" rel="noreferrer" className="text-emerald-400 underline hover:text-emerald-300 normal-case">Setup Guide</a>
                   </p>
                 </div>
               )}
