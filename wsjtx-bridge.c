@@ -731,8 +731,9 @@ static const char *handle_rigctld_cmd(sock_t tcp_sock, const char *line) {
 
     if (cmd[0] == 'M' && cmd[1] == ' ') {
         char mode[32], bw[32];
-        if (sscanf(cmd + 2, "%31s %31s", mode, bw) >= 1) {
-            if (sscanf(cmd + 2, "%31s %31s", mode, bw) < 2)
+        int n = sscanf(cmd + 2, "%31s %31s", mode, bw);
+        if (n >= 1) {
+            if (n < 2)
                 strcpy(bw, "-1");
             char args[128];
             snprintf(args, sizeof(args),
@@ -812,8 +813,9 @@ static const char *handle_rigctld_cmd(sock_t tcp_sock, const char *line) {
 
     if (cmd[0] == 'X' && cmd[1] == ' ') {
         char mode[32], bw[32];
-        if (sscanf(cmd + 2, "%31s %31s", mode, bw) >= 1) {
-            if (sscanf(cmd + 2, "%31s %31s", mode, bw) < 2)
+        int n = sscanf(cmd + 2, "%31s %31s", mode, bw);
+        if (n >= 1) {
+            if (n < 2)
                 strcpy(bw, "-1");
             char args[128];
             snprintf(args, sizeof(args), "\"X %s %s\"", mode, bw);
@@ -1161,7 +1163,7 @@ int main(int argc, char *argv[]) {
 
     printf("READY %d %d\n", tcp_port, ws_port);
     fflush(stdout);
-    fprintf(stderr, "wsjtx-bridge v0.2.3: TCP (rigctld) on localhost:%d, WebSocket on localhost:%d\n",
+    fprintf(stderr, "wsjtx-bridge v0.2.4: TCP (rigctld) on localhost:%d, WebSocket on localhost:%d\n",
             tcp_port, ws_port);
 
 #if !defined(_WIN32) && !defined(__APPLE__)
