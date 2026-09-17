@@ -13,7 +13,7 @@ import {
   Radio,
   X,
 } from "lucide-react";
-import { cn, splitLocalAudioDevices } from "../utils";
+import { cn, splitLocalAudioDevices, formatAudioDeviceOption } from "../utils";
 
 export interface AudioSettingsModalProps {
   isOpen: boolean;
@@ -474,15 +474,8 @@ function AudioSettingsModal({
                   >
                     <option value="">Select Backend Input</option>
                     {audioDevices.inputs.map(d => {
-                      const api = d.hostAPIName.replace(/^Windows\s+/i, '');
-                      const isWASAPI = /WASAPI/i.test(api);
-                      const wasapiIncompatible = isWASAPI && d.defaultSampleRate !== 48000;
-                      const rateK = d.defaultSampleRate / 1000;
-                      const rate = d.defaultSampleRate ? `${rateK === Math.floor(rateK) ? rateK : rateK.toFixed(1)}k` : '';
-                      const label = isWASAPI
-                        ? `${d.name} [WASAPI${wasapiIncompatible ? ` – set device to 48k in Windows` : ''}]`
-                        : `${d.name}${api || rate ? ` [${[api, rate].filter(Boolean).join(', ')}]` : ''}`;
-                      return <option key={d.altName} value={JSON.stringify({ name: d.name, hostAPIName: d.hostAPIName })} disabled={wasapiIncompatible}>{label}</option>;
+                      const { label, disabled } = formatAudioDeviceOption(d);
+                      return <option key={d.altName} value={JSON.stringify({ name: d.name, hostAPIName: d.hostAPIName })} disabled={disabled}>{label}</option>;
                     })}
                   </select>
                 </div>
@@ -524,15 +517,8 @@ function AudioSettingsModal({
                   >
                     <option value="">Select Backend Output</option>
                     {audioDevices.outputs.map(d => {
-                      const api = d.hostAPIName.replace(/^Windows\s+/i, '');
-                      const isWASAPI = /WASAPI/i.test(api);
-                      const wasapiIncompatible = isWASAPI && d.defaultSampleRate !== 48000;
-                      const rateK = d.defaultSampleRate / 1000;
-                      const rate = d.defaultSampleRate ? `${rateK === Math.floor(rateK) ? rateK : rateK.toFixed(1)}k` : '';
-                      const label = isWASAPI
-                        ? `${d.name} [WASAPI${wasapiIncompatible ? ` – set device to 48k in Windows` : ''}]`
-                        : `${d.name}${api || rate ? ` [${[api, rate].filter(Boolean).join(', ')}]` : ''}`;
-                      return <option key={d.altName} value={JSON.stringify({ name: d.name, hostAPIName: d.hostAPIName })} disabled={wasapiIncompatible}>{label}</option>;
+                      const { label, disabled } = formatAudioDeviceOption(d);
+                      return <option key={d.altName} value={JSON.stringify({ name: d.name, hostAPIName: d.hostAPIName })} disabled={disabled}>{label}</option>;
                     })}
                   </select>
                 </div>

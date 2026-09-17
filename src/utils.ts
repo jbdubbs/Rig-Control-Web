@@ -24,6 +24,24 @@ export function splitLocalAudioDevices(devices: MediaDeviceInfo[]): { inputs: Me
   };
 }
 
+// naudiodon's WASAPI host API only works reliably at a device's Windows-configured default
+// sample rate — a mismatch here (rather than an unsupported rate outright) is what actually
+// breaks it, so flag it in the option label and disable selecting it instead of letting it
+// silently fail to start.
+export function formatAudioDeviceOption(
+  d: { name: string; hostAPIName: string; defaultSampleRate: number }
+): { label: string; disabled: boolean } {
+  const api = d.hostAPIName.replace(/^Windows\s+/i, '');
+  const isWASAPI = /WASAPI/i.test(api);
+  const wasapiIncompatible = isWASAPI && d.defaultSampleRate !== 48000;
+  const rateK = d.defaultSampleRate / 1000;
+  const rate = d.defaultSampleRate ? `${rateK === Math.floor(rateK) ? rateK : rateK.toFixed(1)}k` : '';
+  const label = isWASAPI
+    ? `${d.name} [WASAPI${wasapiIncompatible ? ` – set device to 48k in Windows` : ''}]`
+    : `${d.name}${api || rate ? ` [${[api, rate].filter(Boolean).join(', ')}]` : ''}`;
+  return { label, disabled: wasapiIncompatible };
+}
+
 // Pure go/no-go check for auto-joining the local audio pipeline (issue #51):
 // only attempt it once the page has seen a user gesture (browser autoplay
 // policy) and only while there's actually a session to join.

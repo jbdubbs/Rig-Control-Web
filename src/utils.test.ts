@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatStep, shouldAttemptAutoJoin, shouldReacquireWakeLock, splitLocalAudioDevices } from './utils';
+import { formatAudioDeviceOption, formatStep, shouldAttemptAutoJoin, shouldReacquireWakeLock, splitLocalAudioDevices } from './utils';
 
 describe('formatStep', () => {
   it('formats values >= 1 as MHz', () => {
@@ -59,6 +59,52 @@ describe('splitLocalAudioDevices', () => {
 
   it('returns empty arrays for an empty device list', () => {
     expect(splitLocalAudioDevices([])).toEqual({ inputs: [], outputs: [] });
+  });
+});
+
+describe('formatAudioDeviceOption', () => {
+  it('labels a non-WASAPI device with its API and sample rate', () => {
+    const { label, disabled } = formatAudioDeviceOption({
+      name: 'USB Audio CODEC',
+      hostAPIName: 'ALSA',
+      defaultSampleRate: 48000,
+    });
+
+    expect(label).toBe('USB Audio CODEC [ALSA, 48k]');
+    expect(disabled).toBe(false);
+  });
+
+  it('enables a WASAPI device already at 48kHz with a plain WASAPI label', () => {
+    const { label, disabled } = formatAudioDeviceOption({
+      name: 'Speakers',
+      hostAPIName: 'Windows WASAPI',
+      defaultSampleRate: 48000,
+    });
+
+    expect(label).toBe('Speakers [WASAPI]');
+    expect(disabled).toBe(false);
+  });
+
+  it('disables a WASAPI device at a mismatched sample rate with a hint', () => {
+    const { label, disabled } = formatAudioDeviceOption({
+      name: 'Speakers',
+      hostAPIName: 'Windows WASAPI',
+      defaultSampleRate: 44100,
+    });
+
+    expect(label).toBe('Speakers [WASAPI – set device to 48k in Windows]');
+    expect(disabled).toBe(true);
+  });
+
+  it('falls back to a bare name when API and sample rate are both empty', () => {
+    const { label, disabled } = formatAudioDeviceOption({
+      name: 'Unknown Device',
+      hostAPIName: '',
+      defaultSampleRate: 0,
+    });
+
+    expect(label).toBe('Unknown Device');
+    expect(disabled).toBe(false);
   });
 });
 
