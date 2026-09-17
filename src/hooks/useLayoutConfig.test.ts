@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useLayoutConfig } from './useLayoutConfig';
+import { useLayoutConfig, DEFAULT_COMPACT_LAYOUT, DEFAULT_PHONE_LAYOUT } from './useLayoutConfig';
 import type { GridItem } from '../types/layout';
 
 beforeEach(() => {
@@ -126,5 +126,28 @@ describe('useLayoutConfig storage key tracks callsign after it resolves post-mou
     const stored = JSON.parse(localStorage.getItem('W1AW:grid-layout-v1')!);
     expect(stored.compact.cols).toBe(4);
     expect(stored.compact.rows).toBe(8);
+  });
+
+  it('re-reads the callsign-prefixed saved layout once callsign resolves, instead of keeping the pre-auth default', () => {
+    const savedItems = DEFAULT_COMPACT_LAYOUT.items.filter(i => i.panelType !== 'solar');
+    localStorage.setItem('W1AW:grid-layout-v1', JSON.stringify({
+      compact: { cols: 3, rows: 6, items: savedItems },
+      phone: DEFAULT_PHONE_LAYOUT,
+    }));
+
+    const { result, rerender } = renderHook(
+      ({ callsign }: { callsign: string }) => useLayoutConfig(callsign),
+      { initialProps: { callsign: '' } },
+    );
+
+    // Pre-auth mount: no unprefixed key saved, so it falls back to the default layout.
+    expect(result.current.compactLayout.items.some(i => i.panelType === 'solar')).toBe(true);
+
+    rerender({ callsign: 'W1AW' });
+
+    // Post-auth: the returning user's saved layout (missing 'solar') is restored,
+    // not left at the pre-auth default.
+    expect(result.current.compactLayout.items.some(i => i.panelType === 'solar')).toBe(false);
+    expect(result.current.compactLayout.items.length).toBe(savedItems.length);
   });
 });

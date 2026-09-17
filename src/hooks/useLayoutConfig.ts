@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useLayoutEffect } from 'react';
 import type { LayoutConfig, ViewLayout, GridItem, PanelType, PanelAddConfig } from '../types/layout';
 import { PANEL_MIN_SIZES, mufMapStorageKey } from '../types/layout';
 
@@ -82,6 +82,16 @@ export function useLayoutConfig(callsign = "") {
     ? `${callsign.toUpperCase()}:${BASE_STORAGE_KEY}`
     : BASE_STORAGE_KEY;
   const [config, setConfig] = useState<LayoutConfig>(() => loadFromStorage(storageKey) ?? DEFAULT_LAYOUT);
+
+  // The initial load above may run before `callsign` is known (storageKey
+  // unprefixed), picking up stale/default data left by a previous session's
+  // own pre-login read. Re-read with the correctly-prefixed key once callsign
+  // resolves — mirrors usePersistedCollapsed's fix for the same race.
+  useLayoutEffect(() => {
+    if (!callsign) return;
+    setConfig(loadFromStorage(storageKey) ?? DEFAULT_LAYOUT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callsign]);
 
   const setCompactLayout = useCallback((layout: ViewLayout) => {
     setConfig(prev => {
