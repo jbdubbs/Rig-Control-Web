@@ -71,6 +71,34 @@ export function setDebugFlag(key: keyof DebugFlags, value: boolean): void {
   debugFlags[key] = value;
 }
 
+// Shared "accumulate a count, flush a throttled log line every intervalMs" helper —
+// used by the spectrum-source modules (Hamlib UDP, FT4222, Audio I/Q) for their
+// fps/throughput diagnostic logging, which was previously hand-rolled separately in
+// each one. Returns a tick function: call it once per event with an optional payload
+// (whatever the eventual log line needs beyond the count/elapsed-time), and onFlush
+// fires synchronously once intervalMs has elapsed since the last flush, with the
+// count of ticks since then, the elapsed seconds, and the payload from the most
+// recent tick. Callers track their own cumulative totals outside this helper, since
+// that's just something a log line prints, not part of the throttling logic itself.
+export function createRateLogger<T = void>(
+  intervalMs: number,
+  onFlush: (count: number, elapsedSeconds: number, last: T) => void
+): (value: T) => void {
+  let count = 0;
+  let lastFlushTime = Date.now();
+  let lastValue: T;
+  return (value: T) => {
+    count++;
+    lastValue = value;
+    const now = Date.now();
+    if (now - lastFlushTime >= intervalMs) {
+      onFlush(count, (now - lastFlushTime) / 1000, lastValue);
+      count = 0;
+      lastFlushTime = now;
+    }
+  };
+}
+
 export const vlogRig      = (...args: any[]) => { if (debugFlags.rig)      console.log(`[${ts()}]`, ...args); };
 export const vlogAudio    = (...args: any[]) => { if (debugFlags.audio)    console.log(`[${ts()}]`, ...args); };
 export const vlogVideo    = (...args: any[]) => { if (debugFlags.video)    console.log(`[${ts()}]`, ...args); };

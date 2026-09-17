@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs";
 import { spawn } from "child_process";
 import type { ServerContext } from "./context.ts";
-import { vlogSpectrum } from "./vlog.ts";
+import { vlogSpectrum, createRateLogger } from "./vlog.ts";
 
 const RESTART_DELAY_MS = 3000;
 const RETRY_BUDGET_MS = 30000;
@@ -98,9 +98,11 @@ export function startYaesuScope(ctx: ServerContext, isRetry = false): void {
   let started = false;
   let lineBuffer = "";
   let frameCount = 0;
-  let intervalFrameCount = 0;
-  let lastLogTime = Date.now();
   let lastFrameTime = 0;
+  const rateLog = createRateLogger<{ spanHz: number; centerHz: number; modeVariant: number }>(1000, (count, elapsed, meta) => {
+    const fps = Math.round(count / elapsed);
+    vlogSpectrum(`[YAESU-SCOPE] ${fps} fps (${frameCount} total); span=${meta.spanHz}Hz center=${meta.centerHz}Hz mode=${meta.modeVariant}`);
+  });
   let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 
   proc.stdout!.setEncoding("utf8");
@@ -168,15 +170,8 @@ export function startYaesuScope(ctx: ServerContext, isRetry = false): void {
       const modeVariant: number = frame.modeVariant ?? 0;
 
       frameCount++;
-      intervalFrameCount++;
       lastFrameTime = Date.now();
-      if (lastFrameTime - lastLogTime >= 1000) {
-        const elapsed = (lastFrameTime - lastLogTime) / 1000;
-        const fps = Math.round(intervalFrameCount / elapsed);
-        vlogSpectrum(`[YAESU-SCOPE] ${fps} fps (${frameCount} total); span=${spanHz}Hz center=${centerHz}Hz mode=${modeVariant}`);
-        intervalFrameCount = 0;
-        lastLogTime = lastFrameTime;
-      }
+      rateLog({ spanHz, centerHz, modeVariant });
 
       ctx.io.emit("spectrum-data", {
         id: 0,

@@ -1,5 +1,5 @@
 import type { ServerContext } from "./context.ts";
-import { vlogSpectrum } from "./vlog.ts";
+import { vlogSpectrum, createRateLogger } from "./vlog.ts";
 import { resolveDeviceId } from "./audio.ts";
 import { fftComplex, fftShift, hannWindow, magnitudesDb } from "./fft.ts";
 
@@ -201,8 +201,23 @@ export function startIqScope(ctx: ServerContext, attempt = 0): void {
   ctx.iqCaptureProcess = proc;
   let pcmBuffer = Buffer.alloc(0);
   let frameCount = 0;
-  let intervalFrameCount = 0;
-  let lastLogTime = Date.now();
+  const rateLog = createRateLogger<IqSpectrumFrame>(1000, (count, elapsed, frame) => {
+    const fps = Math.round(count / elapsed);
+    const range = IQ_ENCODE_MAX_DB - IQ_ENCODE_MIN_DB;
+    const toDb = (amp: number) => IQ_ENCODE_MIN_DB + (amp / 255) * range;
+    const hzPerBin = sampleRate / IQ_FFT_SIZE;
+    const centerIdx = IQ_FFT_SIZE / 2;
+    let peakIdx = 0;
+    for (let i = 1; i < frame.amplitudes.length; i++) {
+      if (frame.amplitudes[i] > frame.amplitudes[peakIdx]) peakIdx = i;
+    }
+    const peakOffsetHz = Math.round((peakIdx - centerIdx) * hzPerBin);
+    vlogSpectrum(
+      `[IQ-SCOPE] ${fps} fps (${frameCount} total); ` +
+      `center-bin=${toDb(frame.amplitudes[centerIdx]).toFixed(1)}dB; ` +
+      `peak=${toDb(frame.amplitudes[peakIdx]).toFixed(1)}dB at ${peakOffsetHz >= 0 ? "+" : ""}${peakOffsetHz}Hz from center`
+    );
+  });
 
   proc.on("data", (data: Buffer) => {
     try {
@@ -226,28 +241,7 @@ export function startIqScope(ctx: ServerContext, attempt = 0): void {
         // decoded back to dB via the same linear mapping buildIqSpectrumFrame
         // used to encode them (IQ_ENCODE_MIN_DB..IQ_ENCODE_MAX_DB).
         frameCount++;
-        intervalFrameCount++;
-        const now = Date.now();
-        if (now - lastLogTime >= 1000) {
-          const elapsed = (now - lastLogTime) / 1000;
-          const fps = Math.round(intervalFrameCount / elapsed);
-          const range = IQ_ENCODE_MAX_DB - IQ_ENCODE_MIN_DB;
-          const toDb = (amp: number) => IQ_ENCODE_MIN_DB + (amp / 255) * range;
-          const hzPerBin = sampleRate / IQ_FFT_SIZE;
-          const centerIdx = IQ_FFT_SIZE / 2;
-          let peakIdx = 0;
-          for (let i = 1; i < frame.amplitudes.length; i++) {
-            if (frame.amplitudes[i] > frame.amplitudes[peakIdx]) peakIdx = i;
-          }
-          const peakOffsetHz = Math.round((peakIdx - centerIdx) * hzPerBin);
-          vlogSpectrum(
-            `[IQ-SCOPE] ${fps} fps (${frameCount} total); ` +
-            `center-bin=${toDb(frame.amplitudes[centerIdx]).toFixed(1)}dB; ` +
-            `peak=${toDb(frame.amplitudes[peakIdx]).toFixed(1)}dB at ${peakOffsetHz >= 0 ? "+" : ""}${peakOffsetHz}Hz from center`
-          );
-          intervalFrameCount = 0;
-          lastLogTime = now;
-        }
+        rateLog(frame);
       }
     } catch (err: any) {
       console.error("[IQ-SCOPE] Frame build error:", err.message);

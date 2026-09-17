@@ -1,18 +1,20 @@
 import dgram from "dgram";
 import os from "os";
 import type { ServerContext } from "./context.ts";
-import { vlogSpectrum } from "./vlog.ts";
+import { vlogSpectrum, createRateLogger } from "./vlog.ts";
 
-let packetCount = 0;
-let lastLogTime = 0;
+let spectrumRateLog = createRateLogger<number>(10_000, (count, _elapsed, pointCount) => {
+  vlogSpectrum(`[SPECTRUM] ${count} packets received in last 10s (${pointCount} points each)`);
+});
 
 export function startSpectrumListener(ctx: ServerContext): void {
   if (ctx.spectrumSocket) {
     stopSpectrumListener(ctx);
   }
 
-  packetCount = 0;
-  lastLogTime = 0;
+  spectrumRateLog = createRateLogger<number>(10_000, (count, _elapsed, pointCount) => {
+    vlogSpectrum(`[SPECTRUM] ${count} packets received in last 10s (${pointCount} points each)`);
+  });
 
   vlogSpectrum(`[SPECTRUM] Creating UDP socket (clientHost=${ctx.clientHost})`);
   const sock = dgram.createSocket({ type: "udp4", reuseAddr: true });
@@ -54,13 +56,7 @@ export function startSpectrumListener(ctx: ServerContext): void {
     const clientCount = ctx.io.sockets.sockets.size;
     vlogSpectrum(`[SPECTRUM] Emitting spectrum-data to ${clientCount} client(s)`);
 
-    packetCount++;
-    const now = Date.now();
-    if (now - lastLogTime >= 10_000) {
-      vlogSpectrum(`[SPECTRUM] ${packetCount} packets received in last 10s (${amplitudes.length} points each)`);
-      packetCount = 0;
-      lastLogTime = now;
-    }
+    spectrumRateLog(amplitudes.length);
 
     ctx.io.emit("spectrum-data", {
       id: spectrum.id ?? 0,
