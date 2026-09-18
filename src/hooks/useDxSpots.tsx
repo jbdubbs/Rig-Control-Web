@@ -20,6 +20,12 @@ interface UseDxSpotsOptions {
 }
 
 const MAX_DX_SPOTS = 300;
+// filteredDxSpots re-derives its age cutoff from Date.now() but is a useMemo
+// keyed on data/settings changes — with no new dx-spot events (e.g. the
+// telnet connection dropped) it never recomputes on its own, so spots that
+// should have aged out just sit there indefinitely (issue #59). This tick
+// forces a periodic recompute independent of whether new spots arrive.
+const AGE_TICK_MS = 30_000;
 
 // DX-cluster comments are free text typed by the spotter (e.g. "CQ CQ FT8",
 // "UP 2 CW"), unlike POTA/SOTA/WWFF's structured mode field — this is a
@@ -165,6 +171,13 @@ export function useDxSpots({
     };
   }, [socket]);
 
+  // ── Age tick ──────────────────────────────────────────────────────────────
+  const [ageTick, setAgeTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setAgeTick(t => t + 1), AGE_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
   // ── Computed ──────────────────────────────────────────────────────────────
   const filteredDxSpots = useMemo(() => {
     const cutoff = Date.now() - dxMaxAge * 60 * 1000;
@@ -183,7 +196,7 @@ export function useDxSpots({
       if (keywordUpper.length > 0 && !keywordUpper.some(t => s.comment.toUpperCase().includes(t))) return false;
       return true;
     });
-  }, [dxSpots, dxMaxAge, dxBandFilter, dxCallsignFilter, dxKeywordFilter]);
+  }, [dxSpots, dxMaxAge, dxBandFilter, dxCallsignFilter, dxKeywordFilter, ageTick]);
 
   const sortedDxSpots = useMemo(() => {
     if (!dxSortCol || dxSortDir === 'api') return filteredDxSpots;

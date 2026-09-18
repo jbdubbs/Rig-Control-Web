@@ -11,6 +11,11 @@ const MAX_BUFFER_SPOTS = 300;
 // disable/re-enable before trying again, rather than retrying forever.
 const MAX_ATTEMPTS_PER_WINDOW = 3;
 const ATTEMPT_WINDOW_MS = 60000;
+// Time-based buffer eviction runs on its own clock, independent of whether
+// the socket is currently connected — otherwise a dropped telnet connection
+// (no more "data" events, the only other place pruneBuffer() is called)
+// leaves stale spots sitting in the buffer indefinitely (issue #59).
+const PRUNE_INTERVAL_MS = 60000;
 // Guards only the connect/login handshake window, not the connection's whole lifetime — a
 // real feed can legitimately go quiet for a stretch (low-traffic node, quiet band, overnight),
 // so this is disarmed (setTimeout(0)) the moment login succeeds.
@@ -76,7 +81,7 @@ export function parseDxSpotLine(rawLine: string, now = Date.now()): DxSpot | nul
   };
 }
 
-function pruneBuffer(ctx: ServerContext): void {
+export function pruneBuffer(ctx: ServerContext): void {
   const cutoff = Date.now() - ctx.dxClusterSettings.maxAge * 60 * 1000;
   ctx.dxSpotBuffer = ctx.dxSpotBuffer.filter(s => s.spotTime >= cutoff);
   if (ctx.dxSpotBuffer.length > MAX_BUFFER_SPOTS) {
@@ -92,6 +97,11 @@ export function startDxCluster(ctx: ServerContext, isRetry = false): void {
   if (ctx.dxClusterRestartTimer) {
     clearTimeout(ctx.dxClusterRestartTimer);
     ctx.dxClusterRestartTimer = null;
+  }
+  // Started once per enable (not per connection attempt) and left running
+  // across reconnects — stopped only in stopDxCluster.
+  if (!ctx.dxClusterPruneTimer) {
+    ctx.dxClusterPruneTimer = setInterval(() => pruneBuffer(ctx), PRUNE_INTERVAL_MS);
   }
   if (ctx.dxClusterSocket && !ctx.dxClusterSocket.destroyed) {
     vlogDx(`[DXCLUSTER] startDxCluster called while a socket is already open — ignoring`);
@@ -215,6 +225,10 @@ export function stopDxCluster(ctx: ServerContext, reason = "stop requested"): vo
   if (ctx.dxClusterRestartTimer) {
     clearTimeout(ctx.dxClusterRestartTimer);
     ctx.dxClusterRestartTimer = null;
+  }
+  if (ctx.dxClusterPruneTimer) {
+    clearInterval(ctx.dxClusterPruneTimer);
+    ctx.dxClusterPruneTimer = null;
   }
   // Deliberately does NOT reset the attempt-budget window/count: a stop is
   // frequently immediately followed by a start (e.g. re-applying a changed

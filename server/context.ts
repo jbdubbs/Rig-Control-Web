@@ -318,6 +318,11 @@ export interface ServerContext {
   dxClusterConnected: boolean;
   dxClusterError: string | null;
   dxClusterRestartTimer: NodeJS.Timeout | null;
+  /** Periodic time-based buffer prune, independent of the socket's connect
+   *  state — see PRUNE_INTERVAL_MS in dxCluster.ts. Runs for the lifetime of
+   *  the feature being enabled (started on first startDxCluster call,
+   *  stopped in stopDxCluster), not tied to any single TCP connection. */
+  dxClusterPruneTimer: ReturnType<typeof setInterval> | null;
   /** Start of the current 60s connection-attempt budget window (see
    *  DX_CLUSTER_MAX_ATTEMPTS in dxCluster.ts) — not a per-attempt timestamp. */
   dxClusterRetryStartedAt: number | null;
@@ -537,6 +542,7 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
     dxClusterConnected: false,
     dxClusterError: null,
     dxClusterRestartTimer: null,
+    dxClusterPruneTimer: null,
     dxClusterRetryStartedAt: null,
     dxClusterAttemptCount: 0,
     dxClusterLoggedIn: false,

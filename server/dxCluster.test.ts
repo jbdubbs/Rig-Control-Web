@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { parseDxSpotLine, resolveSpotTime } from './dxCluster.ts';
+import { parseDxSpotLine, pruneBuffer, resolveSpotTime } from './dxCluster.ts';
+import type { DxSpot, ServerContext } from './context.ts';
 
 // A fixed "now" so day-boundary logic in resolveSpotTime is deterministic:
 // 2026-06-15 13:00:00 UTC — after every HHMM used in the spot-line fixtures
@@ -113,5 +114,48 @@ describe('parseDxSpotLine', () => {
   it('rejects an empty line', () => {
     expect(parseDxSpotLine('', NOW)).toBeNull();
     expect(parseDxSpotLine('   ', NOW)).toBeNull();
+  });
+});
+
+function makeSpot(id: string, spotTime: number): DxSpot {
+  return { id, spotTime, spotter: 'W3LPL', dxCall: 'JA1ABC', frequency: 14025.0, comment: '' };
+}
+
+// pruneBuffer only needs these two fields — cast rather than construct a full
+// ServerContext (which pulls in sockets/child processes irrelevant here).
+function makeCtx(spots: DxSpot[], maxAge: number): ServerContext {
+  return {
+    dxSpotBuffer: spots,
+    dxClusterSettings: { maxAge } as ServerContext['dxClusterSettings'],
+  } as ServerContext;
+}
+
+describe('pruneBuffer', () => {
+  it('drops entries older than dxClusterSettings.maxAge', () => {
+    const now = Date.UTC(2026, 5, 15, 13, 0, 0);
+    const ctx = makeCtx(
+      [
+        makeSpot('fresh', now - 5 * 60 * 1000), // 5 min old
+        makeSpot('stale', now - 45 * 60 * 1000), // 45 min old
+      ],
+      30, // maxAge minutes
+    );
+    const realNow = Date.now;
+    Date.now = () => now;
+    try {
+      pruneBuffer(ctx);
+    } finally {
+      Date.now = realNow;
+    }
+    expect(ctx.dxSpotBuffer.map(s => s.id)).toEqual(['fresh']);
+  });
+
+  it('caps the buffer at MAX_BUFFER_SPOTS, keeping the most recent', () => {
+    const now = Date.now();
+    const spots = Array.from({ length: 310 }, (_, i) => makeSpot(`s${i}`, now));
+    const ctx = makeCtx(spots, 30);
+    pruneBuffer(ctx);
+    expect(ctx.dxSpotBuffer.length).toBe(300);
+    expect(ctx.dxSpotBuffer[ctx.dxSpotBuffer.length - 1].id).toBe('s309');
   });
 });
