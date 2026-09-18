@@ -39,6 +39,16 @@ interface LockoutEntry {
   resetAt: number;
 }
 
+// Matches the "[HH:MM:SS.mmm]"-style precision of server/vlog.ts's verbose
+// logging, but with a leading date — audit entries persist across days, so
+// a bare time (the previous behavior) gave the admin no way to tell which
+// day an entry happened on.
+function formatAuditTimestamp(ts: string): string {
+  const d = new Date(ts);
+  const pad = (n: number, len = 2) => n.toString().padStart(len, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 interface Props {
   socket: Socket | null;
   callsign: string;
@@ -463,7 +473,7 @@ export default function AdminTab({ socket, callsign }: Props) {
             auditLog.map((e, i) => (
               <div key={i} className="flex gap-2 text-[0.6rem] font-mono text-[#8e9299]">
                 <span className="text-[#444] flex-shrink-0">
-                  {new Date(e.ts).toLocaleTimeString()}
+                  {formatAuditTimestamp(e.ts)}
                 </span>
                 <span className="text-emerald-600 flex-shrink-0">{e.event}</span>
                 <span className="text-white">{e.callsign}</span>
