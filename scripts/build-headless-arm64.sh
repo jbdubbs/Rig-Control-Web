@@ -9,8 +9,7 @@
 # gcc/node-gyp in the container is a real aarch64 toolchain.
 #
 # See wiki/Headless-Deployment.md ("Platform support") and issue #54 for
-# background — this is currently a testing build, not an officially
-# supported release artifact.
+# background — this is a supported release artifact.
 #
 # IMPORTANT: naudiodon's binding.gyp bakes an *absolute* rpath
 # (module_root_dir/build/Release) into naudiodon.node at build time, so it
@@ -111,15 +110,12 @@ cp "$STAGE/repo/bin/linux/rigctld" "$STAGE/repo/bin/linux/cw-key-helper" \
    "$PKG_DIR/bin/linux/"
 cp "$REPO_ROOT/docs/rigcontrol-web.service" "$PKG_DIR/rigcontrol-web.service"
 
-cat > "$PKG_DIR/README-arm64-testing.md" <<EOF
-# RigControl Web ${VERSION} — arm64 Testing Build (Raspberry Pi)
+cat > "$PKG_DIR/README-arm64.md" <<EOF
+# RigControl Web ${VERSION} — arm64 (Raspberry Pi)
 
-**This is an untested testing build, not an official release.** See
-https://github.com/jbdubbs/Rig-Control-Web/issues/54 for status and to
-report results. Built by cross-compiling under QEMU aarch64 emulation, not
-verified on real Raspberry Pi hardware — real ALSA/USB/serial device
-behavior, real RAM usage on a 2GB board, and FT4222/libft4222 arm64
-availability are all unverified.
+Prebuilt bare-metal headless build for arm64. Report problems at
+https://github.com/jbdubbs/Rig-Control-Web/issues (see also issue #54 for
+Raspberry Pi hardware notes). Built natively on an arm64 runner.
 
 Targets Raspberry Pi 3/4/5 (generic aarch64, no per-model tuning) running
 64-bit Raspberry Pi OS (Bookworm or later) or Debian 13. Built against a

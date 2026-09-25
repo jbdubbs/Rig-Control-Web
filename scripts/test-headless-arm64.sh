@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Smoke test for the headless arm64 bare-metal testing tarball
+# Smoke test for the headless arm64 bare-metal tarball
 # (scripts/build-headless-arm64.sh, issue #54). Extracts the tarball into
 # a clean, throwaway Debian 12 "bookworm" container — matching
 # scripts/Containerfile.arm64-builder's own base/glibc floor, i.e. the
