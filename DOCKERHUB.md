@@ -4,7 +4,7 @@ Open-source web app for controlling amateur radio equipment via [Hamlib](https:/
 
 Full-featured desktop builds (Windows/macOS/Linux, with the video feed) are on the [GitHub Releases page](https://github.com/jbdubbs/Rig-Control-Web/releases).
 
-**Latest release: v1.4.1** (headless-only patch release, no desktop/Electron changes) — fixes the remaining half of issue #55: `naudiodon`/PortAudio was aborting *all* audio device enumeration if even one unrelated host API (eg. PulseAudio) failed to initialize, which happens by design in a minimal container with no PipeWire/PulseAudio session — even when the actual radio's ALSA audio interface was present and working fine. See the [full release notes](https://github.com/jbdubbs/Rig-Control-Web/releases/tag/v1.4.1) for details.
+**Latest release: v1.5.0** — adds the FT8 decoder panel and a WSJT-X-style waterfall, a broad security/performance/reliability audit pass, and a prebuilt bare-metal arm64 (Raspberry Pi 3/4/5) tarball alongside the x64 one on the Releases page. See the [full release notes](https://github.com/jbdubbs/Rig-Control-Web/releases/tag/v1.5.0) for details.
 
 ## Quick start (Docker Compose)
 
@@ -18,7 +18,7 @@ docker compose up -d
 
 Browse to `https://<controller-ip>:3000` and log in as `ADMIN` / `admin` (forced password change on first login).
 
-Tags: `latest` and version-pinned (e.g. `1.4.1`). `linux/amd64` only for now — ARM64/Raspberry Pi is intentionally deferred until the amd64 image gets more real-world usage reports.
+Tags: `latest` and version-pinned (e.g. `1.5.0`). `linux/amd64` only for now — ARM64/Raspberry Pi is intentionally deferred until the amd64 image gets more real-world usage reports.
 
 ## Full documentation
 
