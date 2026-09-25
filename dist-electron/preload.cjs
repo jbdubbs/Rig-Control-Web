@@ -9,5 +9,8 @@ import_electron.contextBridge.exposeInMainWorld("electron", {
     import_electron.ipcRenderer.on("outbound-audio-data", (_event, data) => {
       callback(new Uint8Array(data));
     });
+  },
+  saveTextFile: (content, defaultFilename) => {
+    return import_electron.ipcRenderer.invoke("save-text-file", { content, defaultFilename });
   }
 });

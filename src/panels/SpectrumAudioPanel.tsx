@@ -84,6 +84,8 @@ interface Props {
   bandwidth?: number;
   mode?: string;
   callsign?: string;
+  /** Defaults to "compact". */
+  variant?: "compact" | "phone";
 }
 
 export function computeDisplayBandwidth(bandwidth: number, mode: string, maxHz: number): number {
@@ -102,6 +104,7 @@ function SpectrumAudioPanel({
   bandwidth = 0,
   mode = "",
   callsign = "",
+  variant = "compact",
 }: Props) {
   const lsKey = useCallback(
     (key: string) => (callsign ? `${callsign.toUpperCase()}:${LS_PREFIX}${key}` : `${LS_PREFIX}${key}`),
@@ -556,11 +559,11 @@ function SpectrumAudioPanel({
       {settingsModal}
       <PanelChrome
         title="Audio Waterfall"
-        icon={<Waves size={14} />}
+        icon={<Waves size={12} />}
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
         headerActions={headerActions}
-        headerSize="sm"
+        headerSize={variant === "phone" ? "md" : "sm"}
         bodyClassName="p-0"
       >
         {renderBody()}

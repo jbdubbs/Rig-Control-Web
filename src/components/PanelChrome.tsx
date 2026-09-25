@@ -25,6 +25,8 @@ export interface PanelChromeProps {
   collapseTitle?: string;
   /** Hides the collapse chevron entirely. Use for panels with no expandable body. */
   hideCollapse?: boolean;
+  /** data-testid forwarded to the collapse chevron button, for e2e tests. */
+  collapseTestId?: string;
 }
 
 const headerPaddingMap = {
@@ -54,6 +56,7 @@ export default function PanelChrome({
   outerRef,
   collapseTitle,
   hideCollapse = false,
+  collapseTestId,
 }: PanelChromeProps) {
   const chevronSize = chevronSizeMap[headerSize];
 
@@ -109,6 +112,7 @@ export default function PanelChrome({
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="p-1 hover:bg-white/5 rounded text-[#8e9299] flex-shrink-0"
             title={collapseTitle ?? (isCollapsed ? "Expand" : "Collapse")}
+            data-testid={collapseTestId}
           >
             {isCollapsed ? (
               <ChevronDown size={chevronSize} />

@@ -1,6 +1,6 @@
 import React, { useMemo, useState, lazy, Suspense } from "react";
 import type { Socket } from "socket.io-client";
-import { Radio, Monitor, Zap, MapPin, Settings, Map } from "lucide-react";
+import { Radio, Monitor, Zap, MapPin, Settings, Map, Sun } from "lucide-react";
 import { cn } from "../utils";
 import type {
   RigStatus,
@@ -884,7 +884,7 @@ function PhoneLayout({
         return (
           <PanelChrome
             title="Solar Conditions"
-            icon={<span className="text-sky-400 text-[0.6rem]">☀</span>}
+            icon={<Sun size={12} />}
             isCollapsed={isSolarCollapsed}
             setIsCollapsed={setIsSolarCollapsed}
             bodyClassName="p-0"
@@ -924,6 +924,7 @@ function PhoneLayout({
             setIsCollapsed={setIsSpectrumHamlibCollapsed}
             heightPx={item.heightPx}
             callsign={callsign}
+            variant="phone"
           />
         );
 
@@ -938,6 +939,7 @@ function PhoneLayout({
             bandwidth={parseInt(status?.bandwidth ?? "0", 10) || 0}
             mode={status?.mode ?? ""}
             callsign={callsign}
+            variant="phone"
           />
         );
 

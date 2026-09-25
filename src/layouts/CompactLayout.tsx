@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState, lazy, Suspense } from "react";
 import type { Socket } from "socket.io-client";
-import { Monitor, Radio, Settings, ChevronDown, ChevronUp, Sun, Map, MapPin } from "lucide-react";
+import { Monitor, Radio, Settings, Sun, Map, MapPin, Zap } from "lucide-react";
 import { cn } from "../utils";
 import type {
   RigStatus,
@@ -543,58 +543,58 @@ function CompactLayout({
 
       case 'smeter':
         return (
-          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
-            <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
-              <div className="flex gap-1">
-                {(['signal', 'swr', 'alc', 'vdd'] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setActiveMeter(m)}
-                    data-testid={`meter-tab-${m}`}
-                    className={cn(
-                      "px-2 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
-                      activeMeter === m
-                        ? (m === 'swr' && (status.swr ?? 1) > 3 ? "bg-red-500 text-white" : "bg-emerald-500 text-white")
-                        : (m === 'swr' && (status.swr ?? 1) > 3 ? "text-red-500 bg-red-500/10" : "text-[#8e9299] hover:bg-white/5")
-                    )}
-                  >
-                    {m === 'signal' ? 'SIG/PWR' : m}
-                  </button>
-                ))}
+          <PanelChrome
+            isCollapsed={isCompactSMeterCollapsed}
+            setIsCollapsed={setIsCompactSMeterCollapsed}
+            collapseTestId="meter-collapse-toggle"
+            customHeaderContent={
+              <div className="flex items-center justify-between w-full">
+                <div className="flex gap-1">
+                  {(['signal', 'swr', 'alc', 'vdd'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setActiveMeter(m)}
+                      data-testid={`meter-tab-${m}`}
+                      className={cn(
+                        "px-2 py-1 rounded text-[0.625rem] font-bold uppercase transition-all",
+                        activeMeter === m
+                          ? (m === 'swr' && (status.swr ?? 1) > 3 ? "bg-red-500 text-white" : "bg-emerald-500 text-white")
+                          : (m === 'swr' && (status.swr ?? 1) > 3 ? "text-red-500 bg-red-500/10" : "text-[#8e9299] hover:bg-white/5")
+                      )}
+                    >
+                      {m === 'signal' ? 'SIG/PWR' : m}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1.5" data-testid="meter-readout-summary">
+                  <span className={cn("text-[0.625rem] font-mono font-bold", status.ptt ? "text-red-500" : "text-emerald-500")}>
+                    {status.ptt
+                      ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
+                      : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
+                  </span>
+                  <span className="text-[#3a3b3e] text-[0.5rem]">·</span>
+                  <span className={cn("text-[0.625rem] font-mono font-bold", (status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500")}>
+                    {(status.swr ?? 1).toFixed(2)}
+                  </span>
+                  <span className="text-[#3a3b3e] text-[0.5rem]">·</span>
+                  <span className="text-[0.625rem] font-mono font-bold text-blue-400">
+                    {(status.alc ?? 0).toFixed(2)}
+                  </span>
+                  <span className="text-[#3a3b3e] text-[0.5rem]">·</span>
+                  <span className="text-[0.625rem] font-mono font-bold text-emerald-400">
+                    {(status.vdd ?? 0).toFixed(1)}V
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5" data-testid="meter-readout-summary">
-                <span className={cn("text-[0.625rem] font-mono font-bold", status.ptt ? "text-red-500" : "text-emerald-500")}>
-                  {status.ptt
-                    ? `${Math.round((status.powerMeter ?? 0) * 100)}W`
-                    : (status.smeter ?? -54) > 0 ? `S9+${status.smeter}dB` : `S${Math.round(((status.smeter ?? -54) + 54) / 6)}`}
-                </span>
-                <span className="text-[#3a3b3e] text-[0.5rem]">·</span>
-                <span className={cn("text-[0.625rem] font-mono font-bold", (status.swr ?? 1) > 3 ? "text-red-500" : "text-amber-500")}>
-                  {(status.swr ?? 1).toFixed(2)}
-                </span>
-                <span className="text-[#3a3b3e] text-[0.5rem]">·</span>
-                <span className="text-[0.625rem] font-mono font-bold text-blue-400">
-                  {(status.alc ?? 0).toFixed(2)}
-                </span>
-                <span className="text-[#3a3b3e] text-[0.5rem]">·</span>
-                <span className="text-[0.625rem] font-mono font-bold text-emerald-400">
-                  {(status.vdd ?? 0).toFixed(1)}V
-                </span>
-                <button
-                  onClick={() => setIsCompactSMeterCollapsed(!isCompactSMeterCollapsed)}
-                  data-testid="meter-collapse-toggle"
-                  className="p-0.5 hover:bg-white/5 rounded text-[#8e9299] ml-0.5"
-                >
-                  {isCompactSMeterCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                </button>
-              </div>
+            }
+            className="shadow-lg"
+            bodyClassName="p-2"
+            headerSize="sm"
+          >
+            <div className="h-[120px]" data-testid="meter-chart">
+              <MeterHistoryChart status={status} history={history} meterTab={activeMeter} dense />
             </div>
-            {!isCompactSMeterCollapsed && (
-              <div className="p-2 h-[120px]" data-testid="meter-chart">
-                <MeterHistoryChart status={status} history={history} meterTab={activeMeter} dense />
-              </div>
-            )}
-          </div>
+          </PanelChrome>
         );
 
       case 'video_feed':
@@ -666,6 +666,7 @@ function CompactLayout({
         return (
           <PanelChrome
             title="Controls"
+            icon={<Zap size={12} />}
             isCollapsed={isCompactControlsCollapsed}
             setIsCollapsed={setIsCompactControlsCollapsed}
             className="shadow-lg"
@@ -704,41 +705,35 @@ function CompactLayout({
 
       case 'rflevels':
         return (
-          <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] flex flex-col shadow-lg overflow-hidden">
-            <div className="p-2 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
-              <span className="text-[0.5625rem] uppercase tracking-widest font-bold text-[#8e9299]">RF Levels</span>
-              <button
-                onClick={() => setIsCompactRFPowerCollapsed(!isCompactRFPowerCollapsed)}
-                className="p-0.5 hover:bg-white/5 rounded text-[#8e9299]"
-              >
-                {isCompactRFPowerCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-              </button>
-            </div>
-            {!isCompactRFPowerCollapsed && (
-              <div className="p-2 flex flex-col justify-center gap-1">
-                <RfLevelsPanel
-                  variant="compact"
-                  connected={connected}
-                  localRFPower={localRFPower}
-                  setLocalRFPower={setLocalRFPower}
-                  rfPowerCapabilities={rfPowerCapabilities}
-                  isDraggingRF={isDraggingRF}
-                  localRFLevel={localRFLevel}
-                  setLocalRFLevel={setLocalRFLevel}
-                  rfLevelCapabilities={rfLevelCapabilities}
-                  isDraggingRFLevel={isDraggingRFLevel}
-                  localNRLevel={localNRLevel}
-                  setLocalNRLevel={setLocalNRLevel}
-                  nrCapabilities={nrCapabilities}
-                  isDraggingNR={isDraggingNR}
-                  localNBLevel={localNBLevel}
-                  setLocalNBLevel={setLocalNBLevel}
-                  nbCapabilities={nbCapabilities}
-                  isDraggingNB={isDraggingNB}
-                />
-              </div>
-            )}
-          </div>
+          <PanelChrome
+            title="RF Levels"
+            isCollapsed={isCompactRFPowerCollapsed}
+            setIsCollapsed={setIsCompactRFPowerCollapsed}
+            className="shadow-lg"
+            bodyClassName="p-2 flex flex-col justify-center gap-1"
+            headerSize="sm"
+          >
+            <RfLevelsPanel
+              variant="compact"
+              connected={connected}
+              localRFPower={localRFPower}
+              setLocalRFPower={setLocalRFPower}
+              rfPowerCapabilities={rfPowerCapabilities}
+              isDraggingRF={isDraggingRF}
+              localRFLevel={localRFLevel}
+              setLocalRFLevel={setLocalRFLevel}
+              rfLevelCapabilities={rfLevelCapabilities}
+              isDraggingRFLevel={isDraggingRFLevel}
+              localNRLevel={localNRLevel}
+              setLocalNRLevel={setLocalNRLevel}
+              nrCapabilities={nrCapabilities}
+              isDraggingNR={isDraggingNR}
+              localNBLevel={localNBLevel}
+              setLocalNBLevel={setLocalNBLevel}
+              nbCapabilities={nbCapabilities}
+              isDraggingNB={isDraggingNB}
+            />
+          </PanelChrome>
         );
 
       case 'cwdecode':
@@ -932,6 +927,7 @@ function CompactLayout({
             setIsCollapsed={setIsSpectrumHamlibCollapsed}
             heightPx={_item.heightPx}
             callsign={callsign}
+            variant="compact"
           />
         );
 
@@ -946,6 +942,7 @@ function CompactLayout({
             bandwidth={parseInt(status?.bandwidth ?? "0", 10) || 0}
             mode={status?.mode ?? ""}
             callsign={callsign}
+            variant="compact"
           />
         );
 

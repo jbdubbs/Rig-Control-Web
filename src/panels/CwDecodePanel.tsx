@@ -1,5 +1,6 @@
 import React from "react";
-import { Radio, ChevronDown, ChevronUp } from "lucide-react";
+import { Radio } from "lucide-react";
+import PanelChrome from "../components/PanelChrome";
 
 export interface CwDecodePanelProps {
   variant: "compact-embedded" | "phone-embedded" | "standalone";
@@ -71,31 +72,24 @@ function CwDecodePanel({
 
   // standalone — collapsible panel box
   return (
-    <div className="bg-[#151619] rounded-xl border border-[#2a2b2e] overflow-hidden flex flex-col">
-      <div className="p-3 border-b border-[#2a2b2e] flex items-center justify-between bg-[#1a1b1e]">
-        <div className="flex items-center gap-2 text-[#8e9299]">
-          <Radio size={12} />
-          <span className="text-[0.625rem] uppercase tracking-widest font-bold">CW Decode</span>
+    <PanelChrome
+      title="CW Decode"
+      icon={<Radio size={12} />}
+      isCollapsed={isCollapsed ?? false}
+      setIsCollapsed={setIsCollapsed ?? (() => {})}
+      headerActions={
+        <>
           {statsSpan}
-        </div>
-        <div className="flex items-center gap-2">
           {clearBtn}
-          {setIsCollapsed && (
-            <button
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="p-1 hover:bg-white/5 rounded text-[#8e9299]"
-            >
-              {isCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-            </button>
-          )}
-        </div>
+        </>
+      }
+      headerSize="sm"
+      bodyClassName="p-3"
+    >
+      <div ref={cwScrollContainerRef} className="font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all h-20 overflow-y-auto cw-scroll">
+        {cwDecodedText || <span className="text-[#4a4b4e]">waiting for CW…</span>}
       </div>
-      {!isCollapsed && (
-        <div ref={cwScrollContainerRef} className="p-3 font-mono text-[0.625rem] text-emerald-400 leading-relaxed break-all h-20 overflow-y-auto cw-scroll">
-          {cwDecodedText || <span className="text-[#4a4b4e]">waiting for CW…</span>}
-        </div>
-      )}
-    </div>
+    </PanelChrome>
   );
 }
 

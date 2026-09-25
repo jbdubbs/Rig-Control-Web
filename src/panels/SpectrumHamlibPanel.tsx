@@ -76,6 +76,8 @@ interface Props {
   setIsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   heightPx?: number;
   callsign?: string;
+  /** Defaults to "compact". */
+  variant?: "compact" | "phone";
 }
 
 function SpectrumHamlibPanel({
@@ -92,6 +94,7 @@ function SpectrumHamlibPanel({
   setIsCollapsed,
   heightPx = DEFAULT_HEIGHT,
   callsign = "",
+  variant = "compact",
 }: Props) {
   const lsKey = useCallback(
     (key: string) => (callsign ? `${callsign.toUpperCase()}:${LS_PREFIX}${key}` : `${LS_PREFIX}${key}`),
@@ -795,11 +798,11 @@ function SpectrumHamlibPanel({
       {settingsModal}
       <PanelChrome
         title="Spectrum Scope"
-        icon={<Activity size={14} />}
+        icon={<Activity size={12} />}
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
         headerActions={headerActions}
-        headerSize="sm"
+        headerSize={variant === "phone" ? "md" : "sm"}
         bodyClassName="p-0"
       >
         {renderBody()}
