@@ -24,6 +24,10 @@ Make your regular 'ole rig just like your buddy's $6000 Flex.  Completely free a
 - **POTA/SOTA/WWFF/DX Spots**
   - Auto-QSY on click
   - Filter by mode and band
+- **FT8 Decoder**
+  - A just OK FT8 decoder for show-and-tell purposes.
+  - Use it at club recruiting events to show reception of signals from "around the world".
+  - Check the band before you fire up the whole FT8 stack (WSJTX, Gridtracker, etc).
 - **​HF Conditions Info**
   - ​​​Zoomable MUF and Fof2 Maps
   - Solar conditions from hamqsl.com and prop.kc2g.com
