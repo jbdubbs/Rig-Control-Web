@@ -15,6 +15,21 @@ The **Audio Feed** panel is a slim control strip. It has no expandable body — 
 
 ---
 
+## Audio Waterfall Panel
+
+The **Audio Waterfall** panel draws a spectrum line and scrolling waterfall from the received audio itself, so it works with any radio and needs no spectrum hardware. Add it with **Add Panel** (choose its height and whether it spans the full width). It requires inbound audio to be playing. Its gear icon opens **Audio Waterfall Settings**:
+
+| Setting | What it does |
+|---------|--------------|
+| **Waterfall Style** | **Live** scrolls quickly with fast time response. **WSJT-X** mimics WSJT-X's default Wide Graph for FT8 (4 bins/pixel, 2-frame averaging, flatten on) and scrolls about 6 rows per second, so it looks familiar next to WSJT-X and suits FT8 decoding. |
+| **Display Bandwidth** | Audio bandwidth shown. Auto follows your mode's filter width (doubled in CW). |
+| **Color Map** | Waterfall color scheme. |
+| **Noise Floor / Ceiling** | Display contrast in dBFS. Tick **Auto Floor** / **Auto Ceiling** to track the signal automatically, and use **Reset Auto-Scale** to re-converge. |
+
+The waterfall keeps drawing when your speaker is muted. Settings are saved in your browser.
+
+---
+
 ## Opening Audio Settings
 
 Click the **gear icon** in the **Audio Feed** panel header to open Audio Settings. This is where you configure your microphone, speakers, volume, and the backend audio engine.

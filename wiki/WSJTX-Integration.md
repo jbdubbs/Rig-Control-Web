@@ -148,7 +148,7 @@ wsjtx-bridge: Virtual audio devices created (PipeWire)
 Expected output:
 ```
 READY 4540 4541
-wsjtx-bridge v0.2.0: TCP (rigctld) on localhost:4540, WebSocket on localhost:4541
+wsjtx-bridge v0.2.4: TCP (rigctld) on localhost:4540, WebSocket on localhost:4541
 ```
 
 Virtual audio is not created automatically on macOS — use the devices you installed in Step 1.
@@ -161,7 +161,7 @@ wsjtx-bridge.exe
 Expected output:
 ```
 READY 4540 4541
-wsjtx-bridge v0.2.0: TCP (rigctld) on localhost:4540, WebSocket on localhost:4541
+wsjtx-bridge v0.2.4: TCP (rigctld) on localhost:4540, WebSocket on localhost:4541
 ```
 
 Virtual audio is not created automatically on Windows — use the VB-Audio cables you installed in Step 1.
@@ -272,6 +272,10 @@ In WSJTX → Settings → **Audio:**
 - Is the WSJTX Audio Output device set in RigControl Web?
 - Is the backend audio engine started and playing?
 - Check the volume — the WSJTX output bypasses mute/volume controls, but the backend must be streaming audio.
+
+**Bridge stays "Waiting" even though it is running (helper log says "WebSocket handshake rejected")**
+- The helper only accepts WebSocket connections from a RigControl Web page served over `https://` from `localhost`, `127.0.0.1`, or a private LAN address (10.x.x.x, 172.16-31.x.x, 192.168.x.x). This stops other web pages open in your browser from taking over rig control.
+- If you reach RigControl Web through a public hostname, a reverse proxy, or a VPN address outside those ranges, open it by its LAN IP address or `localhost` instead.
 
 **WSJTX can't connect to rig**
 - Verify `wsjtx-bridge` is running and shows `READY`.

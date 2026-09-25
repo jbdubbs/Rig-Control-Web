@@ -22,10 +22,7 @@ Everything else (rig control, audio, CW keyer, CW decode, spectrum, spots,
 solar data, admin panel) works exactly as in the desktop app, viewed from
 any browser pointed at the controller's IP.
 
-**Platform support:** this stage is **x64 only**. ARM64 (Raspberry Pi
-3/4/5, running a 64-bit OS) is intentionally deferred — the maintainer is
-holding off on enabling it until the amd64 image gets enough real-world
-usage reports (see [issue #23](https://github.com/jbdubbs/Rig-Control-Web/issues/23)).
+**Platform support:** **x64** (N100/N150 mini PCs and any other x86_64 Linux box) and **arm64** (Raspberry Pi 3/4/5 running a 64-bit OS) are both supported for the bare-metal tarball and systemd install. The Docker image is currently **`linux/amd64` only** — on a Raspberry Pi, use the arm64 tarball (see the systemd section below).
 
 ---
 
@@ -262,9 +259,16 @@ sudo systemctl enable --now rigcontrol-web
 Check status/logs with `systemctl status rigcontrol-web` /
 `journalctl -u rigcontrol-web -f`.
 
-A similar prebuilt tarball for arm64 (Raspberry Pi 3/4/5) exists too, but
-is still a testing build pending real-hardware verification — see
-[issue #54](https://github.com/jbdubbs/Rig-Control-Web/issues/54).
+#### Raspberry Pi (arm64)
+
+The Releases page also carries an arm64 tarball
+(`rigcontrol-web-<version>-linux-arm64.tar.gz`) for Raspberry Pi 3/4/5
+running 64-bit Raspberry Pi OS (Bookworm or later) or Debian 13. It is built
+against a Debian 12 glibc floor (2.36), and like the x64 tarball ships
+`node_modules` and all helper binaries prebuilt, so no compiler is needed on
+the Pi. The install steps are the same as above with the `linux-arm64`
+filename, except the runtime library package names are the plain (non-`t64`)
+Debian 12 ones (`libasound2`, `libreadline8`); on Debian 13 keep the `t64` names shown above.
 
 ### Building from source instead
 

@@ -1,6 +1,6 @@
 # RigControl Web — User Guide
 
-RigControl Web is a radio control dashboard that runs in any web browser. It connects to your radio through Hamlib's `rigctld` program, giving you real-time frequency and mode display, one-click tuning, transmit and receive audio over the network, a live video feed of your radio's front panel, a full iambic CW keyer with local sidetone, live spot displays for Parks on the Air (POTA), Summits on the Air (SOTA), and World Wide Flora & Fauna (WWFF), and solar/propagation data with a live MUF world map. Access requires a login — every user has their own account and the server includes a full admin panel for user management.
+RigControl Web is a radio control dashboard that runs in any web browser. It connects to your radio through Hamlib's `rigctld` program, giving you real-time frequency and mode display, one-click tuning, transmit and receive audio over the network, a live video feed of your radio's front panel, a full iambic CW keyer with local sidetone, live spot displays for Parks on the Air (POTA), Summits on the Air (SOTA), World Wide Flora & Fauna (WWFF), and a live DX Cluster feed, a built-in FT8 decoder and CW decoder, an audio waterfall, and solar/propagation data with a live MUF world map. Access requires a login — every user has their own account and the server includes a full admin panel for user management.
 
 Whether you are sitting at your shack computer or connecting from a phone, tablet, or laptop across the room (or across the country over a VPN), the interface adapts to your screen size automatically.
 
@@ -36,7 +36,7 @@ RigControl Web automatically switches between two layouts based on the width of 
 | **Phone** | Screen narrower than 768 pixels — portrait phones and small tablets |
 | **Compact** | Screen 768 pixels or wider — landscape phones, tablets, and desktop windows |
 
-Both layouts show the same information and controls, just arranged differently for the available space.
+Both layouts show the same information and controls, just arranged differently for the available space. On the phone layout, a hamburger menu in the header holds Connect, Settings, layout Edit, Log out, and a **Full Screen** toggle that also keeps the screen awake.
 
 ---
 
@@ -48,13 +48,14 @@ Both layouts show the same information and controls, just arranged differently f
 - [FT-710 Spectrum Scope Setup](Spectrum-Scope-FT-710) — Live panadapter for the Yaesu FT-710 via USB
 - [Audio I/Q Spectrum Scope Setup](Spectrum-Scope-Audio-IQ) — Live panadapter from a radio's baseband I/Q output via a USB audio interface (tested on the Xiegu G90)
 - [Connecting the Local Client](Connecting-the-Local-Client) — Connect to your rig and understand the status display
-- [Controls](Controls) — VFO, mode, meters, PTT, radio power on/off, and radio function buttons
+- [Controls](Controls) — VFO, mode, meters, PTT, radio power on/off, radio function buttons, and the CW and FT8 decoders
 - [CW Keying Setup](CW-Keying-Setup) — Get your radio actually transmitting CW from the keyer (radio menu settings and troubleshooting)
-- [Audio and Video](Audio-and-Video) — Set up the audio feed and video display
+- [Audio and Video](Audio-and-Video) — Set up the audio feed, the Audio Waterfall, and the video display
 - [Remote Access](Remote-Access) — Connect from another device over your network or VPN
 - [POTA, SOTA, and WWFF Spots](POTA-and-SOTA-Spots) — Live activator spots with click-to-tune
+- [DX Cluster Spotting](DX-Cluster-Spotting) — Live telnet DX Cluster feed with callsign/prefix and keyword filtering for hunting specific stations or regions
 - [Solar and Propagation](Solar-and-Propagation) — HF/VHF band conditions, solar indices, and the MUF world map
 - [WSJTX Integration](WSJTX-Integration) — Use WSJTX for FT8, FT4, and other digital modes via the wsjtx-bridge helper
 - [Diagnostic Logging](Diagnostic-Logging) — Capture debug output for troubleshooting and bug reports
-- [Headless Deployment](Headless-Deployment) — Run on a dedicated Raspberry Pi or mini PC via Docker or systemd, no display required
+- [Headless Deployment](Headless-Deployment) — Run on a dedicated Raspberry Pi (arm64) or mini PC (x64) via Docker or systemd, no display required
 - [Linux DEB & RPM Packages](Linux-Packages) — Supported distros, dependencies, and installation instructions for the native Linux packages

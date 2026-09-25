@@ -41,7 +41,7 @@ Make your regular 'ole rig just like your buddy's $6000 Flex.  Completely free a
 
 **Most users should download the latest pre-built installer from the [Releases page](https://github.com/jbdubbs/Rig-Control-Web/releases).** Pick the installer for your operating system (Windows `.exe`, Linux `.AppImage`, or macOS `.dmg`), run it, and you are ready to go.
 
-**Running on a dedicated Raspberry Pi (coming soon) or mini PC?** See [Headless Deployment](https://github.com/jbdubbs/Rig-Control-Web/wiki/Headless-Deployment) for Docker Compose, `docker run`, and systemd options.
+**Running on a dedicated Raspberry Pi or mini PC?** See [Headless Deployment](https://github.com/jbdubbs/Rig-Control-Web/wiki/Headless-Deployment) for Docker Compose, `docker run`, systemd, and prebuilt x64 and arm64 (Raspberry Pi 3/4/5) tarballs.
 
 For full usage instructions, see the **[Wiki](https://github.com/jbdubbs/Rig-Control-Web/wiki)**.
 

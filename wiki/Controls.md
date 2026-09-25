@@ -227,8 +227,44 @@ The **RF Level** slider controls the radio's receiver RF gain, separate from tra
 
 ---
 
+## FT8 Decoder
+
+The **FT8 Decoder** panel decodes FT8 signals from the received audio, entirely in your browser (WebAssembly in a background worker — nothing extra runs on the server). It is intended as a quick way to see who is on the band, or to show off reception at a club event, before firing up a full FT8 setup such as WSJT-X. It is not a replacement for WSJT-X (see [WSJTX Integration](WSJTX-Integration)).
+
+### Enabling the Decoder
+
+Add the **FT8 Decoder** panel with **Add Panel** in the layout editor, tune to an FT8 frequency (for example 14.074 MHz USB), and make sure inbound audio is playing (see [Audio and Video](Audio-and-Video)). Decoding runs whether or not your speaker is muted.
+
+### Reading the Table
+
+Decodes are grouped under a divider for each 15-second UTC timeslot, with the column header pinned at the top:
+
+| Column | What it shows |
+|--------|--------------|
+| **SNR** | Signal-to-noise ratio in dB (green for 0 or above, amber below), calibrated against WSJT-X |
+| **DT** | Time offset from your clock, in seconds |
+| **Freq** | Audio frequency of the signal in Hz |
+| **Message** | The decoded FT8 message |
+| **Country** | The country of the calling station, from a built-in callsign-prefix table |
+
+The panel keeps the most recent 200 decodes.
+
+### Decode Depth
+
+The **Fast / Balanced / Deep** selector in the panel header trades CPU time for more decodes. Balanced is the default; the choice is remembered in your browser. Use Fast on a phone or older device.
+
+### Limitations
+
+- **Your device's clock must be accurate.** FT8 needs sub-second UTC timing. If a remote browser decodes noticeably less than a browser on the server machine, check that the remote device's clock is synced to internet time (NTP).
+- **Weak signals:** it decodes reliably down to about -13 dB. WSJT-X can decode weaker signals (to about -20 dB) because it uses more advanced techniques. Expect fewer decodes on marginal signals.
+- The decoder recovers automatically if the browser tab was backgrounded or frozen, but decodes are missed while it is.
+
+---
+
 ## Controls on the Phone Layout
 
 On the phone layout, all of the controls above are available inside the collapsible **Quick Controls** panel. Tap the panel header to expand it. The large PTT button at the bottom of the screen is always visible regardless of whether Quick Controls is expanded.
+
+The phone header's **hamburger menu** contains Connect/Disconnect, Settings, layout **Edit**, **Log out**, and **Full Screen**. Full Screen also requests a screen wake lock so the display does not sleep while you operate; it releases when you leave full screen. (iOS Safari has limited full-screen support, but the stay-awake part still works.)
 
 When the CW keyer is enabled and the rig is in a CW mode, the PTT button at the bottom is automatically replaced by the dit/dah touch paddles described in the [CW Keyer](#cw-keyer) section above.

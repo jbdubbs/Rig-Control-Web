@@ -8,7 +8,7 @@ When something is not working as expected — audio cutting out, the rig not con
 
 The easiest way to capture a diagnostic log no longer requires relaunching the app from a terminal. Open **General Settings** (gear icon) → **DIAGNOSTICS** tab:
 
-- **Debug Flags** — check any of the subsystem flags (Rig, Audio, Video, CW, Infra, Spectrum, Spots, WSJTX) to turn on that logging immediately, with no restart needed. Click **Enable All** to turn everything on at once.
+- **Debug Flags** — check any of the subsystem flags (Rig, Audio, Video, CW, Infra, Spectrum, Spots, DX Cluster, WSJTX, FT8) to turn on that logging immediately, with no restart needed. Click **Enable All** to turn everything on at once.
 - **Diagnostic Log** — a live, scrolling panel showing merged output from the server console, the Electron renderer console, and every connected browser tab's console, combined into a single timestamped feed. It keeps a rolling 10-minute buffer.
 - **Copy Log** / **Save Log** — grab everything currently in the buffer as text, ready to paste or attach to a bug report.
 
@@ -33,7 +33,9 @@ RigControl Web supports the following diagnostic flags. Launch the app with one 
 | `--debug-infra` | Server startup, shutdown steps, TLS certificate, settings file reads/writes |
 | `--debug-spectrum` | Spectrum scope (both sources) — Hamlib UDP socket binding, multicast interface joins, per-packet receive/parse/emit trace, 10 s throughput counter; FT4222 reader lifecycle, frame parse errors, resync events, restart timing |
 | `--debug-spots` | POTA, SOTA, and WWFF spot fetching — HTTP request/response status, spot counts, filter pipeline (dedup, age, mode, band drop counts), sample timestamps for diagnosing clock-related filtering issues |
+| `--debug-dxcluster` | DX Cluster telnet connection — connect/login handshake, raw data received, parsed vs. unparsed lines, reconnect attempts and the 3-attempts-per-minute budget, settings-triggered restarts |
 | `--debug-wsjtx` | WSJTX bridge — WebSocket lifecycle, rig command relay between WSJT-X and RigControl Web |
+| `--debug-ft8` | FT8 decoder — browser-side only (WASM load, audio flow, decode calls); output appears in the Diagnostic Log and the browser DevTools console |
 | `--debug-all` | All of the above at once |
 
 Flags can be combined. For example, if your problem involves audio and the rig connection together, use `--debug-rig --debug-audio`.
@@ -76,7 +78,7 @@ Log output appears in the terminal where you ran the command.
 
 ### Docker / Docker Compose (Headless)
 
-There's no interactive terminal to pass `--debug-*` args to in a container, so use the environment-variable form instead — every flag has a matching env var (`DEBUG_ALL`, `DEBUG_RIG`, `DEBUG_AUDIO`, `DEBUG_VIDEO`, `DEBUG_CW`, `DEBUG_INFRA`, `DEBUG_SPECTRUM`, `DEBUG_SPOTS`, `DEBUG_WSJTX`), set to `"1"`. In `docker-compose.yml`, add it to the existing `environment:` block alongside `RCW_DATA_DIR`:
+There's no interactive terminal to pass `--debug-*` args to in a container, so use the environment-variable form instead — every flag has a matching env var (`DEBUG_ALL`, `DEBUG_RIG`, `DEBUG_AUDIO`, `DEBUG_VIDEO`, `DEBUG_CW`, `DEBUG_INFRA`, `DEBUG_SPECTRUM`, `DEBUG_SPOTS`, `DEBUG_DXCLUSTER`, `DEBUG_WSJTX`, `DEBUG_FT8`), set to `"1"`. In `docker-compose.yml`, add it to the existing `environment:` block alongside `RCW_DATA_DIR`:
 
 ```yaml
 environment:

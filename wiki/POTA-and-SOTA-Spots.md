@@ -2,6 +2,8 @@
 
 RigControl Web can display live activator spots for **Parks on the Air (POTA)**, **Summits on the Air (SOTA)**, and **World Wide Flora & Fauna (WWFF)**. Spots are pulled directly from the respective APIs and updated automatically. Clicking any spot instantly tunes your radio to that frequency and sets the correct mode — no manual dial twisting needed.
 
+> Looking for a specific station or region rather than award-program activators? See [DX Cluster Spotting](DX-Cluster-Spotting) for the live telnet DX Cluster feed instead.
+
 ---
 
 ## Adding a Spots Panel
@@ -11,7 +13,7 @@ Spots panels are added to your layout like any other panel. Click the **Edit** b
 - **POTA Spots** — Parks on the Air activators
 - **SOTA Spots** — Summits on the Air activators
 - **WWFF Spots** — World Wide Flora & Fauna activators
-- **All Spots** — A combined panel showing POTA, SOTA, and WWFF together in a single tabbed view
+- **All Spots** — A combined panel showing POTA, SOTA, WWFF, and DX Cluster together in a single tabbed view (see [DX Cluster Spotting](DX-Cluster-Spotting) for that tab's own settings)
 
 Once a panel is placed in your layout, it begins fetching spots automatically. You can have individual panels for each service, the combined All Spots panel, or a mix of both.
 
@@ -19,7 +21,7 @@ Once a panel is placed in your layout, it begins fetching spots automatically. Y
 
 ## Settings
 
-Each spots panel has a gear icon (⚙) in its header. Click it to open the settings for that panel. The **All Spots** panel's settings cover POTA, SOTA, and WWFF independently under separate tabs.
+Each spots panel has a gear icon (⚙) in its header. Click it to open the settings for that panel. The **All Spots** panel's settings cover POTA, SOTA, and WWFF independently under separate tabs — its DX tab is different enough (a live connection rather than a poll) that it's documented separately in [DX Cluster Spotting](DX-Cluster-Spotting).
 
 ### Poll Frequency
 

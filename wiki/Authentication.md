@@ -96,7 +96,7 @@ A timestamped log of authentication events (newest first). Events recorded:
 | `lockout_cleared` | Admin manually unlocked a locked-out callsign |
 | `factory_reset` | Factory reset executed |
 
-The audit log is capped at the most recent 1000 entries. The log defaults to showing the 50 most recent; use the limit input to request more.
+Each entry shows its full date and time. The audit log is capped at the most recent 1000 entries. The log defaults to showing the 50 most recent; use the limit input to request more.
 
 ### Lockouts
 
