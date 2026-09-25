@@ -36,6 +36,8 @@ test.describe('ControlsPanel against a real rigctld Dummy backend', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, layoutWithConsole);
   });
 

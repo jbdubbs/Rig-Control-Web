@@ -13,15 +13,10 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 // adds it via Edit Layout -> Add Panel. Seeded here via localStorage instead
 // of driving that UI, to keep this spec's focus on the console panel itself.
 //
-// Confirmed empirically (not assumed): useLayoutConfig's storage key is
-// frozen at mount from whatever `callsign` App.tsx passes in at that
-// instant — since currentUser is still null on the very first render
-// (authState starts "unknown" and only resolves after a socket round trip),
-// the hook's lazy useState initializer always reads/writes the *bare*
-// "grid-layout-v1" key in practice, never "ADMIN:grid-layout-v1", despite
-// the code appearing to support per-callsign namespacing. Verified by
-// seeding the bare key with an empty layout and observing the default
-// panels (e.g. ControlsPanel) disappear.
+// useLayoutConfig namespaces its storage key by the signed-in callsign
+// ("ADMIN:grid-layout-v1" for the e2e user) since the #111 layout-restore
+// fix; before that it always used the bare "grid-layout-v1". Seed both so
+// the layout applies regardless of which key is read first.
 const layoutWithConsole = {
   compact: {
     ...DEFAULT_COMPACT_LAYOUT,
@@ -47,6 +42,8 @@ test.describe('CommandConsolePanel against a real rigctld Dummy backend', () => 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, layoutWithConsole);
   });
 

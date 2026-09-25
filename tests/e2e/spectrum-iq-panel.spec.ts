@@ -123,6 +123,8 @@ test.describe('SpectrumHamlibPanel Audio I/Q source via a PipeWire loopback', ()
     // specs already use (e.g. audio-panels.spec.ts's layoutWithSpectrumAudio).
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, { compact: DEFAULT_COMPACT_LAYOUT, phone: DEFAULT_PHONE_LAYOUT });
 
     await page.goto('/');

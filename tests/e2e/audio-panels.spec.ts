@@ -129,6 +129,8 @@ test.describe('AudioFeedPanel + SpectrumAudioPanel via a PipeWire loopback', () 
   test('backend audio round-trips through the loopback (PTT + CW mode) and drives the spectrum canvas', async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
       // handleJoinAudio (useAudio.ts) only calls initLocalAudioPipeline()
       // directly if a local device was already configured at least once —
       // otherwise it just opens Audio Settings instead of joining.

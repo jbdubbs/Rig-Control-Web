@@ -27,6 +27,8 @@ test.describe('Individual Spots panels with mocked feeds', () => {
   test('spots_pota renders the fixture spot', async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, phoneLayoutWith('spots_pota'));
     await routeSpots(page);
     await page.goto('/');
@@ -41,6 +43,8 @@ test.describe('Individual Spots panels with mocked feeds', () => {
   test('spots_pota shows the empty state when the feed returns no spots', async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, phoneLayoutWith('spots_pota'));
     await routeSpots(page, { pota: [] });
     await page.goto('/');
@@ -51,6 +55,8 @@ test.describe('Individual Spots panels with mocked feeds', () => {
   test('spots_sota renders the fixture spot', async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, phoneLayoutWith('spots_sota'));
     await routeSpots(page);
     await page.goto('/');
@@ -65,6 +71,8 @@ test.describe('Individual Spots panels with mocked feeds', () => {
   test('spots_sota shows the empty state when the feed returns no spots', async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, phoneLayoutWith('spots_sota'));
     await routeSpots(page, { sota: [] });
     await page.goto('/');
@@ -75,6 +83,8 @@ test.describe('Individual Spots panels with mocked feeds', () => {
   test('spots_wwff renders the fixture spot', async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, phoneLayoutWith('spots_wwff'));
     await routeSpots(page);
     await page.goto('/');
@@ -89,6 +99,8 @@ test.describe('Individual Spots panels with mocked feeds', () => {
   test('spots_wwff shows the empty state when the feed returns no spots', async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, phoneLayoutWith('spots_wwff'));
     await routeSpots(page, { wwff: [] });
     await page.goto('/');

@@ -29,6 +29,8 @@ test.describe('DX Cluster spots panel via synthetic telnet feed', () => {
   test('connects, streams spots, filters, and tunes on click', async ({ page }) => {
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
     }, {
       compact: {
         ...DEFAULT_COMPACT_LAYOUT,

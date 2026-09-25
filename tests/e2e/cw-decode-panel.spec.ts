@@ -92,6 +92,8 @@ test.describe('CwDecodePanel via a PipeWire loopback fed a Morse-timed WAV', () 
 
     await page.addInitScript((cfg) => {
       localStorage.setItem('grid-layout-v1', JSON.stringify(cfg));
+      // Layout storage is keyed by the signed-in callsign (useLayoutConfig); the e2e user is ADMIN.
+      localStorage.setItem('ADMIN:grid-layout-v1', JSON.stringify(cfg));
       localStorage.setItem('local-audio-input', 'default');
       localStorage.setItem('local-audio-output', 'default');
       localStorage.setItem('local-audio-enhancements', 'false');
