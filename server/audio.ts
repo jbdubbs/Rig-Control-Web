@@ -78,8 +78,12 @@ export function sanitizeAudioSettingsUpdate(
 export class PcmFrameAccumulator {
   private buffer: Buffer;
   private length = 0;
+  private readonly frameSizeBytes: number;
 
-  constructor(private readonly frameSizeBytes: number, initialCapacity = 65536) {
+  // Explicit field (not a constructor parameter property): headless deployments run
+  // `node server.ts` directly, and Node's type-stripping mode rejects parameter properties.
+  constructor(frameSizeBytes: number, initialCapacity = 65536) {
+    this.frameSizeBytes = frameSizeBytes;
     this.buffer = Buffer.alloc(Math.max(initialCapacity, frameSizeBytes));
   }
 
