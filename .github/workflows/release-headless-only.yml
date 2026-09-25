@@ -14,10 +14,12 @@ name: Release (Headless Only)
 #
 # Publishes: the jbdubbs/rigcontrol-web Docker image (:latest and
 # :<version>, linux/amd64 — same as docker-publish.yml) and the bare-metal
-# x64 tarball (scripts/build-headless-x64.sh) as a GitHub Release asset.
-# Does NOT touch: Windows/macOS/Linux Electron installers, the arm64
-# headless tarball (still a testing build pending real Raspberry Pi
-# hardware verification — see issue #54).
+# x64 + arm64 (Raspberry Pi) tarballs (scripts/build-headless-x64.sh,
+# scripts/build-headless-arm64.sh) as GitHub Release assets. The arm64 job
+# runs natively on GitHub's free ubuntu-24.04-arm runner (public repos).
+# Does NOT touch: Windows/macOS/Linux Electron installers.
+#
+# Requires HAMLIB_RCW_TOKEN too (private hamlib-RCW clone for arm64 rigctld).
 #
 # Requires the same DOCKERHUB_USERNAME/DOCKERHUB_TOKEN repo secrets
 # docker-publish.yml uses.
@@ -93,5 +95,59 @@ jobs:
           prerelease: ${{ github.event.inputs.prerelease }}
           generate_release_notes: true
           files: dist-headless-x64/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-headless-arm64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify version input matches package.json
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "${{ github.event.inputs.version }}" ]; then
+            echo "::error::Input version '${{ github.event.inputs.version }}' does not match package.json version '$PKG_VERSION'."
+            exit 1
+          fi
+
+      - name: Ensure podman is installed
+        run: |
+          command -v podman >/dev/null || { sudo apt-get update && sudo apt-get install -y podman; }
+          podman --version
+
+      - name: Build arm64 headless tarball
+        env:
+          HAMLIB_RCW_TOKEN: ${{ secrets.HAMLIB_RCW_TOKEN }}
+        run: bash scripts/build-headless-arm64.sh
+
+      - name: Verify glibc floor (2.39)
+        run: |
+          mkdir -p "$RUNNER_TEMP/chk"
+          tar xzf dist-headless-arm64/*.tar.gz -C "$RUNNER_TEMP/chk"
+          FAIL=0
+          while IFS= read -r f; do
+            MAX=$(objdump -T "$f" 2>/dev/null | grep -oP 'GLIBC_\K[0-9]+\.[0-9]+' | sort -V | tail -1 || true)
+            [ -z "$MAX" ] && continue
+            if [ "$(printf '%s\n2.39\n' "$MAX" | sort -V | tail -1)" != "2.39" ]; then
+              echo "::error::$f requires glibc $MAX, newer than the project floor (glibc 2.39)"
+              FAIL=1
+            fi
+          done < <(find "$RUNNER_TEMP/chk" \( -path '*/bin/linux/*' -o -name '*.node' \) -type f)
+          exit $FAIL
+
+      - name: Smoke test arm64 tarball
+        run: bash scripts/test-headless-arm64.sh dist-headless-arm64/*.tar.gz
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: v${{ github.event.inputs.version }} (headless)
+          prerelease: ${{ github.event.inputs.prerelease }}
+          generate_release_notes: true
+          files: dist-headless-arm64/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

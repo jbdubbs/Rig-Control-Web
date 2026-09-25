@@ -26,8 +26,13 @@
 #
 # Usage:
 #   bash scripts/build-headless-arm64.sh [HAMLIB_RCW_TOKEN]
-#   (falls back to `gh auth token` if omitted and gh is authenticated —
+#   (falls back to the HAMLIB_RCW_TOKEN env var, then `gh auth token` —
 #   needed to clone the private jbdubbs/hamlib-RCW fork for rigctld)
+#
+# Also runs unmodified on a native arm64 host (e.g. GitHub's free
+# `ubuntu-24.04-arm` runner, see .github/workflows/release-headless.yml) —
+# `--arch=arm64` is a no-op there, so no QEMU is involved and the Debian 12
+# container still pins the glibc 2.36 floor regardless of the host distro.
 #
 # Output: dist-headless-arm64/rigcontrol-web-<version>-linux-arm64.tar.gz
 
@@ -65,7 +70,7 @@ git -C "$REPO_ROOT" archive HEAD | tar -x -C "$STAGE/repo"
 rm -f "$STAGE/repo/bin/linux/rigctld" "$STAGE/repo/bin/linux/cw-key-helper" \
       "$STAGE/repo/bin/linux/ft4222-scope-reader" "$STAGE/repo/bin/linux/wsjtx-bridge"
 
-TOKEN="${1:-$(gh auth token 2>/dev/null || true)}"
+TOKEN="${1:-${HAMLIB_RCW_TOKEN:-$(gh auth token 2>/dev/null || true)}}"
 if [ -z "$TOKEN" ]; then
   echo "[build-headless-arm64] Warning: no HAMLIB_RCW_TOKEN and 'gh auth token' returned nothing — the private hamlib-RCW clone will fail unless this host already has its own git credentials for that repo." >&2
 fi
