@@ -29,6 +29,15 @@
 # Usage:
 #   bash scripts/test-headless-docker.sh              # build from the current tree
 #   bash scripts/test-headless-docker.sh <image:tag>   # test a pre-built/pulled image
+#
+# The image is multi-arch (linux/amd64 + linux/arm64). By default this tests
+# the host's own architecture, which is what .github/workflows/docker-publish.yml
+# does natively on an amd64 and an arm64 runner. To test the other arch from a
+# dev machine under QEMU user-mode emulation (slow, but the same image), set
+# PLATFORM; an arm64 build from source also needs the hamlib-RCW token the
+# Dockerfile's helpers-arm64 stage reads (see the Dockerfile header):
+#   PLATFORM=linux/arm64 HAMLIB_RCW_TOKEN=... bash scripts/test-headless-docker.sh
+#   PLATFORM=linux/arm64 bash scripts/test-headless-docker.sh <image:tag>
 
 set -euo pipefail
 
@@ -58,6 +67,12 @@ echo "Using container engine: $ENGINE"
 CONTAINER=rigcontrol-web-headless-test
 IMAGE="${1:-}"
 
+# The ${arr[@]+...} form keeps `set -u` happy when an array is empty.
+PLATFORM_ARGS=()
+[ -n "${PLATFORM:-}" ] && PLATFORM_ARGS=(--platform "$PLATFORM")
+SECRET_ARGS=()
+[ -n "${HAMLIB_RCW_TOKEN:-}" ] && SECRET_ARGS=(--secret id=hamlib_rcw_token,env=HAMLIB_RCW_TOKEN)
+
 cleanup() { "$ENGINE" rm -f "$CONTAINER" > /dev/null 2>&1 || true; }
 trap cleanup EXIT
 
@@ -70,9 +85,9 @@ if [ -z "$IMAGE" ]; then
   # build-context bind mount under podman; docker doesn't need (or
   # consistently support) it for `build`, so it's podman-only.
   if [ "$ENGINE" = "podman" ]; then
-    podman build --security-opt label=disable -t "$IMAGE" -f Dockerfile .
+    podman build --security-opt label=disable ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} ${SECRET_ARGS[@]+"${SECRET_ARGS[@]}"} -t "$IMAGE" -f Dockerfile .
   else
-    docker build -t "$IMAGE" -f Dockerfile .
+    docker build ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} ${SECRET_ARGS[@]+"${SECRET_ARGS[@]}"} -t "$IMAGE" -f Dockerfile .
   fi
 else
   echo "=== Using provided image: $IMAGE ==="
@@ -89,7 +104,7 @@ cleanup
 # only installed transiently in the Dockerfile to fetch NodeSource, then
 # purged), and this is also more representative of what an actual remote
 # browser/client sees.
-"$ENGINE" run -d --name "$CONTAINER" -p 13000:3000 -p 14532:4532 "$IMAGE" > /dev/null
+"$ENGINE" run -d ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} --name "$CONTAINER" -p 13000:3000 -p 14532:4532 "$IMAGE" > /dev/null
 
 # Give the server a moment to generate its self-signed cert and bind the port.
 HTTP_CODE="000"
@@ -184,7 +199,7 @@ else
     # https://github.com/jbdubbs/Rig-Control-Web/wiki/Headless-Deployment
     # This is the same device/security_opt combination docker-compose.yml
     # ships by default.
-    ASOUND_CARDS=$("$ENGINE" run --rm --name "$AUDIO_CONTAINER" \
+    ASOUND_CARDS=$("$ENGINE" run --rm ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} --name "$AUDIO_CONTAINER" \
       --group-add "$AUDIO_GID" \
       --device /dev/snd:/dev/snd \
       "${SECURITY_OPTS[@]}" \
@@ -203,7 +218,7 @@ else
     # but separate naudiodon/PortAudio robustness gap, not a masking
     # regression, so a WARN here doesn't necessarily mean the fix is
     # broken — the /proc/asound check above is the authoritative one.
-    ENUM_OUTPUT=$("$ENGINE" run --rm \
+    ENUM_OUTPUT=$("$ENGINE" run --rm ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} \
       --group-add "$AUDIO_GID" \
       --device /dev/snd:/dev/snd \
       "${SECURITY_OPTS[@]}" \

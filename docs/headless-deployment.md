@@ -23,7 +23,7 @@ source. Everything else (rig control, audio, CW keyer, CW decode,
 spectrum, spots, solar data, admin panel) works exactly as in the desktop
 app, viewed from any browser pointed at the controller's IP.
 
-**Platform support:** **x64** (N100/N150 mini PCs and any other x86_64 Linux box) and **arm64** (Raspberry Pi 3/4/5 running a 64-bit OS) are both supported for the bare-metal tarball and systemd install. The Docker image is currently **`linux/amd64` only** — on a Raspberry Pi, use the arm64 tarball (see the systemd section below).
+**Platform support:** **x64** (N100/N150 mini PCs and any other x86_64 Linux box) and **arm64** (Raspberry Pi 3/4/5 running a 64-bit OS) are both supported, either as a Docker image or as a bare-metal tarball with systemd. The Docker image is multi-arch (**`linux/amd64`** and **`linux/arm64`**): the same `jbdubbs/rigcontrol-web` tag pulls the right build for your machine automatically, so the Docker steps below are identical on a Raspberry Pi.
 
 ---
 

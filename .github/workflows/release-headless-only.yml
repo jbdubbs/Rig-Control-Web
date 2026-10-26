@@ -13,7 +13,8 @@ name: Release (Headless Only)
 # workflow triggers — so neither of those workflows runs from this one.
 #
 # Publishes: the jbdubbs/rigcontrol-web Docker image (:latest and
-# :<version>, linux/amd64 — same as docker-publish.yml) and the bare-metal
+# :<version>, multi-arch amd64 + arm64, built by calling docker-publish.yml
+# rather than duplicating it) and the bare-metal
 # x64 + arm64 (Raspberry Pi) tarballs (scripts/build-headless-x64.sh,
 # scripts/build-headless-arm64.sh) as GitHub Release assets. The arm64 job
 # runs natively on GitHub's free ubuntu-24.04-arm runner (public repos).
@@ -38,6 +39,17 @@ permissions:
   contents: write
 
 jobs:
+  # Must stay a call into docker-publish.yml, not an inlined build: only that
+  # workflow builds both architectures, and a single-arch push here would
+  # replace the multi-arch `latest` tag. It also syncs DOCKERHUB.md to the
+  # Docker Hub page, so update its "Latest release" line by hand first, same
+  # as for any other release.
+  docker:
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      version: ${{ github.event.inputs.version }}
+    secrets: inherit
+
   release-headless:
     runs-on: ubuntu-24.04
 
@@ -52,37 +64,6 @@ jobs:
             echo "::error::Input version '${{ github.event.inputs.version }}' does not match package.json version '$PKG_VERSION'. Bump package.json (and the App Version string in src/modals/SettingsModal.tsx) first."
             exit 1
           fi
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64
-          push: true
-          tags: |
-            jbdubbs/rigcontrol-web:latest
-            jbdubbs/rigcontrol-web:${{ github.event.inputs.version }}
-
-      # Keeps the Docker Hub repo page in sync with DOCKERHUB.md, same as
-      # docker-publish.yml. Update DOCKERHUB.md's "Latest release" line by
-      # hand as part of cutting this release, same as any other release.
-      - name: Sync description to Docker Hub
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: jbdubbs/rigcontrol-web
-          short-description: "Headless web backend for RigControl Web — control amateur radio via Hamlib rigctld"
-          readme-filepath: ./DOCKERHUB.md
 
       - name: Build x64 headless bare-metal tarball
         run: bash scripts/build-headless-x64.sh

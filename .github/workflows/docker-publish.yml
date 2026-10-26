@@ -1,44 +1,84 @@
 name: Publish Docker Image
 
 # Builds and publishes the headless (no Electron/GUI) deployment image from
-# ./Dockerfile to Docker Hub. Independent of build.yml's Electron installer
-# matrix — this image reuses the already-committed, glibc-2.39-floor-checked
-# bin/linux/* binaries directly rather than rebuilding them.
+# ./Dockerfile to Docker Hub as one multi-arch manifest (linux/amd64 +
+# linux/arm64, e.g. Raspberry Pi 3/4/5 on a 64-bit OS). Independent of
+# build.yml's Electron installer matrix.
 #
-# Stage 1 (current): linux/amd64 only. ARM64 (Raspberry Pi) is a planned
-# follow-up — see https://github.com/jbdubbs/Rig-Control-Web/wiki/Headless-Deployment.
+# Each architecture builds on its own native runner (no QEMU), pushes its
+# image by digest only (no tag), and is smoke-tested by that digest. Only
+# once every arch has built and passed does the merge job create the tags,
+# so a broken arch can never end up behind `latest`.
 #
-# Requires two repo secrets that must be created once before this workflow
-# can run: DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a Docker Hub access
-# token, not the account password — create one at
-# https://hub.docker.com/settings/security).
+# amd64 reuses the committed, glibc-2.39-floor-checked bin/linux/* binaries.
+# arm64 has none committed, so the Dockerfile compiles them from source in
+# its helpers-arm64 stage, which needs the private hamlib-RCW clone:
+# HAMLIB_RCW_TOKEN is passed as a BuildKit secret (same repo secret
+# build.yml and release-headless.yml use).
+#
+# Tags: a `v*` tag push publishes `latest` + the version. A manual
+# workflow_dispatch from a branch publishes only `test-<short sha>`, never
+# `latest`, so the pipeline can be exercised without touching what users pull.
+# Dispatching with --ref set to a `v*` tag behaves like a tag push (use that
+# to re-run a failed release publish).
+#
+# Also callable (workflow_call) by release-headless-only.yml, which has no tag
+# push to key off: passing `version` publishes `latest` + that version, after
+# checking it matches package.json. That caller must not publish the image
+# itself, or it would replace this multi-arch `latest` with a single-arch one.
+#
+# Requires the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repo secrets (a Docker
+# Hub access token, not the account password — create one at
+# https://hub.docker.com/settings/security) plus HAMLIB_RCW_TOKEN.
 
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version to publish as latest + this tag, e.g. 1.5.2 (must match package.json)'
+        type: string
+        required: false
 
 permissions:
   contents: read
 
+env:
+  IMAGE: jbdubbs/rigcontrol-web
+
 jobs:
-  docker:
-    runs-on: ubuntu-24.04
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Determine image tags
-        id: tags
+      - name: Verify version input matches package.json
+        if: inputs.version != ''
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          IMAGE=jbdubbs/rigcontrol-web
-          TAGS="$IMAGE:latest"
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-            TAGS="$TAGS,$IMAGE:$VERSION"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "::error::Input version '$VERSION' does not match package.json version '$PKG_VERSION'."
+            exit 1
           fi
-          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -49,19 +89,110 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      # Pushed by digest with no tag: the merge job below is the only thing
+      # that tags anything.
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          secrets: |
+            hamlib_rcw_token=${{ secrets.HAMLIB_RCW_TOKEN }}
+
+      # Runs the image natively on this arch's runner. Fails the job (and so
+      # blocks the merge job) if the server doesn't serve HTTPS, a bundled
+      # binary has an unresolved shared library, or rigctld doesn't run.
+      - name: Smoke test the pushed image
+        run: bash scripts/test-headless-docker.sh "$IMAGE@${{ steps.build.outputs.digest }}"
+
+      - name: Export digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # `release` gates the Docker Hub description sync below: only a real
+      # release publish may change the public repo page.
+      - name: Determine image tags
+        id: tags
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "tags=latest ${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$VERSION" ]; then
+            echo "tags=latest $VERSION" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=test-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push the multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          if [ "$(ls | wc -l)" -ne 2 ]; then
+            echo "::error::Expected 2 digests (amd64 + arm64), found: $(ls | tr '\n' ' ')"
+            exit 1
+          fi
+          ARGS=()
+          for t in $TAGS; do ARGS+=(-t "$IMAGE:$t"); done
+          for d in *; do ARGS+=("$IMAGE@sha256:$d"); done
+          docker buildx imagetools create "${ARGS[@]}"
+
+      # Fails the job if the published tag is missing either architecture.
+      - name: Verify the published manifest
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          FIRST=$(echo "$TAGS" | cut -d' ' -f1)
+          docker buildx imagetools inspect "$IMAGE:$FIRST"
+          docker buildx imagetools inspect --raw "$IMAGE:$FIRST" \
+            | jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] | (index("amd64") != null) and (index("arm64") != null)'
 
       # Keeps the Docker Hub repo page (description + "Latest release" pointer)
-      # in sync with DOCKERHUB.md on every publish, so release notes actually
-      # reach Docker Hub instead of only living in the GitHub Release. Update
-      # DOCKERHUB.md's "Latest release" line as part of cutting each release.
+      # in sync with DOCKERHUB.md on every release publish, so release notes
+      # actually reach Docker Hub instead of only living in the GitHub Release.
+      # Update DOCKERHUB.md's "Latest release" line as part of cutting each
+      # release. Skipped for test runs so they can't change the public page.
       - name: Sync description to Docker Hub
+        if: steps.tags.outputs.release == 'true'
         uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
