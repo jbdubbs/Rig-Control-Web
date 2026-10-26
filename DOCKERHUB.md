@@ -4,7 +4,7 @@ Open-source web app for controlling amateur radio equipment via [Hamlib](https:/
 
 Full-featured desktop builds (Windows/macOS/Linux, with the video feed) are on the [GitHub Releases page](https://github.com/jbdubbs/Rig-Control-Web/releases).
 
-**Latest release: v1.5.1** — adds an admin-configurable server port (Admin tab → Danger Zone), and fixes client audio teardown/restore on logout and re-login. See the [full release notes](https://github.com/jbdubbs/Rig-Control-Web/releases/tag/v1.5.1) for details.
+**Latest release: v1.5.2** — adds a light theme with a header toggle, fixes backend audio going silent after a transient capture overflow, and the image is now multi-arch with a `linux/arm64` build for Raspberry Pi. See the [full release notes](https://github.com/jbdubbs/Rig-Control-Web/releases/tag/v1.5.2) for details.
 
 ## Quick start (Docker Compose)
 
@@ -18,7 +18,7 @@ docker compose up -d
 
 Browse to `https://<controller-ip>:3000` and log in as `ADMIN` / `admin` (forced password change on first login).
 
-Tags: `latest` and version-pinned (e.g. `1.5.1`). `linux/amd64` only for now — ARM64/Raspberry Pi is intentionally deferred until the amd64 image gets more real-world usage reports.
+Tags: `latest` and version-pinned (e.g. `1.5.2`). Multi-arch: `linux/amd64` and `linux/arm64` (Raspberry Pi 3/4/5 on a 64-bit OS). Docker pulls the right one for your machine automatically.
 
 ## Full documentation
 
