@@ -137,7 +137,9 @@ test.describe('MufMapPanel with a mocked prop.kc2g.com feed', () => {
     if (!boxAfter) throw new Error('map container has no bounding box after resize');
     const widthRatio = boxAfter.width / box.width;
 
-    const after = await readTransform();
-    expect(after.x).toBeCloseTo(before.x * widthRatio, 0);
+    // The rescale runs from a ResizeObserver callback and a per-frame state
+    // commit, so it can land after setViewportSize() resolves. Poll rather than
+    // read once, which flaked as the unrescaled value.
+    await expect.poll(async () => (await readTransform()).x).toBeCloseTo(before.x * widthRatio, 0);
   });
 });
