@@ -211,13 +211,30 @@ else
       fail "/proc/asound is empty/unreadable inside the container — masking regression (issue #55)"
     fi
 
-    # Best-effort only, NOT a hard failure: a single misbehaving ALSA
-    # device on the test host can abort naudiodon's entire scan (confirmed
-    # during issue #55 investigation — e.g. a USB HDMI-capture dongle
-    # PortAudio couldn't probe at its default sample rate). That's a real
-    # but separate naudiodon/PortAudio robustness gap, not a masking
-    # regression, so a WARN here doesn't necessarily mean the fix is
-    # broken — the /proc/asound check above is the authoritative one.
+    CARD_COUNT=$(printf '%s\n' "$ASOUND_CARDS" | grep -c '^ *[0-9]' || true)
+
+    # QEMU user-mode emulation (a PLATFORM that isn't this host's arch) can't
+    # translate ALSA's /dev/snd ioctls: an emulated process sees no cards even
+    # though /proc/asound lists them (confirmed with a stock Debian
+    # `aplay -l`, which lists cards natively and "no soundcards found"
+    # emulated). A zero-device result there says nothing about the image.
+    EMULATED=false
+    if [ -n "${PLATFORM:-}" ]; then
+      case "$(uname -m)" in
+        x86_64) HOST_ARCH=amd64 ;;
+        aarch64|arm64) HOST_ARCH=arm64 ;;
+        *) HOST_ARCH=$(uname -m) ;;
+      esac
+      if [ "$(echo "$PLATFORM" | cut -d/ -f2)" != "$HOST_ARCH" ]; then
+        EMULATED=true
+      fi
+    fi
+
+    # An exception or missing device list is only a WARN, since the
+    # /proc/asound check above is the authoritative masking test. A clean
+    # "0 devices" while /proc/asound lists cards is the same symptom as the
+    # issue #55 enumeration bug (PortAudio aborting every host API when one
+    # fails to initialize) with no error to see, so it fails below.
     ENUM_OUTPUT=$("$ENGINE" run --rm ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} \
       --group-add "$AUDIO_GID" \
       --device /dev/snd:/dev/snd \
@@ -231,7 +248,15 @@ else
       ' 2>/dev/null || true)
     if echo "$ENUM_OUTPUT" | grep -q "^DEVICE_COUNT="; then
       COUNT=$(echo "$ENUM_OUTPUT" | grep "^DEVICE_COUNT=" | cut -d= -f2)
-      pass "naudiodon.getDevices() returned $COUNT device(s)"
+      if [ "$COUNT" -eq 0 ] && [ "$CARD_COUNT" -gt 0 ]; then
+        if [ "$EMULATED" = true ]; then
+          warn "naudiodon.getDevices() returned 0 devices while /proc/asound lists $CARD_COUNT card(s): expected under $PLATFORM emulation here (QEMU can't translate ALSA ioctls), so this is inconclusive. Run it on a real $PLATFORM machine."
+        else
+          fail "naudiodon.getDevices() returned 0 devices while /proc/asound lists $CARD_COUNT card(s): audio enumeration regression (issue #55 class)"
+        fi
+      else
+        pass "naudiodon.getDevices() returned $COUNT device(s)"
+      fi
     else
       REASON=$(echo "$ENUM_OUTPUT" | tail -1)
       warn "naudiodon.getDevices() did not return a device list (informational, see comment above): ${REASON:-no output}"
