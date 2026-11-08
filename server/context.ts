@@ -104,8 +104,6 @@ export interface ServerContext {
     inboundEnabled: boolean;
     outboundEnabled: boolean;
     backendLockedToAdmin: boolean;
-    // PortAudio framesPerBuffer for backend streams; 0 = PortAudio-negotiated.
-    bufferFrames: number;
   };
   videoSettings: {
     device: string;
@@ -382,7 +380,6 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
       inboundEnabled: false,
       outboundEnabled: false,
       backendLockedToAdmin: false,
-      bufferFrames: 0,
     },
     videoSettings: {
       device: "",

@@ -157,34 +157,21 @@ describe('capture stream resilience (#119)', () => {
   });
 });
 
-describe('audio buffer size setting (#126)', () => {
-  it('accepts only the known framesPerBuffer values', () => {
-    for (const ok of [0, 480, 960, 1920]) {
-      expect(sanitizeAudioSettingsUpdate({ bufferFrames: ok })).toEqual({ bufferFrames: ok });
-    }
-  });
-
-  it('rejects anything else, including numeric strings, null, NaN and arbitrary numbers', () => {
-    for (const bad of ['960', 12345, NaN, -1, null, undefined, 960.5, true]) {
-      expect(sanitizeAudioSettingsUpdate({ bufferFrames: bad as any })).toEqual({});
-    }
-  });
-
-  it('is covered by the backend admin lock', () => {
-    expect(isAudioSettingsChangeAllowed(true, 'regular', ['bufferFrames'])).toBe(false);
-    expect(isAudioSettingsChangeAllowed(false, 'regular', ['bufferFrames'])).toBe(true);
-    expect(isAudioSettingsChangeAllowed(true, 'admin', ['bufferFrames'])).toBe(true);
-  });
-
-  it('passes framesPerBuffer through to both stream option builders, defaulting to 0', () => {
+describe('stream option builders (#126)', () => {
+  it('builds capture and playback options that never close the stream on a status flag', () => {
     const pa = { SampleFormat16Bit: 16 };
-    expect(buildCaptureOptions(pa, 3).framesPerBuffer).toBe(0);
-    expect(buildPlaybackOptions(pa, 4).framesPerBuffer).toBe(0);
-    expect(buildCaptureOptions(pa, 3, 960).framesPerBuffer).toBe(960);
-    const out = buildPlaybackOptions(pa, 4, 960);
-    expect(out.framesPerBuffer).toBe(960);
-    expect(out.deviceId).toBe(4);
-    expect(out.closeOnError).toBe(false);
+    const inOpts = buildCaptureOptions(pa, 3);
+    expect(inOpts.deviceId).toBe(3);
+    expect(inOpts.closeOnError).toBe(false);
+    expect(inOpts.framesPerBuffer).toBe(0);
+    const outOpts = buildPlaybackOptions(pa, 4);
+    expect(outOpts.deviceId).toBe(4);
+    expect(outOpts.closeOnError).toBe(false);
+    expect(outOpts.framesPerBuffer).toBe(0);
+  });
+
+  it('does not accept a buffer-size key in audio settings updates', () => {
+    expect(sanitizeAudioSettingsUpdate({ bufferFrames: 960 } as any)).toEqual({});
   });
 });
 
@@ -217,7 +204,7 @@ describe('capture restart cap (#126)', () => {
     const fourth = closeOnce(errors);
     expect(fourth).toContain('failed 3 times');
     expect(fourth).not.toContain('restarting backend audio');
-    expect(fourth).toContain('Audio buffer size');
+    expect(fourth).toContain('Start Backend Audio');
   });
 
   it('keeps refusing to restart while the window still holds three attempts, even for later closes', () => {

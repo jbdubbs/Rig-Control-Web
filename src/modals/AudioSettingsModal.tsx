@@ -27,7 +27,6 @@ export interface AudioSettingsModalProps {
     inboundEnabled: boolean;
     outboundEnabled: boolean;
     backendLockedToAdmin: boolean;
-    bufferFrames: number;
   };
   setAudioSettings: React.Dispatch<
     React.SetStateAction<{
@@ -36,7 +35,6 @@ export interface AudioSettingsModalProps {
       inboundEnabled: boolean;
       outboundEnabled: boolean;
       backendLockedToAdmin: boolean;
-      bufferFrames: number;
     }>
   >;
   audioSettingsDenied?: { action: string; reason: string } | null;
@@ -523,28 +521,6 @@ function AudioSettingsModal({
                       return <option key={d.altName} value={JSON.stringify({ name: d.name, hostAPIName: d.hostAPIName })} disabled={disabled}>{label}</option>;
                     })}
                   </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[0.625rem] uppercase text-muted font-bold">Audio Buffer Size</label>
-                  <select
-                    value={audioSettings.bufferFrames ?? 0}
-                    disabled={backendLocked}
-                    onChange={(e) => {
-                      const newSettings = { ...audioSettings, bufferFrames: parseInt(e.target.value, 10) };
-                      setAudioSettings(newSettings);
-                      socket?.emit("update-audio-settings", newSettings);
-                    }}
-                    className="w-full bg-app border border-line rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all"
-                  >
-                    <option value={0}>Default (let the audio system decide)</option>
-                    <option value={480}>480 frames (10 ms)</option>
-                    <option value={960}>960 frames (20 ms)</option>
-                    <option value={1920}>1920 frames (40 ms)</option>
-                  </select>
-                  <p className="text-[0.625rem] text-faint leading-tight">
-                    Leave on Default unless backend audio keeps restarting or reports input overflow, which some USB audio devices do when input and output run together. Then try 960. Larger values are more tolerant of stalls but add delay. Applies the next time backend audio starts (it restarts automatically if already running).
-                  </p>
                 </div>
               </div>
 

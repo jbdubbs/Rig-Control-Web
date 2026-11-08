@@ -33,7 +33,7 @@ function queueAudioOp(op: () => Promise<void>): Promise<void> {
 // Pure decision logic, kept separate from the socket handlers below so it's
 // unit-testable without touching naudiodon/sockets/ctx.
 
-const BACKEND_LOCKABLE_KEYS = new Set(["inputDevice", "outputDevice", "inboundEnabled", "outboundEnabled", "bufferFrames"]);
+const BACKEND_LOCKABLE_KEYS = new Set(["inputDevice", "outputDevice", "inboundEnabled", "outboundEnabled"]);
 const LOCK_FLAG_KEY = "backendLockedToAdmin";
 
 export function isAudioSettingsChangeAllowed(
@@ -58,14 +58,6 @@ export function isControlAudioActionAllowed(locked: boolean, role: "admin" | "re
 const AUDIO_SETTINGS_STRING_KEYS = new Set(["inputDevice", "outputDevice"]);
 const AUDIO_SETTINGS_BOOLEAN_KEYS = new Set(["inboundEnabled", "outboundEnabled", "backendLockedToAdmin"]);
 
-// PortAudio framesPerBuffer for the backend capture/playback streams. 0 lets
-// PortAudio negotiate the host buffer size (the long-standing default, and
-// what the Windows fixes in DEV_NOTES.md rely on). The fixed sizes are
-// 10/20/40 ms at 48 kHz, an opt-in workaround for devices that overflow with
-// the negotiated size (issue #126).
-export const AUDIO_BUFFER_FRAMES_OPTIONS = [0, 480, 960, 1920] as const;
-const AUDIO_BUFFER_FRAMES_ALLOWED = new Set<number>(AUDIO_BUFFER_FRAMES_OPTIONS);
-
 export function sanitizeAudioSettingsUpdate(
   settings: Record<string, unknown>
 ): Partial<ServerContext["audioSettings"]> {
@@ -75,8 +67,6 @@ export function sanitizeAudioSettingsUpdate(
       (result as any)[key] = value;
     } else if (AUDIO_SETTINGS_BOOLEAN_KEYS.has(key) && typeof value === "boolean") {
       (result as any)[key] = value;
-    } else if (key === "bufferFrames" && typeof value === "number" && AUDIO_BUFFER_FRAMES_ALLOWED.has(value)) {
-      result.bufferFrames = value;
     }
   }
   return result;
@@ -267,37 +257,34 @@ export function resolveDeviceId(ctx: ServerContext, saved: string, label: "input
 // briefly during a login, issue #119) instead of destroying it while
 // audioStatus still reads "playing". naudiodon-gcc15 v2.5.0 and earlier parsed
 // this option but never honoured it, so a single flag always closed the
-// stream; commit 004147f (pinned in package.json) delivers the audio and
-// emits 'pa-status' instead (issue #126).
-// framesPerBuffer comes from the opt-in "Audio buffer size" setting (0 =
-// let PortAudio negotiate).
-export function buildCaptureOptions(portAudio: any, deviceId: number, framesPerBuffer = 0) {
+// stream; v2.5.1 delivers the audio and emits 'pa-status' instead (issue #126).
+export function buildCaptureOptions(portAudio: any, deviceId: number) {
   return {
     channelCount: 1,
     sampleFormat: portAudio.SampleFormat16Bit,
     sampleRate: 48000,
     deviceId,
     closeOnError: false,
-    framesPerBuffer,
+    framesPerBuffer: 0,
     maxQueue: 10,
     highwaterMark: 256,
   };
 }
 
-export function buildPlaybackOptions(portAudio: any, deviceId: number, framesPerBuffer = 0) {
+export function buildPlaybackOptions(portAudio: any, deviceId: number) {
   return {
     channelCount: 1,
     sampleFormat: portAudio.SampleFormat16Bit,
     sampleRate: 48000,
     deviceId,
     closeOnError: false,
-    framesPerBuffer,
+    framesPerBuffer: 0,
     maxQueue: 20,
   };
 }
 
-// A capture stream that dies over and over (a flaky USB device, a buffer size
-// the device can't sustain) must not be restarted forever: that cycles the
+// A capture stream that dies over and over (a flaky or unplugged USB device)
+// must not be restarted forever: that cycles the
 // radio audio every ~1.4 s and floods the log (issue #126). Same rolling-window
 // budget idea as server/dxCluster.ts. Deliberately not reset by a manual
 // start/stop: a manual restart of a still-failing device would otherwise
@@ -361,8 +348,7 @@ export function handleCaptureClosed(ctx: ServerContext, stream: any): boolean {
   if (!consumeCaptureRestartBudget()) {
     console.error(
       `[AUDIO-IN] Capture stream failed ${CAPTURE_RESTART_MAX} times within ${CAPTURE_RESTART_WINDOW_MS / 1000}s; ` +
-      "stopping backend audio instead of restarting again. Check the Backend Input device, or try a different " +
-      "\"Audio buffer size\" in Audio Settings, then press Start Backend Audio."
+      "stopping backend audio instead of restarting again. Check the Backend Input device, then press Start Backend Audio."
     );
     stopAudio(ctx).catch((err) => console.error("[AUDIO-IN] Stop after repeated capture failures failed:", err));
     return true;
@@ -433,10 +419,8 @@ async function startAudioLocked(ctx: ServerContext): Promise<void> {
   if (ctx.audioSettings.inputDevice) {
     try {
       const deviceId = resolveDeviceId(ctx, ctx.audioSettings.inputDevice, "input");
-      const bufferFrames = ctx.audioSettings.bufferFrames ?? 0;
-      vlog(`[AUDIO-IN] Opening capture with framesPerBuffer=${bufferFrames}${bufferFrames === 0 ? " (PortAudio-negotiated)" : ""}`);
       ctx.audioInputProcess = new ctx.portAudio.AudioIO({
-        inOptions: buildCaptureOptions(ctx.portAudio, deviceId, bufferFrames),
+        inOptions: buildCaptureOptions(ctx.portAudio, deviceId),
       });
       const inputStream = ctx.audioInputProcess;
 
@@ -473,7 +457,7 @@ async function startAudioLocked(ctx: ServerContext): Promise<void> {
         console.error("[AUDIO-IN] naudiodon error:", err);
       });
 
-      // naudiodon-gcc15 004147f+ reports capture status flags here instead of
+      // naudiodon-gcc15 v2.5.1+ reports capture status flags here instead of
       // destroying the stream (closeOnError: false). Log them for
       // DEBUG_AUDIO=1 diagnosis (first few, then every 100th, since a wedged
       // device reports on every callback) and fail over if they never stop.
@@ -502,10 +486,8 @@ async function startAudioLocked(ctx: ServerContext): Promise<void> {
   if (ctx.audioSettings.outputDevice) {
     try {
       const deviceId = resolveDeviceId(ctx, ctx.audioSettings.outputDevice, "output");
-      const bufferFrames = ctx.audioSettings.bufferFrames ?? 0;
-      vlog(`[AUDIO-OUT] Opening playback with framesPerBuffer=${bufferFrames}${bufferFrames === 0 ? " (PortAudio-negotiated)" : ""}`);
       ctx.audioOutputProcess = new ctx.portAudio.AudioIO({
-        outOptions: buildPlaybackOptions(ctx.portAudio, deviceId, bufferFrames),
+        outOptions: buildPlaybackOptions(ctx.portAudio, deviceId),
       });
 
       ctx.audioOutputProcess.on('error', (err: any) => {
