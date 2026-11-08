@@ -29,7 +29,8 @@ export function useAudio({ socket, cwDecodeEnabledRef, cwDecoderRef, ft8DecodeEn
     outputDevice: "",
     inboundEnabled: false,
     outboundEnabled: false,
-    backendLockedToAdmin: false
+    backendLockedToAdmin: false,
+    bufferFrames: 0
   });
   const [audioSettingsDenied, setAudioSettingsDenied] = useState<{ action: string; reason: string } | null>(null);
   const [localAudioDevices, setLocalAudioDevices] = useState<{ inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] }>({ inputs: [], outputs: [] });

@@ -107,6 +107,8 @@ Turn it **off** if you're sending audio that isn't speech and don't want it proc
 
 > **Enabling/Disabling directions:** You can run inbound-only (receive audio only) or outbound-only (transmit audio only) if your setup requires it. Use the Enabled toggles next to each device selector.
 
+> **Audio Buffer Size:** Leave this on **Default**. If backend audio keeps restarting (the server log repeats `Capture stream closed unexpectedly`) or `--debug-audio` shows `input overflow`, try **960**. Some USB audio devices do this when input and output run together, for example on a Raspberry Pi. Larger values tolerate stalls better but add a little delay. If the capture stream fails three times within a minute, the server stops backend audio instead of restarting it again; change the buffer size (or the device) and press **Start Backend Audio**.
+
 ---
 
 ### Linux: Radio Power Cycling and USB Audio Reconnection

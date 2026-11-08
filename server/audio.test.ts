@@ -1,6 +1,6 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
-import { isAudioSettingsChangeAllowed, isControlAudioActionAllowed, sanitizeAudioSettingsUpdate, PcmFrameAccumulator, buildCaptureOptions, handleCaptureClosed } from './audio.ts';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { isAudioSettingsChangeAllowed, isControlAudioActionAllowed, sanitizeAudioSettingsUpdate, PcmFrameAccumulator, buildCaptureOptions, buildPlaybackOptions, handleCaptureClosed, resetCaptureRestartBudget, StatusFlagMonitor } from './audio.ts';
 import { vi } from 'vitest';
 
 describe('isAudioSettingsChangeAllowed', () => {
@@ -154,5 +154,107 @@ describe('capture stream resilience (#119)', () => {
     expect(handleCaptureClosed({ audioInputProcess: null, audioStatus: 'playing' } as any, stream)).toBe(false);
     expect(handleCaptureClosed({ audioInputProcess: {}, audioStatus: 'playing' } as any, stream)).toBe(false);
     expect(handleCaptureClosed({ audioInputProcess: stream, audioStatus: 'stopped' } as any, stream)).toBe(false);
+  });
+});
+
+describe('audio buffer size setting (#126)', () => {
+  it('accepts only the known framesPerBuffer values', () => {
+    for (const ok of [0, 480, 960, 1920]) {
+      expect(sanitizeAudioSettingsUpdate({ bufferFrames: ok })).toEqual({ bufferFrames: ok });
+    }
+  });
+
+  it('rejects anything else, including numeric strings, null, NaN and arbitrary numbers', () => {
+    for (const bad of ['960', 12345, NaN, -1, null, undefined, 960.5, true]) {
+      expect(sanitizeAudioSettingsUpdate({ bufferFrames: bad as any })).toEqual({});
+    }
+  });
+
+  it('is covered by the backend admin lock', () => {
+    expect(isAudioSettingsChangeAllowed(true, 'regular', ['bufferFrames'])).toBe(false);
+    expect(isAudioSettingsChangeAllowed(false, 'regular', ['bufferFrames'])).toBe(true);
+    expect(isAudioSettingsChangeAllowed(true, 'admin', ['bufferFrames'])).toBe(true);
+  });
+
+  it('passes framesPerBuffer through to both stream option builders, defaulting to 0', () => {
+    const pa = { SampleFormat16Bit: 16 };
+    expect(buildCaptureOptions(pa, 3).framesPerBuffer).toBe(0);
+    expect(buildPlaybackOptions(pa, 4).framesPerBuffer).toBe(0);
+    expect(buildCaptureOptions(pa, 3, 960).framesPerBuffer).toBe(960);
+    const out = buildPlaybackOptions(pa, 4, 960);
+    expect(out.framesPerBuffer).toBe(960);
+    expect(out.deviceId).toBe(4);
+    expect(out.closeOnError).toBe(false);
+  });
+});
+
+describe('capture restart cap (#126)', () => {
+  beforeEach(() => {
+    resetCaptureRestartBudget();
+    // Only Date is faked: the async restart/stop work behind handleCaptureClosed
+    // still needs real promise/timer scheduling to fail fast on the bare ctx.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-08T12:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function closeOnce(errors: ReturnType<typeof vi.spyOn>) {
+    const stream = {};
+    errors.mockClear();
+    expect(handleCaptureClosed({ audioInputProcess: stream, audioStatus: 'playing' } as any, stream)).toBe(true);
+    return String(errors.mock.calls[0]?.[0] ?? '');
+  }
+
+  it('restarts the first three unexpected closes within the window, then stops instead of restarting', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (let i = 0; i < 3; i++) {
+      expect(closeOnce(errors)).toContain('restarting backend audio');
+      vi.setSystemTime(Date.now() + 1500); // ~the real loop period
+    }
+    const fourth = closeOnce(errors);
+    expect(fourth).toContain('failed 3 times');
+    expect(fourth).not.toContain('restarting backend audio');
+    expect(fourth).toContain('Audio buffer size');
+  });
+
+  it('keeps refusing to restart while the window still holds three attempts, even for later closes', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (let i = 0; i < 3; i++) closeOnce(errors);
+    vi.setSystemTime(Date.now() + 30_000);
+    expect(closeOnce(errors)).toContain('failed 3 times');
+  });
+
+  it('restarts again once the rolling window has expired', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (let i = 0; i < 3; i++) closeOnce(errors);
+    expect(closeOnce(errors)).toContain('failed 3 times');
+    vi.setSystemTime(Date.now() + 61_000);
+    expect(closeOnce(errors)).toContain('restarting backend audio');
+  });
+});
+
+describe('StatusFlagMonitor (#126)', () => {
+  it('trips exactly once, on the flag that exceeds max within the window', () => {
+    const m = new StatusFlagMonitor(3, 1000);
+    expect(m.record(0)).toBe(false);
+    expect(m.record(10)).toBe(false);
+    expect(m.record(20)).toBe(false);
+    expect(m.record(30)).toBe(true);
+    expect(m.record(40)).toBe(false);
+    expect(m.record(50)).toBe(false);
+  });
+
+  it('does not trip on a slow trickle of occasional overflows', () => {
+    const m = new StatusFlagMonitor(3, 1000);
+    for (let t = 0; t < 60_000; t += 400) expect(m.record(t)).toBe(false);
+  });
+
+  it('does not trip when a burst is spread across two windows', () => {
+    const m = new StatusFlagMonitor(3, 1000);
+    [0, 100, 200].forEach((t) => expect(m.record(t)).toBe(false));
+    [1500, 1600, 1700].forEach((t) => expect(m.record(t)).toBe(false));
   });
 });
