@@ -37,6 +37,34 @@ function key(type: 'keydown' | 'keyup', code: string, repeat = false) {
 const attacks = () => envelopes.filter(e => e.value > 0).map(e => e.time);
 
 describe('CW keyboard input and sidetone', () => {
+  it.each([false, true])('replays the reported 20 WPM input; trailing dit press=%s', trailingDit => {
+    setup('iambic-b', 20);
+    // Relative wall-clock timings from the 10:13:04.857 recording. The ninth
+    // press is a separate ControlLeft down/up during the final dah, not repeat.
+    const events: [number, 'keydown' | 'keyup', string][] = [
+      [0, 'keydown', 'ControlRight'], [162, 'keyup', 'ControlRight'],
+      [216, 'keydown', 'ControlLeft'], [270, 'keyup', 'ControlLeft'],
+      [324, 'keydown', 'ControlRight'], [486, 'keyup', 'ControlRight'],
+      [540, 'keydown', 'ControlLeft'], [594, 'keyup', 'ControlLeft'],
+      [682, 'keydown', 'ControlRight'], [844, 'keyup', 'ControlRight'],
+      [898, 'keydown', 'ControlRight'], [1059, 'keyup', 'ControlRight'],
+      [1114, 'keydown', 'ControlLeft'], [1168, 'keyup', 'ControlLeft'],
+      [1222, 'keydown', 'ControlRight'], [1384, 'keyup', 'ControlRight'],
+      ...(trailingDit ? [[1438, 'keydown', 'ControlLeft'], [1492, 'keyup', 'ControlLeft']] as typeof events : []),
+    ];
+    let elapsed = 0;
+    for (const [time, type, code] of events) {
+      act(() => vi.advanceTimersByTime(time - elapsed));
+      elapsed = time;
+      key(type, code);
+    }
+    act(() => vi.advanceTimersByTime(1000));
+    expect(attacks()).toHaveLength(trailingDit ? 9 : 8);
+    const durations = envelopes.filter(e => e.value === 0).slice(0, attacks().length)
+      .map((off, i) => Math.round((off.time - attacks()[i] + 0.003) / 0.060));
+    expect(durations).toEqual([3, 1, 3, 1, 3, 3, 1, 3, ...(trailingDit ? [1] : [])]);
+  });
+
   it.each([18, 30, 40, 60])('sends CQ in mode B at %i WPM without an extra trailing dit', wpm => {
     setup('iambic-b', wpm);
     const dit = 1200 / wpm;

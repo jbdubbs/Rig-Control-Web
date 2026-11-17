@@ -40,6 +40,26 @@ The application handles keyboard events and touch paddles. There is no MIDI
 input implementation in this hook; successful MIDI operation in another keyer
 does not exercise this path.
 
+### Vail keyboard input compatibility
+
+The Vail Adapter's published firmware distinguishes raw paddle input from its
+internal keyer's output. With an internal keyer selected, keyboard Ctrl edges
+are emitted from the generated element output. In Passthrough mode, raw dit/dah
+contacts are sent directly instead. The app's iambic modes expect the latter.
+Applying another iambic keyer to already timed elements can change spacing,
+queue elements, and create repeats when speeds differ. A keyboard event in a
+log therefore does not establish when the operator physically touched a paddle.
+
+For this app's current iambic input, select Passthrough in the Vail setup tool,
+close MIDI-enabled setup pages, and reconnect the adapter in keyboard mode.
+Use the app's local sidetone; the Vail manual says its own paddle sidetone is
+silent in Passthrough. Confirm with a held paddle: the host should receive one
+keydown followed by one keyup on release, rather than repeated timed strokes.
+The adapter's firmware/version and settings should be recorded before concluding
+that a particular observed tail is caused by this mismatch. A separate direct
+input mode accepting both Ctrl keys would be needed to preserve internally keyed
+Vail output without running the app's iambic keyer again.
+
 ## Latency budget and remaining limits
 
 The dit duration is `1200 / WPM` milliseconds: 66.7 ms at 18 WPM, 60 ms at
@@ -109,6 +129,8 @@ USB, or CAT/radio timing.
 ## Sources
 
 - [K1EL WinKeyer 3.1 manual](https://k1elsystems.com/files/WK3_Datasheet_v1.3.pdf), mode A/B behavior.
+- [Vail Adapter firmware](https://github.com/Vail-CW/vail-adapter/blob/master/adapter.cpp), internal keyer output versus raw Passthrough keyboard events.
+- [Vail Adapter manual](https://vailadapter.com/manual), Passthrough setup and sidetone behavior.
 - [Socket.IO offline behavior](https://socket.io/docs/v4/client-offline-behavior/), disconnected event buffering.
 - [MDN setTimeout](https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout), timer lateness and throttling.
 - [MDN AudioParam.setValueAtTime](https://developer.mozilla.org/en-US/docs/Web/API/AudioParam/setValueAtTime), audio-clock scheduling and past-time handling.
