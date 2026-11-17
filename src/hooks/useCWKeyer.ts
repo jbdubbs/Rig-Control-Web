@@ -308,15 +308,20 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
         return;
       }
       const s = cwSettingsRef.current;
-      // A repeat must never reacquire a paddle released on blur or focus change.
-      if (e.repeat) {
-        if ([s.ditKey, s.dahKey, s.straightKey].includes(e.code)) e.preventDefault();
-        return;
-      }
       if (cwVerboseRef.current) {
         const hit = e.code === s.ditKey ? 'dit' : e.code === s.dahKey ? 'dah' : e.code === s.straightKey ? 'straight' : null;
         if (hit) traceCw(`[CW-KEY] ↓ code=${e.code} key=${e.key} repeat=${e.repeat} ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} → ${hit} | before: dit=${ditPressedRef.current} dah=${dahPressedRef.current} machine=${cwStateRef.current.machine}`, e);
         else traceCw(`[CW-KEY] ↓ code=${e.code} key=${e.key} repeat=${e.repeat} (no match — ditKey=${s.ditKey} dahKey=${s.dahKey} straightKey=${s.straightKey})`, e);
+      }
+      // Log before filtering so a suppressed second modifier is visible in a
+      // squeeze trace instead of looking like a missing adapter input.
+      // A repeat must never reacquire a paddle released on blur or focus change.
+      if (e.repeat) {
+        if ([s.ditKey, s.dahKey, s.straightKey].includes(e.code)) {
+          e.preventDefault();
+          if (cwVerboseRef.current) traceCw(`[CW-KEY] ignored repeat code=${e.code}`, e);
+        }
+        return;
       }
       if (s.mode === 'straight') {
         if (e.code === s.straightKey && !e.repeat) {

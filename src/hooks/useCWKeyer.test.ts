@@ -37,6 +37,25 @@ function key(type: 'keydown' | 'keyup', code: string, repeat = false) {
 const attacks = () => envelopes.filter(e => e.value > 0).map(e => e.time);
 
 describe('CW keyboard input and sidetone', () => {
+  it.each(['ControlLeft', 'ControlRight'])('alternates held raw paddles at 20 WPM with %s first', first => {
+    const { socket } = setup('iambic-b', 20);
+    const second = first === 'ControlLeft' ? 'ControlRight' : 'ControlLeft';
+    key('keydown', first);
+    act(() => vi.advanceTimersByTime(20));
+    key('keydown', second);
+    expect(socket.emit).toHaveBeenCalledWith('cw-paddle', expect.objectContaining({ dit: true, dah: true }));
+    act(() => vi.advanceTimersByTime(1000));
+    const ons = attacks();
+    const offs = envelopes.filter(e => e.value === 0);
+    expect(offs.length).toBeGreaterThanOrEqual(5);
+    for (let i = 0; i < offs.length; i++) {
+      const dit = (i % 2 === 0) === (first === 'ControlLeft');
+      expect(offs[i].time - ons[i] + 0.003).toBeCloseTo(dit ? 0.06 : 0.18, 6);
+    }
+    key('keyup', second);
+    key('keyup', first);
+  });
+
   it.each([false, true])('replays the reported 20 WPM input; trailing dit press=%s', trailingDit => {
     setup('iambic-b', 20);
     // Relative wall-clock timings from the 10:13:04.857 recording. The ninth
