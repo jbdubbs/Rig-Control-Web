@@ -37,6 +37,47 @@ function key(type: 'keydown' | 'keyup', code: string, repeat = false) {
 const attacks = () => envelopes.filter(e => e.value > 0).map(e => e.time);
 
 describe('CW keyboard input and sidetone', () => {
+  it.each(['ControlLeft', 'ControlRight'])('accepts the second Ctrl paddle marked repeat=true after %s', first => {
+    const { socket } = setup('iambic-b', 20);
+    const second = first === 'ControlLeft' ? 'ControlRight' : 'ControlLeft';
+    key('keydown', first);
+    act(() => vi.advanceTimersByTime(10));
+    key('keydown', second, true);
+    expect(socket.emit).toHaveBeenLastCalledWith('cw-paddle', expect.objectContaining({ dit: true, dah: true }));
+    const count = socket.emit.mock.calls.length;
+    // Further repeats of that same physical code must not create new edges.
+    key('keydown', second, true);
+    expect(socket.emit).toHaveBeenCalledTimes(count);
+    act(() => vi.advanceTimersByTime(1000));
+    const ons = attacks();
+    const offs = envelopes.filter(e => e.value === 0);
+    expect(offs.length).toBeGreaterThanOrEqual(5);
+    for (let i = 0; i < offs.length; i++) {
+      const dit = (i % 2 === 0) === (first === 'ControlLeft');
+      expect(offs[i].time - ons[i] + 0.003).toBeCloseTo(dit ? 0.06 : 0.18, 6);
+    }
+    key('keyup', second);
+    key('keyup', first);
+  });
+
+  it('does not reacquire a Ctrl held across blur when its sibling is pressed later', () => {
+    const { result, socket } = setup('iambic-b', 20);
+    key('keydown', 'ControlLeft');
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    key('keydown', 'ControlRight');
+    socket.emit.mockClear();
+    key('keydown', 'ControlLeft', true);
+    expect(result.current.ditPressedRef.current).toBe(false);
+    expect(result.current.dahPressedRef.current).toBe(true);
+    expect(socket.emit).not.toHaveBeenCalled();
+    key('keyup', 'ControlLeft');
+    // A subsequent actual press of the left paddle can be marked repeat too.
+    key('keydown', 'ControlLeft', true);
+    expect(result.current.ditPressedRef.current).toBe(true);
+    key('keyup', 'ControlLeft');
+    key('keyup', 'ControlRight');
+  });
+
   it.each(['ControlLeft', 'ControlRight'])('alternates held raw paddles at 20 WPM with %s first', first => {
     const { socket } = setup('iambic-b', 20);
     const second = first === 'ControlLeft' ? 'ControlRight' : 'ControlLeft';

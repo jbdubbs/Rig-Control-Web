@@ -25,6 +25,8 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
   const cwStuckAlertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ditPressedRef = useRef(false);
   const dahPressedRef = useRef(false);
+  const pressedKeyboardCodesRef = useRef(new Set<string>());
+  const blockedKeyboardCodesRef = useRef(new Set<string>());
   const cwVerboseRef = useRef(false);
   const cwStateRef = useRef({
     machine: 'IDLE' as 'IDLE' | 'SENDING_DIT' | 'SENDING_DAH' | 'INTER_ELEMENT',
@@ -256,6 +258,10 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
   };
 
   const resetLocalKeyer = () => {
+    // Require a release before accepting keys that were down when focus,
+    // mode, or connection changed. Their OS repeats must not re-key the rig.
+    for (const code of pressedKeyboardCodesRef.current) blockedKeyboardCodesRef.current.add(code);
+    pressedKeyboardCodesRef.current.clear();
     cwStateRef.current = { machine: 'IDLE', pendingElement: null, lastSentElement: null, elementEndTime: 0, keyIsDown: false };
     ditPressedRef.current = false;
     dahPressedRef.current = false;
@@ -313,16 +319,21 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
         if (hit) traceCw(`[CW-KEY] ↓ code=${e.code} key=${e.key} repeat=${e.repeat} ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} → ${hit} | before: dit=${ditPressedRef.current} dah=${dahPressedRef.current} machine=${cwStateRef.current.machine}`, e);
         else traceCw(`[CW-KEY] ↓ code=${e.code} key=${e.key} repeat=${e.repeat} (no match — ditKey=${s.ditKey} dahKey=${s.dahKey} straightKey=${s.straightKey})`, e);
       }
-      // Log before filtering so a suppressed second modifier is visible in a
-      // squeeze trace instead of looking like a missing adapter input.
-      // A repeat must never reacquire a paddle released on blur or focus change.
-      if (e.repeat) {
-        if ([s.ditKey, s.dahKey, s.straightKey].includes(e.code)) {
-          e.preventDefault();
-          if (cwVerboseRef.current) traceCw(`[CW-KEY] ignored repeat code=${e.code}`, e);
-        }
+      const bound = s.mode === 'straight' ? e.code === s.straightKey : e.code === s.ditKey || e.code === s.dahKey;
+      if (!bound) return;
+      // On Windows the second Ctrl can arrive marked repeat=true even though
+      // its physical code has not been pressed yet. Track codes separately.
+      const siblingControl = e.code === 'ControlLeft' ? 'ControlRight' : e.code === 'ControlRight' ? 'ControlLeft' : null;
+      const newControlChord = s.mode !== 'straight' && siblingControl !== null
+        && pressedKeyboardCodesRef.current.has(siblingControl);
+      const blocked = blockedKeyboardCodesRef.current.has(e.code);
+      const alreadyHeld = pressedKeyboardCodesRef.current.has(e.code);
+      if (blocked || alreadyHeld || (e.repeat && !newControlChord)) {
+        e.preventDefault();
+        if (cwVerboseRef.current) traceCw(`[CW-KEY] ignored code=${e.code} reason=${blocked ? 'awaiting-release' : alreadyHeld ? 'already-held' : 'repeat'}`, e);
         return;
       }
+      pressedKeyboardCodesRef.current.add(e.code);
       if (s.mode === 'straight') {
         if (e.code === s.straightKey && !e.repeat) {
           e.preventDefault();
@@ -348,6 +359,8 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
 
     const onKeyUp = (e: KeyboardEvent) => {
       // Focus may have changed since keydown; always release a held paddle.
+      pressedKeyboardCodesRef.current.delete(e.code);
+      blockedKeyboardCodesRef.current.delete(e.code);
       const s = cwSettingsRef.current;
       if (cwVerboseRef.current) {
         const hit = e.code === s.ditKey ? 'dit' : e.code === s.dahKey ? 'dah' : e.code === s.straightKey ? 'straight' : null;
@@ -425,12 +438,8 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     };
 
     const onCwStuckKeyAlert = () => {
-      cwStateRef.current = { machine: 'IDLE', pendingElement: null, lastSentElement: null, elementEndTime: 0, keyIsDown: false };
-      ditPressedRef.current = false;
-      dahPressedRef.current = false;
+      resetLocalKeyer();
       emitCwPaddle(false, false, false);
-      setCwKeyActive(false);
-      sidetoneOff();
       setCwStuckAlert(true);
       if (cwStuckAlertTimerRef.current) clearTimeout(cwStuckAlertTimerRef.current);
       cwStuckAlertTimerRef.current = setTimeout(() => setCwStuckAlert(false), 8000);

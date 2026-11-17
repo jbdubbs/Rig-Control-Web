@@ -10,6 +10,7 @@ The fixes have software timing coverage; they still need station validation.
 | Finding | Effect | Change |
 | --- | --- | --- |
 | Keyboard releases were ignored when a text field had focus; no blur release existed. | A paddle could remain logically pressed and repeat elements. | Always process releases; clear local paddles, memory and audio on blur/hidden page. Ignore OS auto-repeat after a release. |
+| A blanket `KeyboardEvent.repeat` filter discarded the second Ctrl during a Vail Passthrough squeeze on Windows. | Only the first paddle was active, so holding both produced repeated dits or repeated dahs instead of alternating. | Track physical keyboard codes separately. Accept a new opposite Ctrl even when marked repeat; suppress duplicates and block keys held across focus/mode/connection resets until keyup. |
 | Browser only sampled paddles every 4 ms. | Short presses or opposite-paddle taps could disappear between callbacks. | Advance the local keyer immediately on input edges, including touch input. |
 | Local audio re-anchored its schedule after each gap. | Timer lateness plus a 2 ms start allowance accumulated across elements, making local sidetone fall behind remote timing. | Preserve the scheduled cadence across ordinary timer lateness. |
 | Local state was not fully reset during mode/enable/connection changes. | Old element deadlines or pending memory could survive. | Reset the complete local state and scheduled audio. Sync settings before starting the keyer. |
@@ -59,6 +60,14 @@ The adapter's firmware/version and settings should be recorded before concluding
 that a particular observed tail is caused by this mismatch. A separate direct
 input mode accepting both Ctrl keys would be needed to preserve internally keyed
 Vail output without running the app's iambic keyer again.
+
+The operator's subsequent Passthrough recording confirmed a separate application
+bug: at 10:26:30.006 the browser delivered ControlRight with `repeat=false`, then
+at 10:26:30.016 delivered the first ControlLeft down with `repeat=true`. The old
+filter discarded ControlLeft throughout the squeeze. Input tracking now uses
+the individual codes, with tests for both press orders, duplicate suppression,
+and release/re-arm behavior after blur. The focused CW/rig queue tests pass;
+the operator still needs to verify the corrected squeeze with physical paddles.
 
 ## Latency budget and remaining limits
 
