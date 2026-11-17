@@ -6,7 +6,6 @@ import type { ServerContext, CwPaddleEvent } from "./context.ts";
 import { vlogCw as vlog } from "./vlog.ts";
 
 const CW_BUFFER_DEPTH_MS = 60;
-const CW_BUFFER_MAX_MS = 240;
 
 export function getCwHelperPath(baseDir: string): string {
   let platformDir: string;
@@ -66,7 +65,6 @@ const sendCwCatPtt = (ctx: ServerContext, state: boolean, clientId: string) => {
 };
 
 const setCwKeyingActive = (ctx: ServerContext, active: boolean) => {
-  ctx.cwIsKeying = active;
   if (!active) {
     if (ctx.cwIdleTimer) clearTimeout(ctx.cwIdleTimer);
     ctx.cwIdleTimer = setTimeout(() => {
@@ -74,6 +72,7 @@ const setCwKeyingActive = (ctx: ServerContext, active: boolean) => {
       ctx.cwIdleTimer = null;
     }, 500);
   } else {
+    ctx.cwIsKeying = true;
     if (ctx.cwIdleTimer) { clearTimeout(ctx.cwIdleTimer); ctx.cwIdleTimer = null; }
   }
 };
@@ -119,15 +118,22 @@ export function cwTick(ctx: ServerContext): void {
   ctx.cwTickTimer = null;
   if (!ctx.activeCwClientId) return;
 
-  const connectMs = ctx.socketConnectTimes.get(ctx.activeCwClientId) ?? Date.now();
-  const nowClientMs = Date.now() - connectMs;
+  const nowMs = performance.now();
+  const nowClientMs = nowMs - ctx.cwTimelineOriginMs;
   const playheadMs = nowClientMs - CW_BUFFER_DEPTH_MS;
 
   while (ctx.cwPaddleBuffer.length > 0 && ctx.cwPaddleBuffer[0].t <= playheadMs) {
     const evt = ctx.cwPaddleBuffer.shift()!;
+    const eventMs = ctx.cwTimelineOriginMs + evt.t + CW_BUFFER_DEPTH_MS;
+    // Consume every edge, including taps shorter than the 4 ms polling period.
+    // Releases at a boundary take precedence over starting another element.
+    while (!ctx.cwKeyLockedOut && ctx.cwMachine !== "IDLE" && ctx.cwElementEndMs < eventMs) {
+      advanceCwMachine(ctx, ctx.cwElementEndMs);
+    }
     ctx.cwPlayheadDit = evt.dit;
     ctx.cwPlayheadDah = evt.dah;
     ctx.cwPlayheadStraight = evt.straight;
+    if (!ctx.cwKeyLockedOut) advanceCwMachine(ctx, eventMs);
   }
 
   if (!ctx.cwBufferReady) {
@@ -144,8 +150,12 @@ export function cwTick(ctx: ServerContext): void {
     else { ctx.cwTickTimer = setTimeout(() => cwTick(ctx), 4); return; }
   }
 
-  const ditMs = (1.2 / ctx.cwSettings.wpm) * 1000;
-  const nowMs = Date.now();
+  advanceCwMachine(ctx, nowMs);
+  ctx.cwTickTimer = setTimeout(() => cwTick(ctx), 4);
+}
+
+function advanceCwMachine(ctx: ServerContext, nowMs: number): void {
+  const ditMs = 1200 / ctx.cwSettings.wpm;
 
   if (ctx.cwSettings.mode === "straight") {
     const wantDown = ctx.cwPlayheadStraight;
@@ -198,7 +208,6 @@ export function cwTick(ctx: ServerContext): void {
     }
   }
 
-  ctx.cwTickTimer = setTimeout(() => cwTick(ctx), 4);
 }
 
 export async function openKeyerPort(ctx: ServerContext, portPath: string): Promise<void> {
@@ -312,6 +321,8 @@ export async function syncKeyerPort(ctx: ServerContext, forceReopen = false): Pr
 
 export function registerCwHandlers(socket: Socket, ctx: ServerContext): void {
   socket.on("cw-paddle", ({ dit, dah, straight, t }: { dit: boolean; dah: boolean; straight: boolean; t: number }) => {
+    if (!ctx.cwSettings.enabled || !Number.isFinite(t) || t < 0
+      || typeof dit !== "boolean" || typeof dah !== "boolean" || typeof straight !== "boolean") return;
     const anyActive = dit || dah || straight;
 
     if (anyActive) {
@@ -319,6 +330,9 @@ export function registerCwHandlers(socket: Socket, ctx: ServerContext): void {
       if (ctx.activeCwClientId && ctx.activeCwClientId !== socket.id) return;
       if (!ctx.activeCwClientId) {
         ctx.activeCwClientId = socket.id;
+        // The two connection callbacks do not share an epoch. Anchor this burst
+        // to its first received edge, then preserve the client's time intervals.
+        ctx.cwTimelineOriginMs = performance.now() - t;
         ctx.cwPaddleBuffer = [];
         ctx.cwPlayheadDit = false; ctx.cwPlayheadDah = false; ctx.cwPlayheadStraight = false;
         ctx.cwMachine = "IDLE"; ctx.cwPendingElement = null; ctx.cwLastSentElement = null; ctx.cwElementEndMs = 0;
@@ -332,7 +346,8 @@ export function registerCwHandlers(socket: Socket, ctx: ServerContext): void {
     if (ctx.cwClaimIdleTimer) clearTimeout(ctx.cwClaimIdleTimer);
     ctx.cwClaimIdleTimer = setTimeout(() => {
       ctx.cwClaimIdleTimer = null;
-      if (!ctx.cwKeyIsDown) {
+      if (!ctx.cwKeyIsDown && ctx.cwMachine === "IDLE" && !ctx.cwPlayheadDit
+        && !ctx.cwPlayheadDah && !ctx.cwPlayheadStraight && ctx.cwPaddleBuffer.length === 0) {
         ctx.activeCwClientId = null;
         stopCwTick(ctx);
         ctx.cwMachine = "IDLE";
@@ -345,16 +360,27 @@ export function registerCwHandlers(socket: Socket, ctx: ServerContext): void {
     while (i > 0 && ctx.cwPaddleBuffer[i - 1].t > t) i--;
     ctx.cwPaddleBuffer.splice(i, 0, evt);
 
-    const connectMs = ctx.socketConnectTimes.get(socket.id) ?? Date.now();
-    const ceilingT = (Date.now() - connectMs) - CW_BUFFER_MAX_MS;
-    while (ctx.cwPaddleBuffer.length > 0 && ctx.cwPaddleBuffer[0].t < ceilingT) ctx.cwPaddleBuffer.shift();
+    // Never discard old releases: doing so can leave a paddle held indefinitely.
   });
 
   socket.on("update-cw-settings", async (partial: Partial<typeof ctx.cwSettings>) => {
-    const oldPolarity = ctx.cwSettings.serialKeyPolarity;
+    const previous = ctx.cwSettings;
+    const timingChanged = (['enabled', 'mode', 'wpm', 'keyingMethod', 'keyerPort', 'serialKeyPolarity'] as const)
+      .some(key => partial[key] !== undefined && partial[key] !== previous[key]);
+    if (timingChanged) {
+      stopCwTick(ctx);
+      cwSetKey(ctx, false); // Release using the old output method/polarity.
+      if (ctx.cwClaimIdleTimer) { clearTimeout(ctx.cwClaimIdleTimer); ctx.cwClaimIdleTimer = null; }
+      ctx.activeCwClientId = null;
+      ctx.cwMachine = "IDLE";
+      ctx.cwPendingElement = null;
+      ctx.cwPaddleBuffer = [];
+      ctx.cwPlayheadDit = false; ctx.cwPlayheadDah = false; ctx.cwPlayheadStraight = false;
+    }
     ctx.cwSettings = { ...ctx.cwSettings, ...partial };
-    const polarityChanged = partial.serialKeyPolarity !== undefined && partial.serialKeyPolarity !== oldPolarity;
-    await syncKeyerPort(ctx, polarityChanged);
+    const outputChanged = (['keyingMethod', 'keyerPort', 'serialKeyPolarity'] as const)
+      .some(key => partial[key] !== undefined && partial[key] !== previous[key]);
+    await syncKeyerPort(ctx, outputChanged);
     ctx.saveSettings();
     ctx.io.emit("settings-data", {
       cwSettings: ctx.cwSettings,

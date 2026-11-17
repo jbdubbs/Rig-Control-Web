@@ -35,6 +35,7 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     keyIsDown: false,
   });
   const cwTickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cwTickRef = useRef<(() => void) | null>(null);
   const cwConnectTimeRef = useRef<number>(performance.now());
 
   // ── Sidetone refs ─────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
   // Pre-schedules one element's gain envelope on the audio clock.
   // Returns the audio-clock time at which the tone turns off (= elementEndTime for SENDING state).
   // Also advances scheduledUntilRef past the following inter-element gap.
-  const scheduleElement = (durationSec: number): number => {
+  const scheduleElement = (durationSec: number, continuing = false): number => {
     const ctx = sidetoneCtxRef.current;
     const gain = sidetoneGainRef.current;
     const osc = sidetoneOscRef.current;
@@ -104,7 +105,9 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 
     // Re-anchor if the scheduled window has expired (operator was paused).
-    if (scheduledUntilRef.current < ctx.currentTime + 0.001) {
+    // Retain the cadence across normal timer lateness. Re-anchoring at every
+    // gap added timer lateness + 2 ms per element, unlike the remote keyer.
+    if (!continuing || scheduledUntilRef.current < ctx.currentTime - ditSec) {
       scheduledUntilRef.current = ctx.currentTime + 0.002;
     }
 
@@ -154,13 +157,18 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
 
   const emitCwPaddle = (dit: boolean, dah: boolean, straight: boolean) => {
     const t = performance.now() - cwConnectTimeRef.current;
-    socket?.emit("cw-paddle", { dit, dah, straight, t });
+    // Do not replay obsolete key strokes after a network reconnection.
+    if (socket?.connected) socket.emit("cw-paddle", { dit, dah, straight, t });
+    // Capture short taps and opposite-paddle memory at the input edge, rather
+    // than waiting for the next browser timer (also used by touch paddles).
+    cwTickRef.current?.();
   };
 
   // ── Keyer tick state machine ──────────────────────────────────────────────
   const startKeyerTick = () => {
     if (cwTickTimerRef.current) return;
     const tick = () => {
+      if (cwTickTimerRef.current) clearTimeout(cwTickTimerRef.current);
       const settings = cwSettingsRef.current;
       if (!settings.enabled) { cwTickTimerRef.current = null; return; }
       const ctx = sidetoneCtxRef.current;
@@ -217,12 +225,12 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
             s.machine = 'SENDING_DIT'; s.lastSentElement = 'dit';
             s.keyIsDown = true; setCwKeyActive(true);
             if (settings.mode === 'iambic-b' && dahPressedRef.current) s.pendingElement = 'dah';
-            s.elementEndTime = scheduleElement(ditSec);
+            s.elementEndTime = scheduleElement(ditSec, true);
           } else if (next === 'dah') {
             s.machine = 'SENDING_DAH'; s.lastSentElement = 'dah';
             s.keyIsDown = true; setCwKeyActive(true);
             if (settings.mode === 'iambic-b' && ditPressedRef.current) s.pendingElement = 'dit';
-            s.elementEndTime = scheduleElement(ditSec * 3);
+            s.elementEndTime = scheduleElement(ditSec * 3, true);
           } else {
             s.machine = 'IDLE';
           }
@@ -230,26 +238,35 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
       }
       cwTickTimerRef.current = setTimeout(tick, 4);
     };
+    cwTickRef.current = tick;
     cwTickTimerRef.current = setTimeout(tick, 4);
   };
 
   const stopKeyerTick = () => {
+    cwTickRef.current = null;
     if (cwTickTimerRef.current) { clearTimeout(cwTickTimerRef.current); cwTickTimerRef.current = null; }
   };
 
+  const resetLocalKeyer = () => {
+    cwStateRef.current = { machine: 'IDLE', pendingElement: null, lastSentElement: null, elementEndTime: 0, keyIsDown: false };
+    ditPressedRef.current = false;
+    dahPressedRef.current = false;
+    scheduledUntilRef.current = 0;
+    setCwKeyActive(false);
+    sidetoneOff();
+  };
+
   // ── Keyboard listener + sidetone lifecycle ────────────────────────────────
+  // Update settings before effects that start/stop the keyer read them.
+  useEffect(() => {
+    cwSettingsRef.current = cwSettings;
+  }, [cwSettings]);
+
   useEffect(() => {
     const settings = cwSettingsRef.current;
     if (!settings.enabled || !connected) {
       stopKeyerTick();
-      const s = cwStateRef.current;
-      if (s.keyIsDown) {
-        s.keyIsDown = false;
-        setCwKeyActive(false);
-        sidetoneOff();
-      }
-      ditPressedRef.current = false;
-      dahPressedRef.current = false;
+      resetLocalKeyer();
       teardownSidetone();
       return;
     }
@@ -283,6 +300,11 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
         return;
       }
       const s = cwSettingsRef.current;
+      // A repeat must never reacquire a paddle released on blur or focus change.
+      if (e.repeat) {
+        if ([s.ditKey, s.dahKey, s.straightKey].includes(e.code)) e.preventDefault();
+        return;
+      }
       if (cwVerboseRef.current) {
         const hit = e.code === s.ditKey ? 'dit' : e.code === s.dahKey ? 'dah' : e.code === s.straightKey ? 'straight' : null;
         if (hit) console.log(`[CW-KEY] ↓ code=${e.code} key=${e.key} repeat=${e.repeat} ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} → ${hit} | before: dit=${ditPressedRef.current} dah=${dahPressedRef.current} machine=${cwStateRef.current.machine}`);
@@ -312,7 +334,7 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (isTypingTarget(document.activeElement as Element)) return;
+      // Focus may have changed since keydown; always release a held paddle.
       const s = cwSettingsRef.current;
       if (cwVerboseRef.current) {
         const hit = e.code === s.ditKey ? 'dit' : e.code === s.dahKey ? 'dah' : e.code === s.straightKey ? 'straight' : null;
@@ -335,24 +357,27 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
       }
     };
 
+    const releasePaddles = () => {
+      resetLocalKeyer();
+      emitCwPaddle(false, false, false);
+    };
+    const onVisibilityChange = () => { if (document.hidden) releasePaddles(); };
+
     window.addEventListener('keydown', onKeyDown, { capture: true });
     window.addEventListener('keyup', onKeyUp, { capture: true });
+    window.addEventListener('blur', releasePaddles);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('keydown', onKeyDown, { capture: true });
       window.removeEventListener('keyup', onKeyUp, { capture: true });
+      window.removeEventListener('blur', releasePaddles);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       stopKeyerTick();
       emitCwPaddle(false, false, false);
-      const s = cwStateRef.current;
-      if (s.keyIsDown) {
-        s.keyIsDown = false;
-        setCwKeyActive(false);
-        sidetoneOff();
-      }
-      ditPressedRef.current = false;
-      dahPressedRef.current = false;
+      resetLocalKeyer();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget]);
+  }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget, socket]);
 
   // Re-applies a Local Output device change to the sidetone's existing AudioContext without
   // a full teardown/recreate (which would interrupt scheduleElement's in-flight audio-clock
@@ -364,11 +389,6 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     const targetSinkId = localAudioOutputDevice && localAudioOutputDevice !== 'default' ? localAudioOutputDevice : '';
     (ctx as any).setSinkId(targetSinkId).catch((e: unknown) => console.error("Sidetone setSinkId error:", e));
   }, [localAudioOutputDevice]);
-
-  // Keep cwSettingsRef in sync with state
-  useEffect(() => {
-    cwSettingsRef.current = cwSettings;
-  }, [cwSettings]);
 
   // ── Socket events ─────────────────────────────────────────────────────────
   useEffect(() => {

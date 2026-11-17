@@ -57,6 +57,7 @@ export interface CwPaddleEvent {
 
 export interface RigCommandEntry {
   cmd: string;
+  priority?: boolean;
   useExtended: boolean;
   resolve: (val: string) => void;
   reject: (err: any) => void;
@@ -277,6 +278,7 @@ export interface ServerContext {
   cwElementEndMs: number;
   cwKeyIsDown: boolean;
   cwBufferReady: boolean;
+  cwTimelineOriginMs: number;
   cwTickTimer: ReturnType<typeof setTimeout> | null;
   cwClaimIdleTimer: ReturnType<typeof setTimeout> | null;
 
@@ -516,6 +518,7 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
     cwElementEndMs: 0,
     cwKeyIsDown: false,
     cwBufferReady: false,
+    cwTimelineOriginMs: 0,
     cwTickTimer: null,
     cwClaimIdleTimer: null,
 

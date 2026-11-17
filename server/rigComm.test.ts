@@ -1,7 +1,18 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { formatExtendedCommand, normalizeVfoName, parseDumpCapsIntoContext, parseExtendedResponse, resetRigState } from './rigComm.ts';
+import { formatExtendedCommand, normalizeVfoName, parseDumpCapsIntoContext, parseExtendedResponse, resetRigState, sendToRig } from './rigComm.ts';
 import { createInitialContext } from './context.ts';
+
+describe('priority command ordering', () => {
+  it('preserves CW edges while overtaking normal polling on a busy link', () => {
+    const ctx = { isRigBusy: true, rigCommandQueue: [] } as any;
+    void sendToRig(ctx, 'f');
+    void sendToRig(ctx, 'T 1', false, true);
+    void sendToRig(ctx, 'T 0', false, true);
+    void sendToRig(ctx, 'T 1', false, true);
+    expect(ctx.rigCommandQueue.map((entry: any) => entry.cmd)).toEqual(['T 1', 'T 0', 'T 1', 'f']);
+  });
+});
 
 describe('normalizeVfoName', () => {
   it('maps Main/Sub to VFOA/VFOB', () => {
