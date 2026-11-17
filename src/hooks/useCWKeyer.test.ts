@@ -37,6 +37,40 @@ function key(type: 'keydown' | 'keyup', code: string, repeat = false) {
 const attacks = () => envelopes.filter(e => e.value > 0).map(e => e.time);
 
 describe('CW keyboard input and sidetone', () => {
+  it.each([18, 30, 40, 60])('sends CQ in mode B at %i WPM without an extra trailing dit', wpm => {
+    setup('iambic-b', wpm);
+    const dit = 1200 / wpm;
+    let elapsed = 0;
+    const at = (time: number, type: 'keydown' | 'keyup', code: string) => {
+      act(() => vi.advanceTimersByTime(time - elapsed));
+      elapsed = time;
+      key(type, code);
+    };
+    // C: -.-. Queue each opposite element during the sounding element.
+    at(0, 'keydown', 'ControlRight');
+    at(dit / 2, 'keyup', 'ControlRight');
+    at(dit * 2, 'keydown', 'ControlLeft');
+    at(dit * 2.5, 'keyup', 'ControlLeft');
+    at(dit * 4.5, 'keydown', 'ControlRight');
+    at(dit * 4.75, 'keyup', 'ControlRight');
+    at(dit * 7, 'keydown', 'ControlLeft');
+    at(dit * 7.5, 'keyup', 'ControlLeft');
+    // Q: --.- Hold dah for two elements, then queue dit and final dah.
+    at(dit * 14, 'keydown', 'ControlRight');
+    at(dit * 19, 'keyup', 'ControlRight');
+    at(dit * 20, 'keydown', 'ControlLeft');
+    at(dit * 20.5, 'keyup', 'ControlLeft');
+    at(dit * 22.5, 'keydown', 'ControlRight');
+    at(dit * 22.75, 'keyup', 'ControlRight');
+    act(() => vi.advanceTimersByTime(dit * 10));
+    const tones = attacks();
+    expect(tones).toHaveLength(8);
+    // Tone-off ramps are the zero ramps immediately following each attack.
+    const durations = envelopes.filter(e => e.value === 0).slice(0, 8)
+      .map((off, i) => Math.round((off.time - tones[i] + 0.003) * 1000 / dit));
+    expect(durations).toEqual([3, 1, 3, 1, 3, 3, 1, 3]);
+  });
+
   it('starts a short tap immediately and completes exactly one dit', () => {
     const { result } = setup();
     key('keydown', 'ControlLeft');
