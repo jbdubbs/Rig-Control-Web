@@ -157,14 +157,19 @@ const processRigQueue = async (ctx: ServerContext) => {
     reject(err);
   } finally {
     ctx.isRigBusy = false;
-    setTimeout(() => processRigQueue(ctx), 10);
+    // CW edges should not incur the normal polling throttle.
+    setTimeout(() => processRigQueue(ctx), ctx.rigCommandQueue[0]?.priority ? 0 : 10);
   }
 };
 
 export function sendToRig(ctx: ServerContext, cmd: string, useExtended = false, priority = false, timeoutMs?: number): Promise<string> {
   return new Promise((resolve, reject) => {
     if (priority) {
-      ctx.rigCommandQueue.unshift({ cmd, useExtended, resolve, reject, timeoutMs });
+      // Priority commands may overtake polling, but must retain their own order
+      // (in particular CW key-down/key-up edges).
+      const firstNormal = ctx.rigCommandQueue.findIndex(entry => !entry.priority);
+      ctx.rigCommandQueue.splice(firstNormal < 0 ? ctx.rigCommandQueue.length : firstNormal, 0,
+        { cmd, useExtended, resolve, reject, timeoutMs, priority: true });
     } else {
       ctx.rigCommandQueue.push({ cmd, useExtended, resolve, reject, timeoutMs });
     }

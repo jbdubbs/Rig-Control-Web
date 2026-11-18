@@ -27,7 +27,7 @@
     "test:hardware": "node tests/e2e-hardware/reset-test-data.mjs && playwright test --config=playwright.hardware.config.ts",
     "test:ft8-calibration": "node native/ft8-decoder/tools/test-calibration.mjs",
     "electron:dev": "ELECTRON_RUN=true electron -r tsx electron/main.ts",
-    "electron:build": "node scripts/build-rigctld.mjs && npm run build && npm run build:electron && electron-builder",
+    "electron:build": "node scripts/build-rigctld.mjs && npm run build:cw-helper && npm run build && npm run build:electron && electron-builder",
     "build:electron": "esbuild electron/main.ts --bundle --platform=node --outfile=dist-electron/main.cjs --external:electron --external:vite && esbuild electron/preload.ts --bundle --platform=node --outfile=dist-electron/preload.cjs --external:electron",
     "build:cw-helper": "node scripts/build-cw-helper.mjs",
     "build:ft4222-reader": "node scripts/build-ft4222-reader.mjs",

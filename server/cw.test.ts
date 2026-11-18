@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cwTick, isValidKeyerPort } from './cw.ts';
+import { cwTick, isValidKeyerPort, registerCwHandlers } from './cw.ts';
 
 // cwTick's iambic FSM is exercised here in "rigctld-ptt" keying mode, which
 // sends real "T 1"/"T 0" commands via ctx.sendToRig instead of driving the
@@ -17,8 +17,9 @@ function makeCtx(overrides: Partial<Record<string, unknown>> = {}) {
     socketConnectTimes: new Map([[CLIENT_ID, 0]]),
     cwPaddleBuffer: [] as { t: number; dit: boolean; dah: boolean; straight: boolean }[],
     cwBufferReady: false,
+    cwTimelineOriginMs: 0,
     cwKeyLockedOut: false,
-    cwSettings: { wpm: 60, mode: 'iambic-a', keyingMethod: 'rigctld-ptt', serialKeyPolarity: 'normal' },
+    cwSettings: { enabled: true, wpm: 60, mode: 'iambic-a', keyingMethod: 'rigctld-ptt', serialKeyPolarity: 'normal' },
     cwMachine: 'IDLE',
     cwPendingElement: null,
     cwLastSentElement: null,
@@ -54,6 +55,109 @@ afterEach(() => {
 });
 
 describe('cwTick', () => {
+  it('preserves a complete tap between adjacent tick callbacks', () => {
+    vi.useFakeTimers();
+    const ctx = makeCtx({ cwPaddleBuffer: [
+      { t: 1, dit: true, dah: false, straight: false },
+      { t: 2, dit: false, dah: false, straight: false },
+    ] });
+    runTicks(ctx, 200);
+    expect(ctx.sendToRig.mock.calls.map((c: any[]) => c[0])).toEqual(['T 1', 'T 0']);
+  });
+
+  it('keeps polling suppressed through element gaps and the 500 ms hang time', () => {
+    vi.useFakeTimers();
+    const ctx = makeCtx({ cwPaddleBuffer: [
+      { t: 0, dit: true, dah: false, straight: false },
+      { t: 10, dit: false, dah: false, straight: false },
+    ] });
+    runTicks(ctx, 100);
+    expect(ctx.cwKeyIsDown).toBe(false);
+    expect(ctx.cwIsKeying).toBe(true);
+    vi.advanceTimersByTime(500);
+    expect(ctx.cwIsKeying).toBe(false);
+  });
+
+  it.each(['iambic-a', 'iambic-b'])('%s has the expected squeeze-release tail', mode => {
+    vi.useFakeTimers();
+    const ctx = makeCtx();
+    ctx.cwSettings.mode = mode;
+    ctx.cwPaddleBuffer = [
+      { t: 0, dit: true, dah: true, straight: false },
+      { t: 10, dit: false, dah: false, straight: false },
+    ];
+    runTicks(ctx, 300);
+    expect(ctx.sendToRig.mock.calls.map((c: any[]) => c[0])).toEqual(
+      mode === 'iambic-a' ? ['T 1', 'T 0'] : ['T 1', 'T 0', 'T 1', 'T 0']);
+  });
+
+  it('captures a sub-tick opposite tap in mode B', () => {
+    vi.useFakeTimers();
+    const ctx = makeCtx();
+    ctx.cwSettings.mode = 'iambic-b';
+    ctx.cwPaddleBuffer = [
+      { t: 0, dit: false, dah: true, straight: false },
+      { t: 9, dit: true, dah: true, straight: false },
+      { t: 10, dit: false, dah: false, straight: false },
+    ];
+    runTicks(ctx, 300);
+    expect(ctx.sendToRig.mock.calls.map((c: any[]) => c[0])).toEqual(['T 1', 'T 0', 'T 1', 'T 0']);
+  });
+
+  it('anchors the jitter buffer to receipt, independent of connection epochs', () => {
+    vi.useFakeTimers();
+    const handlers = new Map<string, Function>();
+    const ctx = makeCtx({ activeCwClientId: null });
+    registerCwHandlers({ id: CLIENT_ID, on: (name: string, fn: Function) => handlers.set(name, fn) } as any, ctx);
+    handlers.get('cw-paddle')!({ t: 50000, dit: true, dah: false, straight: false });
+    vi.advanceTimersByTime(59);
+    expect(ctx.sendToRig).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(ctx.sendToRig).toHaveBeenCalledWith('T 1', false, true);
+  });
+
+  it('does not expire a claim during gaps in a continuously held paddle', () => {
+    vi.useFakeTimers();
+    const handlers = new Map<string, Function>();
+    const ctx = makeCtx({ activeCwClientId: null });
+    registerCwHandlers({ id: CLIENT_ID, on: (name: string, fn: Function) => handlers.set(name, fn) } as any, ctx);
+    handlers.get('cw-paddle')!({ t: 0, dit: true, dah: false, straight: false });
+    vi.advanceTimersByTime(3200);
+    expect(ctx.activeCwClientId).toBe(CLIENT_ID);
+    expect(ctx.sendToRig.mock.calls.length).toBeGreaterThan(100);
+  });
+
+  it('releases CAT output and stops the machine when CW is disabled', async () => {
+    vi.useFakeTimers();
+    const handlers = new Map<string, Function>();
+    const ctx = makeCtx({ activeCwClientId: null, saveSettings: vi.fn() });
+    registerCwHandlers({ id: CLIENT_ID, on: (name: string, fn: Function) => handlers.set(name, fn) } as any, ctx);
+    handlers.get('cw-paddle')!({ t: 0, dit: true, dah: false, straight: false });
+    vi.advanceTimersByTime(64);
+    expect(ctx.cwKeyIsDown).toBe(true);
+    await handlers.get('update-cw-settings')!({ enabled: false });
+    expect(ctx.cwKeyIsDown).toBe(false);
+    expect(ctx.activeCwClientId).toBeNull();
+    expect(ctx.sendToRig).toHaveBeenLastCalledWith('T 0', false, true);
+    const count = ctx.sendToRig.mock.calls.length;
+    vi.advanceTimersByTime(500);
+    expect(ctx.sendToRig).toHaveBeenCalledTimes(count);
+  });
+
+  it('continues to process a release arriving more than 240 ms late', () => {
+    vi.useFakeTimers();
+    const handlers = new Map<string, Function>();
+    const ctx = makeCtx({ activeCwClientId: null });
+    registerCwHandlers({ id: CLIENT_ID, on: (name: string, fn: Function) => handlers.set(name, fn) } as any, ctx);
+    handlers.get('cw-paddle')!({ t: 0, dit: true, dah: false, straight: false });
+    vi.advanceTimersByTime(500);
+    handlers.get('cw-paddle')!({ t: 10, dit: false, dah: false, straight: false });
+    vi.advanceTimersByTime(100);
+    expect(ctx.cwKeyIsDown).toBe(false);
+    expect(ctx.cwMachine).toBe('IDLE');
+    expect(ctx.cwPlayheadDit).toBe(false);
+  });
+
   it('keys a single dit for exactly one dit duration, after the buffer-depth delay', () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
@@ -63,7 +167,7 @@ describe('cwTick', () => {
         { t: 0, dit: true, dah: false, straight: false },
         { t: 10, dit: false, dah: false, straight: false },
       ],
-      sendToRig: vi.fn(async (cmd: string) => { times.push(Date.now()); return ''; }),
+      sendToRig: vi.fn(async (cmd: string) => { times.push(performance.now()); return ''; }),
     });
 
     runTicks(ctx, 200);
@@ -85,7 +189,7 @@ describe('cwTick', () => {
         { t: 0, dit: false, dah: true, straight: false },
         { t: 10, dit: false, dah: false, straight: false },
       ],
-      sendToRig: vi.fn(async (cmd: string) => { times.push(Date.now()); return ''; }),
+      sendToRig: vi.fn(async (cmd: string) => { times.push(performance.now()); return ''; }),
     });
 
     runTicks(ctx, 200);
@@ -116,7 +220,7 @@ describe('cwTick', () => {
     const ctx = makeCtx({
       cwSettings: { wpm: 60, mode: 'iambic-b', keyingMethod: 'rigctld-ptt', serialKeyPolarity: 'normal' },
       cwPaddleBuffer: [{ t: 0, dit: true, dah: true, straight: false }],
-      sendToRig: vi.fn(async (cmd: string) => { calls.push({ cmd, t: Date.now() }); return ''; }),
+      sendToRig: vi.fn(async (cmd: string) => { calls.push({ cmd, t: performance.now() }); return ''; }),
     });
 
     // Run long enough to observe several elements (squeeze never returns to

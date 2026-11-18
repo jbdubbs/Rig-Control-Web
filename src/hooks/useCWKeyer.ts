@@ -25,6 +25,8 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
   const cwStuckAlertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ditPressedRef = useRef(false);
   const dahPressedRef = useRef(false);
+  const pressedKeyboardCodesRef = useRef(new Set<string>());
+  const blockedKeyboardCodesRef = useRef(new Set<string>());
   const cwVerboseRef = useRef(false);
   const cwStateRef = useRef({
     machine: 'IDLE' as 'IDLE' | 'SENDING_DIT' | 'SENDING_DAH' | 'INTER_ELEMENT',
@@ -35,6 +37,7 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     keyIsDown: false,
   });
   const cwTickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cwTickRef = useRef<(() => void) | null>(null);
   const cwConnectTimeRef = useRef<number>(performance.now());
 
   // ── Sidetone refs ─────────────────────────────────────────────────────────
@@ -43,6 +46,14 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
   const sidetoneGainRef = useRef<GainNode | null>(null);
   // Audio-clock time through which gain changes are already committed.
   const scheduledUntilRef = useRef(0);
+
+  const traceCw = (message: string, event?: KeyboardEvent) => {
+    const now = performance.now();
+    const audioMs = sidetoneCtxRef.current ? sidetoneCtxRef.current.currentTime * 1000 : now;
+    const deadlineMs = cwStateRef.current.elementEndTime * 1000;
+    const inputLag = event ? ` inputLagMs=${Math.max(0, now - event.timeStamp).toFixed(1)}` : '';
+    console.log(`${message} | tMs=${now.toFixed(1)} audioMs=${audioMs.toFixed(1)} deadlineMs=${deadlineMs.toFixed(1)}${inputLag}`);
+  };
 
   // ── Sidetone lifecycle ────────────────────────────────────────────────────
   const teardownSidetone = () => {
@@ -93,7 +104,7 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
   // Pre-schedules one element's gain envelope on the audio clock.
   // Returns the audio-clock time at which the tone turns off (= elementEndTime for SENDING state).
   // Also advances scheduledUntilRef past the following inter-element gap.
-  const scheduleElement = (durationSec: number): number => {
+  const scheduleElement = (durationSec: number, continuing = false): number => {
     const ctx = sidetoneCtxRef.current;
     const gain = sidetoneGainRef.current;
     const osc = sidetoneOscRef.current;
@@ -104,7 +115,9 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 
     // Re-anchor if the scheduled window has expired (operator was paused).
-    if (scheduledUntilRef.current < ctx.currentTime + 0.001) {
+    // Retain the cadence across normal timer lateness. Re-anchoring at every
+    // gap added timer lateness + 2 ms per element, unlike the remote keyer.
+    if (!continuing || scheduledUntilRef.current < ctx.currentTime - ditSec) {
       scheduledUntilRef.current = ctx.currentTime + 0.002;
     }
 
@@ -154,13 +167,18 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
 
   const emitCwPaddle = (dit: boolean, dah: boolean, straight: boolean) => {
     const t = performance.now() - cwConnectTimeRef.current;
-    socket?.emit("cw-paddle", { dit, dah, straight, t });
+    // Do not replay obsolete key strokes after a network reconnection.
+    if (socket?.connected) socket.emit("cw-paddle", { dit, dah, straight, t });
+    // Capture short taps and opposite-paddle memory at the input edge, rather
+    // than waiting for the next browser timer (also used by touch paddles).
+    cwTickRef.current?.();
   };
 
   // ── Keyer tick state machine ──────────────────────────────────────────────
   const startKeyerTick = () => {
     if (cwTickTimerRef.current) return;
     const tick = () => {
+      if (cwTickTimerRef.current) clearTimeout(cwTickTimerRef.current);
       const settings = cwSettingsRef.current;
       if (!settings.enabled) { cwTickTimerRef.current = null; return; }
       const ctx = sidetoneCtxRef.current;
@@ -173,31 +191,31 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
         if (ditPressedRef.current && !dahPressedRef.current) {
           s.machine = 'SENDING_DIT'; s.pendingElement = null; s.lastSentElement = 'dit';
           s.keyIsDown = true; setCwKeyActive(true); s.elementEndTime = scheduleElement(ditSec);
-          if (cwVerboseRef.current) console.log(`[CW-TICK] IDLE→SENDING_DIT dit=true dah=false`);
+          if (cwVerboseRef.current) traceCw(`[CW-TICK] IDLE→SENDING_DIT dit=true dah=false`);
         } else if (dahPressedRef.current && !ditPressedRef.current) {
           s.machine = 'SENDING_DAH'; s.pendingElement = null; s.lastSentElement = 'dah';
           s.keyIsDown = true; setCwKeyActive(true); s.elementEndTime = scheduleElement(ditSec * 3);
-          if (cwVerboseRef.current) console.log(`[CW-TICK] IDLE→SENDING_DAH dit=false dah=true`);
+          if (cwVerboseRef.current) traceCw(`[CW-TICK] IDLE→SENDING_DAH dit=false dah=true`);
         } else if (ditPressedRef.current && dahPressedRef.current) {
           s.machine = 'SENDING_DIT'; s.pendingElement = 'dah'; s.lastSentElement = 'dit';
           s.keyIsDown = true; setCwKeyActive(true); s.elementEndTime = scheduleElement(ditSec);
-          if (cwVerboseRef.current) console.log(`[CW-TICK] IDLE→SENDING_DIT(squeeze) pending=dah`);
+          if (cwVerboseRef.current) traceCw(`[CW-TICK] IDLE→SENDING_DIT(squeeze) pending=dah`);
         }
       } else if (s.machine === 'SENDING_DIT' || s.machine === 'SENDING_DAH') {
         const sendingMachine = s.machine;
         if (settings.mode === 'iambic-b') {
           if (sendingMachine === 'SENDING_DIT' && dahPressedRef.current && s.pendingElement !== 'dah') {
             s.pendingElement = 'dah';
-            if (cwVerboseRef.current) console.log(`[CW-TICK] SENDING_DIT: iambic-b captured pending=dah`);
+            if (cwVerboseRef.current) traceCw(`[CW-TICK] SENDING_DIT: iambic-b captured pending=dah`);
           } else if (sendingMachine === 'SENDING_DAH' && ditPressedRef.current && s.pendingElement !== 'dit') {
             s.pendingElement = 'dit';
-            if (cwVerboseRef.current) console.log(`[CW-TICK] SENDING_DAH: iambic-b captured pending=dit`);
+            if (cwVerboseRef.current) traceCw(`[CW-TICK] SENDING_DAH: iambic-b captured pending=dit`);
           }
         }
         if (now >= s.elementEndTime) {
           s.keyIsDown = false; setCwKeyActive(false);
           s.machine = 'INTER_ELEMENT'; s.elementEndTime += ditSec;
-          if (cwVerboseRef.current) console.log(`[CW-TICK] ${sendingMachine}→INTER_ELEMENT pending=${s.pendingElement} dit=${ditPressedRef.current} dah=${dahPressedRef.current}`);
+          if (cwVerboseRef.current) traceCw(`[CW-TICK] ${sendingMachine}→INTER_ELEMENT pending=${s.pendingElement} dit=${ditPressedRef.current} dah=${dahPressedRef.current}`);
         }
       } else if (s.machine === 'INTER_ELEMENT') {
         if (now >= s.elementEndTime) {
@@ -211,18 +229,18 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
           } else if (dahPressedRef.current) {
             next = 'dah';
           }
-          if (cwVerboseRef.current) console.log(`[CW-TICK] INTER_ELEMENT→${next ?? 'IDLE'} mode=${settings.mode} pending=${s.pendingElement} lastSent=${s.lastSentElement} dit=${ditPressedRef.current} dah=${dahPressedRef.current}`);
+          if (cwVerboseRef.current) traceCw(`[CW-TICK] INTER_ELEMENT→${next ?? 'IDLE'} mode=${settings.mode} pending=${s.pendingElement} lastSent=${s.lastSentElement} dit=${ditPressedRef.current} dah=${dahPressedRef.current}`);
           s.pendingElement = null;
           if (next === 'dit') {
             s.machine = 'SENDING_DIT'; s.lastSentElement = 'dit';
             s.keyIsDown = true; setCwKeyActive(true);
             if (settings.mode === 'iambic-b' && dahPressedRef.current) s.pendingElement = 'dah';
-            s.elementEndTime = scheduleElement(ditSec);
+            s.elementEndTime = scheduleElement(ditSec, true);
           } else if (next === 'dah') {
             s.machine = 'SENDING_DAH'; s.lastSentElement = 'dah';
             s.keyIsDown = true; setCwKeyActive(true);
             if (settings.mode === 'iambic-b' && ditPressedRef.current) s.pendingElement = 'dit';
-            s.elementEndTime = scheduleElement(ditSec * 3);
+            s.elementEndTime = scheduleElement(ditSec * 3, true);
           } else {
             s.machine = 'IDLE';
           }
@@ -230,26 +248,39 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
       }
       cwTickTimerRef.current = setTimeout(tick, 4);
     };
+    cwTickRef.current = tick;
     cwTickTimerRef.current = setTimeout(tick, 4);
   };
 
   const stopKeyerTick = () => {
+    cwTickRef.current = null;
     if (cwTickTimerRef.current) { clearTimeout(cwTickTimerRef.current); cwTickTimerRef.current = null; }
   };
 
+  const resetLocalKeyer = () => {
+    // Require a release before accepting keys that were down when focus,
+    // mode, or connection changed. Their OS repeats must not re-key the rig.
+    for (const code of pressedKeyboardCodesRef.current) blockedKeyboardCodesRef.current.add(code);
+    pressedKeyboardCodesRef.current.clear();
+    cwStateRef.current = { machine: 'IDLE', pendingElement: null, lastSentElement: null, elementEndTime: 0, keyIsDown: false };
+    ditPressedRef.current = false;
+    dahPressedRef.current = false;
+    scheduledUntilRef.current = 0;
+    setCwKeyActive(false);
+    sidetoneOff();
+  };
+
   // ── Keyboard listener + sidetone lifecycle ────────────────────────────────
+  // Update settings before effects that start/stop the keyer read them.
+  useEffect(() => {
+    cwSettingsRef.current = cwSettings;
+  }, [cwSettings]);
+
   useEffect(() => {
     const settings = cwSettingsRef.current;
     if (!settings.enabled || !connected) {
       stopKeyerTick();
-      const s = cwStateRef.current;
-      if (s.keyIsDown) {
-        s.keyIsDown = false;
-        setCwKeyActive(false);
-        sidetoneOff();
-      }
-      ditPressedRef.current = false;
-      dahPressedRef.current = false;
+      resetLocalKeyer();
       teardownSidetone();
       return;
     }
@@ -285,9 +316,24 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
       const s = cwSettingsRef.current;
       if (cwVerboseRef.current) {
         const hit = e.code === s.ditKey ? 'dit' : e.code === s.dahKey ? 'dah' : e.code === s.straightKey ? 'straight' : null;
-        if (hit) console.log(`[CW-KEY] ↓ code=${e.code} key=${e.key} repeat=${e.repeat} ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} → ${hit} | before: dit=${ditPressedRef.current} dah=${dahPressedRef.current} machine=${cwStateRef.current.machine}`);
-        else console.log(`[CW-KEY] ↓ code=${e.code} key=${e.key} repeat=${e.repeat} (no match — ditKey=${s.ditKey} dahKey=${s.dahKey} straightKey=${s.straightKey})`);
+        if (hit) traceCw(`[CW-KEY] ↓ code=${e.code} key=${e.key} repeat=${e.repeat} ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} → ${hit} | before: dit=${ditPressedRef.current} dah=${dahPressedRef.current} machine=${cwStateRef.current.machine}`, e);
+        else traceCw(`[CW-KEY] ↓ code=${e.code} key=${e.key} repeat=${e.repeat} (no match — ditKey=${s.ditKey} dahKey=${s.dahKey} straightKey=${s.straightKey})`, e);
       }
+      const bound = s.mode === 'straight' ? e.code === s.straightKey : e.code === s.ditKey || e.code === s.dahKey;
+      if (!bound) return;
+      // On Windows the second Ctrl can arrive marked repeat=true even though
+      // its physical code has not been pressed yet. Track codes separately.
+      const siblingControl = e.code === 'ControlLeft' ? 'ControlRight' : e.code === 'ControlRight' ? 'ControlLeft' : null;
+      const newControlChord = s.mode !== 'straight' && siblingControl !== null
+        && pressedKeyboardCodesRef.current.has(siblingControl);
+      const blocked = blockedKeyboardCodesRef.current.has(e.code);
+      const alreadyHeld = pressedKeyboardCodesRef.current.has(e.code);
+      if (blocked || alreadyHeld || (e.repeat && !newControlChord)) {
+        e.preventDefault();
+        if (cwVerboseRef.current) traceCw(`[CW-KEY] ignored code=${e.code} reason=${blocked ? 'awaiting-release' : alreadyHeld ? 'already-held' : 'repeat'}`, e);
+        return;
+      }
+      pressedKeyboardCodesRef.current.add(e.code);
       if (s.mode === 'straight') {
         if (e.code === s.straightKey && !e.repeat) {
           e.preventDefault();
@@ -312,11 +358,13 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (isTypingTarget(document.activeElement as Element)) return;
+      // Focus may have changed since keydown; always release a held paddle.
+      pressedKeyboardCodesRef.current.delete(e.code);
+      blockedKeyboardCodesRef.current.delete(e.code);
       const s = cwSettingsRef.current;
       if (cwVerboseRef.current) {
         const hit = e.code === s.ditKey ? 'dit' : e.code === s.dahKey ? 'dah' : e.code === s.straightKey ? 'straight' : null;
-        if (hit) console.log(`[CW-KEY] ↑ code=${e.code} key=${e.key} → ${hit} | before: dit=${ditPressedRef.current} dah=${dahPressedRef.current} machine=${cwStateRef.current.machine}`);
+        if (hit) traceCw(`[CW-KEY] ↑ code=${e.code} key=${e.key} → ${hit} | before: dit=${ditPressedRef.current} dah=${dahPressedRef.current} machine=${cwStateRef.current.machine}`, e);
       }
       if (s.mode === 'straight') {
         if (e.code === s.straightKey) {
@@ -335,24 +383,27 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
       }
     };
 
+    const releasePaddles = () => {
+      resetLocalKeyer();
+      emitCwPaddle(false, false, false);
+    };
+    const onVisibilityChange = () => { if (document.hidden) releasePaddles(); };
+
     window.addEventListener('keydown', onKeyDown, { capture: true });
     window.addEventListener('keyup', onKeyUp, { capture: true });
+    window.addEventListener('blur', releasePaddles);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('keydown', onKeyDown, { capture: true });
       window.removeEventListener('keyup', onKeyUp, { capture: true });
+      window.removeEventListener('blur', releasePaddles);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       stopKeyerTick();
       emitCwPaddle(false, false, false);
-      const s = cwStateRef.current;
-      if (s.keyIsDown) {
-        s.keyIsDown = false;
-        setCwKeyActive(false);
-        sidetoneOff();
-      }
-      ditPressedRef.current = false;
-      dahPressedRef.current = false;
+      resetLocalKeyer();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget]);
+  }, [cwSettings.enabled, cwSettings.mode, connected, rebindTarget, socket]);
 
   // Re-applies a Local Output device change to the sidetone's existing AudioContext without
   // a full teardown/recreate (which would interrupt scheduleElement's in-flight audio-clock
@@ -364,11 +415,6 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     const targetSinkId = localAudioOutputDevice && localAudioOutputDevice !== 'default' ? localAudioOutputDevice : '';
     (ctx as any).setSinkId(targetSinkId).catch((e: unknown) => console.error("Sidetone setSinkId error:", e));
   }, [localAudioOutputDevice]);
-
-  // Keep cwSettingsRef in sync with state
-  useEffect(() => {
-    cwSettingsRef.current = cwSettings;
-  }, [cwSettings]);
 
   // ── Socket events ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -392,12 +438,8 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
     };
 
     const onCwStuckKeyAlert = () => {
-      cwStateRef.current = { machine: 'IDLE', pendingElement: null, lastSentElement: null, elementEndTime: 0, keyIsDown: false };
-      ditPressedRef.current = false;
-      dahPressedRef.current = false;
+      resetLocalKeyer();
       emitCwPaddle(false, false, false);
-      setCwKeyActive(false);
-      sidetoneOff();
       setCwStuckAlert(true);
       if (cwStuckAlertTimerRef.current) clearTimeout(cwStuckAlertTimerRef.current);
       cwStuckAlertTimerRef.current = setTimeout(() => setCwStuckAlert(false), 8000);
