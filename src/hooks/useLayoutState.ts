@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { isPhoneWidth } from "../utils/uiScale";
 
 export function useLayoutState() {
   const [isCompact, setIsCompact] = useState(() => {
@@ -13,8 +14,9 @@ export function useLayoutState() {
 
   useEffect(() => {
     const handleResize = () => {
-      const width = window.innerWidth;
-      const mobile = width < 768;
+      // Electron's Chromium zoom shrinks innerWidth; scale it back so a
+      // zoomed-in desktop window doesn't flip to the Phone layout (#123).
+      const mobile = isPhoneWidth(window.innerWidth, window.electron?.getZoomFactor?.() ?? 1);
       setIsPhone(mobile);
       setIsCompact(!mobile);
     };

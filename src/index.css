@@ -80,3 +80,9 @@ html, body {
 .cw-scroll::-webkit-scrollbar {
   display: none;
 }
+
+/* UI scale via CSS zoom (browsers; see useUiScale.ts) also multiplies viewport
+   units, so full-height containers would overflow. Divide the scale back out. */
+html[data-ui-zoom] .min-h-screen { min-height: calc(100vh / var(--ui-scale)); }
+html[data-ui-zoom] .h-\[100dvh\] { height: calc(100dvh / var(--ui-scale)); }
+html[data-ui-zoom] .max-h-\[70vh\] { max-height: calc(70vh / var(--ui-scale)); }

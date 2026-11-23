@@ -30,6 +30,7 @@ import ChangePasswordModal from "./components/ChangePasswordModal";
 import PhoneHeaderMenu from "./components/PhoneHeaderMenu";
 import { useAuth } from "./hooks/useAuth";
 import { useTheme } from "./hooks/useTheme";
+import { useUiScale } from "./hooks/useUiScale";
 import { usePotaSpots } from "./hooks/usePotaSpots";
 import { useDxSpots } from "./hooks/useDxSpots";
 import { useSolarData } from "./hooks/useSolarData";
@@ -147,6 +148,7 @@ export default function App() {
     onPasswordChanged,
   } = useAuth(socket);
   const { theme, toggleTheme } = useTheme();
+  const { scale: uiScale, increase: increaseUiScale, decrease: decreaseUiScale, reset: resetUiScale, canIncrease: canIncreaseUiScale, canDecrease: canDecreaseUiScale } = useUiScale();
 
   // ── Hooks ─────────────────────────────────────────────────────────────────
   const { isCompact, isPhone, stickyBarHeight, containerRef, stickyBarRef } = useLayoutState();
@@ -1560,6 +1562,7 @@ export default function App() {
               role={currentUser?.role ?? "regular"}
               activeSettingsTab={activeSettingsTab}
               setActiveSettingsTab={setActiveSettingsTab}
+              uiScale={{ scale: uiScale, onIncrease: increaseUiScale, onDecrease: decreaseUiScale, onReset: resetUiScale, canIncrease: canIncreaseUiScale, canDecrease: canDecreaseUiScale }}
               rigctldSettings={rigctldSettings}
               setRigctldSettings={setRigctldSettings}
               rigctldProcessStatus={rigctldProcessStatus}

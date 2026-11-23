@@ -268,3 +268,17 @@ On the phone layout, all of the controls above are available inside the collapsi
 The phone header's **hamburger menu** contains Connect/Disconnect, Settings, layout **Edit**, **Log out**, and **Full Screen**. Full Screen also requests a screen wake lock so the display does not sleep while you operate; it releases when you leave full screen. (iOS Safari has limited full-screen support, but the stay-awake part still works.)
 
 When the CW keyer is enabled and the rig is in a CW mode, the PTT button at the bottom is automatically replaced by the dit/dah touch paddles described in the [CW Keyer](#cw-keyer) section above.
+
+
+---
+
+## Display Scaling (High-DPI Screens)
+
+If the interface is too small on a 4K or other high-resolution display, enlarge it from **Settings → DISPLAY** (the gear icon, then the **display** tab). Use **−** and **+** to step between 75% and 300%, and the reset button to return to 100%.
+
+- The setting applies to **this device only** and is remembered by this browser or desktop app. It is not shared with other clients connected to the same server.
+- In the desktop app it uses the Chromium zoom factor. In a browser it uses CSS zoom.
+- The Compact/Phone layout choice is based on the real window width, so enlarging the interface does not flip a desktop window to the phone layout.
+- In a regular browser you can also use the browser's own zoom (Ctrl and +, −, 0). That changes the effective page width, so zooming a narrow window far enough can still switch to the phone layout.
+
+**Desktop app launch flag.** Chromium's `--force-device-scale-factor` also works with the desktop app, for example `./RigControl-Web.AppImage --force-device-scale-factor=2`. To make it permanent on Linux, add it to the `Exec=` line of the app's `.desktop` file. The in-app setting above is the simpler option.
