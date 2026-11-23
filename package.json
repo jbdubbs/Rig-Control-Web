@@ -1,7 +1,7 @@
 {
   "name": "rigcontrol-web",
   "private": true,
-  "version": "1.5.2",
+  "version": "1.5.3-test-129",
   "license": "Apache-2.0",
   "author": "Jason Weisberger NT0Y",
   "homepage": "https://github.com/jbdubbs/Rig-Control-Web",
