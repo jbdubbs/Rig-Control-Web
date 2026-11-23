@@ -278,7 +278,6 @@ If the interface is too small on a 4K or other high-resolution display, enlarge 
 
 - The setting applies to **this device only** and is remembered by this browser or desktop app. It is not shared with other clients connected to the same server.
 - In the desktop app it uses the Chromium zoom factor. In a browser it uses CSS zoom.
-- The Compact/Phone layout choice is based on the real window width, so enlarging the interface does not flip a desktop window to the phone layout.
-- In a regular browser you can also use the browser's own zoom (Ctrl and +, −, 0). That changes the effective page width, so zooming a narrow window far enough can still switch to the phone layout.
+- Enlarging the interface reduces the page width available to the layout. Once the effective width drops below 768 px, for example a small window enlarged far enough, the app switches to the phone layout. Your browser's own zoom (Ctrl and +, −, 0) behaves the same way.
 
 **Desktop app launch flag.** Chromium's `--force-device-scale-factor` also works with the desktop app, for example `./RigControl-Web.AppImage --force-device-scale-factor=2`. To make it permanent on Linux, add it to the `Exec=` line of the app's `.desktop` file. The in-app setting above is the simpler option.

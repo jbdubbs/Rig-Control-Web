@@ -151,7 +151,7 @@ export default function App() {
   const { scale: uiScale, increase: increaseUiScale, decrease: decreaseUiScale, reset: resetUiScale, canIncrease: canIncreaseUiScale, canDecrease: canDecreaseUiScale } = useUiScale();
 
   // ── Hooks ─────────────────────────────────────────────────────────────────
-  const { isCompact, isPhone, stickyBarHeight, containerRef, stickyBarRef } = useLayoutState();
+  const { isCompact, isPhone, stickyBarHeight, containerRef, stickyBarRef } = useLayoutState(uiScale);
   const [isCompactEditMode, setIsCompactEditMode] = useState(false);
   const [isPhoneEditMode, setIsPhoneEditMode] = useState(false);
   const {

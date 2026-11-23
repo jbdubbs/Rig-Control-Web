@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { isPhoneWidth } from "../utils/uiScale";
+import { layoutWidth } from "../utils/uiScale";
 
-export function useLayoutState() {
+// uiScale is a dependency because browser CSS zoom changes the usable width
+// without firing a resize event (issue #123).
+export function useLayoutState(uiScale = 1) {
   const [isCompact, setIsCompact] = useState(() => {
     const saved = localStorage.getItem("is-compact");
     return saved === null ? true : saved === "true";
@@ -14,16 +16,15 @@ export function useLayoutState() {
 
   useEffect(() => {
     const handleResize = () => {
-      // Electron's Chromium zoom shrinks innerWidth; scale it back so a
-      // zoomed-in desktop window doesn't flip to the Phone layout (#123).
-      const mobile = isPhoneWidth(window.innerWidth, window.electron?.getZoomFactor?.() ?? 1);
+      const width = layoutWidth(window.innerWidth, uiScale, !window.electron?.setZoomFactor);
+      const mobile = width < 768;
       setIsPhone(mobile);
       setIsCompact(!mobile);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [uiScale]);
 
   useEffect(() => {
     const el = stickyBarRef.current;

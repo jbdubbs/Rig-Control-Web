@@ -7,9 +7,6 @@ export const UI_SCALE_MAX = 3;
 export const UI_SCALE_STEP = 0.25;
 export const UI_SCALE_DEFAULT = 1;
 
-/** Phone layout below this width, measured in unscaled (physical) CSS px. */
-export const PHONE_BREAKPOINT_PX = 768;
-
 export function clampScale(value: number): number {
   if (!Number.isFinite(value)) return UI_SCALE_DEFAULT;
   const snapped = Math.round(value / UI_SCALE_STEP) * UI_SCALE_STEP;
@@ -26,17 +23,12 @@ export function stepScale(current: number, direction: 1 | -1): number {
 }
 
 /**
- * Width the layout breakpoint should compare against. Chromium zoom (Electron,
- * or native browser zoom) shrinks window.innerWidth by the zoom factor, which
- * would flip a zoomed-in desktop window to the Phone layout. Multiplying by the
- * zoom factor recovers the physical width. CSS `zoom` leaves innerWidth
- * untouched, so callers pass 1 in that case.
+ * Width the Compact/Phone breakpoint should compare against. Electron applies
+ * the scale as Chromium zoom, which already shrinks window.innerWidth, so
+ * nothing to correct there. The browser path uses CSS `zoom`, which leaves
+ * innerWidth untouched, so divide it by the scale to get the width the layout
+ * actually has to fit into.
  */
-export function physicalLayoutWidth(innerWidth: number, chromiumZoomFactor: number): number {
-  const zoom = Number.isFinite(chromiumZoomFactor) && chromiumZoomFactor > 0 ? chromiumZoomFactor : 1;
-  return innerWidth * zoom;
-}
-
-export function isPhoneWidth(innerWidth: number, chromiumZoomFactor: number): boolean {
-  return Math.round(physicalLayoutWidth(innerWidth, chromiumZoomFactor)) < PHONE_BREAKPOINT_PX;
+export function layoutWidth(innerWidth: number, scale: number, cssZoomActive: boolean): number {
+  return cssZoomActive && scale > 0 ? innerWidth / scale : innerWidth;
 }

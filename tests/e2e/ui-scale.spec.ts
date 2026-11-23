@@ -25,13 +25,18 @@ test.describe('UI scale (Display tab)', () => {
     expect(await page.evaluate(() => document.documentElement.style.zoom)).toBe('');
   });
 
-  test('stays in the Compact layout when scaled up', async ({ page }) => {
+  test('switches to the Phone layout when scaling leaves under 768px of effective width', async ({ page }) => {
     await page.setViewportSize({ width: 1000, height: 800 });
-    await page.addInitScript(() => localStorage.setItem('ui-scale', '2'));
+    // Seed only when absent: init scripts re-run on reload and would clobber the later value.
+    await page.addInitScript(() => { if (!localStorage.getItem('ui-scale')) localStorage.setItem('ui-scale', '1.25'); }); // 800px effective
     await page.goto('/');
-    // Compact header shows the inline Connect icon; the Phone layout hides it in the hamburger menu.
     await expect(page.getByTitle('Rigctld Settings')).toBeVisible();
     await expect(page.getByTitle('Menu')).toHaveCount(0);
+
+    await page.evaluate(() => localStorage.setItem('ui-scale', '2')); // 500px effective
+    await page.reload();
+    await expect(page.getByTitle('Menu').first()).toBeVisible();
+
     await page.evaluate(() => localStorage.removeItem('ui-scale'));
   });
 });

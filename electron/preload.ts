@@ -10,7 +10,6 @@ contextBridge.exposeInMainWorld('electron', {
   setZoomFactor: (factor: number) => {
     if (Number.isFinite(factor) && factor > 0) webFrame.setZoomFactor(factor);
   },
-  getZoomFactor: () => webFrame.getZoomFactor(),
   isElectron: true,
   onOutboundAudio: (callback: (data: Uint8Array) => void) => {
     ipcRenderer.on('outbound-audio-data', (_event, data: Buffer) => {

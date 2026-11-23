@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   clampScale,
-  isPhoneWidth,
+  layoutWidth,
   parseStoredScale,
-  physicalLayoutWidth,
   stepScale,
 } from './uiScale';
 
@@ -30,17 +29,10 @@ describe('uiScale', () => {
     expect(stepScale(3, 1)).toBe(3);
   });
 
-  it('recovers physical width from a Chromium-zoomed innerWidth', () => {
-    expect(physicalLayoutWidth(400, 2)).toBe(800);
-    expect(physicalLayoutWidth(800, 1)).toBe(800);
-    expect(physicalLayoutWidth(800, 0)).toBe(800);
-    expect(physicalLayoutWidth(800, NaN)).toBe(800);
-  });
-
-  it('keeps Compact when zoom shrinks innerWidth but the window is wide', () => {
-    expect(isPhoneWidth(400, 2)).toBe(false); // 800px window at 200% zoom
-    expect(isPhoneWidth(767, 1)).toBe(true);
-    expect(isPhoneWidth(768, 1)).toBe(false);
-    expect(isPhoneWidth(360, 1)).toBe(true);
+  it('divides innerWidth by the scale only on the CSS-zoom (browser) path', () => {
+    expect(layoutWidth(1000, 2, true)).toBe(500);
+    expect(layoutWidth(1000, 1, true)).toBe(1000);
+    expect(layoutWidth(1000, 2, false)).toBe(1000); // Electron: innerWidth already shrunk
+    expect(layoutWidth(1000, 0, true)).toBe(1000);
   });
 });
