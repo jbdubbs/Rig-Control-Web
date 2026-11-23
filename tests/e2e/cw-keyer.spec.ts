@@ -103,6 +103,22 @@ test.describe('CW keyer against a real rigctld Dummy backend', () => {
     await send.click();
     await expect(latest).toContainText('PTT: 0', { timeout: 10_000 });
 
+    // #129: if focus is lost while the key is held (Ctrl+T opening a new tab, Alt+Tab), the keyup
+    // never arrives — the keyer must release on blur instead of staying keyed. Done in this test
+    // rather than a new one because the keyer settings above persist server-side.
+    await page.keyboard.down('Space');
+    await page.waitForTimeout(300);
+    await input.fill('t');
+    await send.click();
+    await expect(latest).toContainText('PTT: 1', { timeout: 10_000 });
+
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await page.waitForTimeout(300);
+    await input.fill('t');
+    await send.click();
+    await expect(latest).toContainText('PTT: 0', { timeout: 10_000 });
+    await page.keyboard.up('Space');
+
     await disconnectFromDummy(page);
   });
 });

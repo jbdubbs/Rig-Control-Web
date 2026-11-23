@@ -335,11 +335,36 @@ export function useCWKeyer({ socket, connected, localAudioOutputDevice, pttKeyRe
       }
     };
 
+    // The keyup for a held paddle/straight key is never delivered if focus moves first (Ctrl+T
+    // opening a new tab, Alt+Tab, page backgrounded), which would leave the keyer sending
+    // indefinitely (#129). Force-release whenever the page loses focus or visibility.
+    const releaseAll = () => {
+      const heldKeyboard = ditPressedRef.current || dahPressedRef.current;
+      const s = cwSettingsRef.current;
+      if (s.mode === 'straight') {
+        if (!cwStateRef.current.keyIsDown) return;
+        emitCwPaddle(false, false, false);
+        emitCwKey(false);
+        return;
+      }
+      if (!heldKeyboard) return;
+      ditPressedRef.current = false;
+      dahPressedRef.current = false;
+      emitCwPaddle(false, false, false);
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === 'hidden') releaseAll(); };
+
     window.addEventListener('keydown', onKeyDown, { capture: true });
     window.addEventListener('keyup', onKeyUp, { capture: true });
+    window.addEventListener('blur', releaseAll);
+    window.addEventListener('pagehide', releaseAll);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('keydown', onKeyDown, { capture: true });
       window.removeEventListener('keyup', onKeyUp, { capture: true });
+      window.removeEventListener('blur', releaseAll);
+      window.removeEventListener('pagehide', releaseAll);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       stopKeyerTick();
       emitCwPaddle(false, false, false);
       const s = cwStateRef.current;

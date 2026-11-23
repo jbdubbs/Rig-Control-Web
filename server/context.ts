@@ -260,6 +260,10 @@ export interface ServerContext {
   videoStatus: "streaming" | "stopped";
   videoDeviceList: { id: string; label: string }[];
 
+  // PTT ownership: socket that last asserted PTT on. Lets the server unkey the rig if that
+  // socket drops while keyed (e.g. an iOS PWA suspended mid-press) — issue #124.
+  pttOwnerSocketId: string | null;
+
   // CW keyer state
   cwKeyerProcess: ChildProcess | null;
   activeCwClientId: string | null;
@@ -490,6 +494,7 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
     opusDecoder: null,
     audioStatus: "stopped",
     activeMicClientId: null,
+    pttOwnerSocketId: null,
     isAudioEngineReady: false,
     audioEngineError: null,
     outboundTimer: null,

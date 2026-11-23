@@ -1,7 +1,18 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Mic } from "lucide-react";
 import { cn } from "../utils";
 import type { RigStatus, CwSettings } from "../types";
+
+// iOS "Add to Home Screen" PWA (no browser chrome). `navigator.standalone` is iOS-only; the
+// display-mode query covers manifest-based installs. Evaluated once; it can't change at runtime.
+const IOS_STANDALONE = (() => {
+  if (typeof window === "undefined") return false;
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)").matches === true;
+  return isIos && standalone;
+})();
 
 interface PhoneStickyBarProps {
   stickyBarRef: React.RefObject<HTMLDivElement>;
@@ -26,11 +37,51 @@ function PhoneStickyBar({
 }: PhoneStickyBarProps) {
   const [ditButtonActive, setDitButtonActive] = useState(false);
   const [dahButtonActive, setDahButtonActive] = useState(false);
+  const pttHeldRef = useRef(false);
 
   const isCwMode = ['CW', 'CWR', 'CW-R'].includes(status?.mode || '');
 
+  // If the page is backgrounded or loses focus mid-press (e.g. iOS taking over a home-bar swipe),
+  // the browser may never deliver pointerup/pointercancel, which would leave PTT or the CW paddle
+  // held (#124). Force-release on blur / hidden / pagehide. emitCwPaddle isn't memoized, so read
+  // the latest props through a ref instead of re-subscribing every render.
+  const latestRef = useRef({ handleSetPTT, emitCwPaddle });
+  latestRef.current = { handleSetPTT, emitCwPaddle };
+  useEffect(() => {
+    const releaseAll = () => {
+      const { handleSetPTT: setPtt, emitCwPaddle: paddle } = latestRef.current;
+      if (pttHeldRef.current) {
+        pttHeldRef.current = false;
+        setPtt(false);
+      }
+      if (ditPressedRef.current || dahPressedRef.current) {
+        ditPressedRef.current = false;
+        dahPressedRef.current = false;
+        paddle(false, false, false);
+      }
+      setDitButtonActive(false);
+      setDahButtonActive(false);
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === 'hidden') releaseAll(); };
+    window.addEventListener('blur', releaseAll);
+    window.addEventListener('pagehide', releaseAll);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('blur', releaseAll);
+      window.removeEventListener('pagehide', releaseAll);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [ditPressedRef, dahPressedRef]);
+
   return (
-    <div ref={stickyBarRef} className="flex-shrink-0 px-3 py-3 bg-panel border-t border-line">
+    <div
+      ref={stickyBarRef}
+      className="flex-shrink-0 px-3 pt-3 bg-panel border-t border-line"
+      // Keep the controls clear of the iOS home-indicator gesture zone: the system swipe-up
+      // gesture starts at the bottom edge and would otherwise hit the button (#124). The extra
+      // clearance applies to iOS standalone (Add to Home Screen) only; env() is 0 elsewhere.
+      style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px) + ${IOS_STANDALONE ? 12 : 0}px)` }}
+    >
       {cwSettings.enabled && isCwMode ? (
         <div className="flex gap-3">
           <button
@@ -101,18 +152,22 @@ function PhoneStickyBar({
           onPointerDown={(e) => {
             if (!connected) return;
             e.currentTarget.setPointerCapture(e.pointerId);
+            pttHeldRef.current = true;
             handleSetPTT(true);
           }}
           onPointerUp={(e) => {
             if (!connected) return;
             e.currentTarget.releasePointerCapture(e.pointerId);
+            pttHeldRef.current = false;
             handleSetPTT(false);
           }}
           onPointerCancel={() => {
             if (!connected) return;
+            pttHeldRef.current = false;
             handleSetPTT(false);
           }}
           disabled={!connected}
+          data-testid="phone-ptt-button"
           className={cn(
             "flex flex-col items-center justify-center w-full h-16 rounded-xl border transition-all gap-1 touch-none select-none",
             !connected && "opacity-50 cursor-not-allowed",

@@ -10,7 +10,7 @@ import { initDiagnosticsLog, registerDiagnosticsHandlers } from "./server/diagno
 import { createInitialContext, getAppVersion } from "./server/context.ts";
 import { loadSettings, saveSettings, registerSettingsHandlers } from "./server/settings.ts";
 import { getRigctldVersion, checkVersionSupported, emitRigctldStatus, startRigctld, stopRigctld, registerRigctldHandlers } from "./server/rigctld.ts";
-import { sendToRig, startPolling, stopPolling, registerRigCommHandlers } from "./server/rigComm.ts";
+import { sendToRig, startPolling, stopPolling, registerRigCommHandlers, releasePttForSocket } from "./server/rigComm.ts";
 import { initAudioEngine, stopAudio, registerAudioHandlers } from "./server/audio.ts";
 import { syncKeyerPort, closeKeyerPort, cwSetKey, stopCwTick, registerCwHandlers } from "./server/cw.ts";
 import { registerVideoHandlers } from "./server/video.ts";
@@ -368,6 +368,10 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       vlogInfra(`Client disconnected (Socket ID: ${socket.id}, Client ID: ${clientId})`);
       ctx.socketConnectTimes.delete(socket.id);
       ctx.authenticatedSockets.delete(socket.id);
+
+      // Unkey the rig if this socket was the one holding PTT (#124); fire-and-forget, errors are
+      // handled and logged inside.
+      void releasePttForSocket(ctx, socket.id);
 
       if (ctx.activeCwClientId === socket.id) {
         stopCwTick(ctx);

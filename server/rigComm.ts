@@ -492,6 +492,7 @@ async function triggerPowerOff(ctx: ServerContext): Promise<void> {
   ctx.powerState = 'off';
   ctx.lastPowerCheck = Date.now();
   ctx.powerOffProbeFailureCount = 0;
+  ctx.pttOwnerSocketId = null;
   ctx.lastStatus = { ...ctx.lastStatus, ptt: false, powerState: 'off', powerPending: false };
   ctx.io.emit("rig-status", ctx.lastStatus);
   ctx.io.emit("spectrum-data", { id: 0, name: "", amplitudes: [], timestamp: Date.now() });
@@ -968,6 +969,28 @@ export function connectToRig(ctx: ServerContext, host: string, port: number, soc
   });
 }
 
+/**
+ * Unkeys the rig if `socketId` is the socket that last asserted PTT on. Called when that socket
+ * disconnects: a suspended/killed client (e.g. an iOS PWA backgrounded mid-press, issue #124) can
+ * never send its own release, which would otherwise leave the radio transmitting indefinitely.
+ * No-op if another client has since taken over or released PTT.
+ */
+export async function releasePttForSocket(ctx: ServerContext, socketId: string): Promise<void> {
+  if (ctx.pttOwnerSocketId !== socketId) return;
+  ctx.pttOwnerSocketId = null;
+  if (!ctx.isConnected) return;
+  vlog(`[RIG][PTT] Owner socket ${socketId} disconnected while keyed — releasing PTT`);
+  try {
+    await sendToRig(ctx, "T 0", true, true);
+    const confirmedPtt = (await sendToRig(ctx, "t", true, true)) === "1";
+    if (confirmedPtt) vlog("[RIG][PTT] WARNING: rig still reports PTT active after disconnect release");
+    ctx.lastStatus = { ...ctx.lastStatus, ptt: confirmedPtt };
+    ctx.io.emit("rig-status", ctx.lastStatus);
+  } catch (err) {
+    vlog(`[RIG][PTT] Disconnect release FAILED: ${err}`);
+  }
+}
+
 export function registerRigCommHandlers(socket: Socket, ctx: ServerContext): void {
   socket.on("connect-rig", ({ host, port }) => {
     resetRigState(ctx);
@@ -1092,11 +1115,16 @@ export function registerRigCommHandlers(socket: Socket, ctx: ServerContext): voi
     const pttVal = ptt ? "1" : "0";
     const t0 = Date.now();
     vlogWsjtx(`[wsjtx:ptt] set-ptt received: ptt=${ptt} → sending T ${pttVal} to rigctld`);
+    // Claim ownership before the rig round trip so a disconnect mid-command still unkeys (#124).
+    if (ptt) ctx.pttOwnerSocketId = socket.id;
     try {
       await sendToRig(ctx, `T ${pttVal}`, true, true);
       vlogWsjtx(`[wsjtx:ptt] T ${pttVal} accepted by rigctld (${Date.now() - t0}ms)`);
       const confirmedPtt = (await sendToRig(ctx, "t", true, true)) === "1";
       vlogWsjtx(`[wsjtx:ptt] readback: ptt=${confirmedPtt}, requested=${pttVal === "1"}, match=${confirmedPtt === (pttVal === "1")} (${Date.now() - t0}ms total)`);
+      // Any client unkeying the rig ends the keyed session; only drop ownership once the
+      // readback confirms it, so a failed release stays attributable to its owner.
+      if (!confirmedPtt) ctx.pttOwnerSocketId = null;
       ctx.lastStatus = { ...ctx.lastStatus, ptt: confirmedPtt };
       ctx.io.emit("rig-status", ctx.lastStatus);
     } catch (err) {

@@ -765,10 +765,15 @@ export default function App() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className={cn(
-      "bg-app text-ink font-mono",
-      isPhone ? "h-[100dvh] flex flex-col overflow-hidden" : "p-2 min-h-screen"
-    )}>
+    <div
+      className={cn(
+        "bg-app text-ink font-mono",
+        isPhone ? "h-[100dvh] flex flex-col overflow-hidden" : "p-2 min-h-screen"
+      )}
+      // viewport-fit=cover (index.html) lets content extend under the status bar/notch on iOS;
+      // keep the phone header clear of it. env() is 0 where there's no inset, so no-op elsewhere.
+      style={isPhone ? { paddingTop: "env(safe-area-inset-top, 0px)" } : undefined}
+    >
       {/* CW stuck-key safety alert */}
       {cwStuckAlert && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-900/90 border border-red-500 text-red-200 text-xs font-bold px-4 py-2 rounded-lg shadow-xl flex items-center gap-2">
