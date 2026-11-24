@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { Socket } from "socket.io-client";
 import { VOICE_MODES, MODES_FALLBACK, DEFAULT_STATUS } from "../constants";
-import type { RigStatus } from "../types";
+import type { RigStatus, SwrProtectionSettings, SwrTrip } from "../types";
 
 let rigVerbose = false;
 const vlog = (...args: any[]) => { if (rigVerbose) console.log(...args); };
@@ -66,6 +66,8 @@ export function useRigControl({
   const [error, setError] = useState<string | null>(null);
   const [rigConnecting, setRigConnecting] = useState<{ attempt: number; maxAttempts: number; auto?: boolean; knownPoweredOff?: boolean } | null>(null);
   const [opError, setOpError] = useState<string | null>(null);
+  const [swrProtection, setSwrProtection] = useState<SwrProtectionSettings>({ enabled: false, threshold: 3 });
+  const [swrTrip, setSwrTrip] = useState<SwrTrip | null>(null);
   const opErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [rawCommand, setRawCommand] = useState("");
   const [consoleLogs, setConsoleLogs] = useState<{ cmd: string; resp: string; time: string }[]>([]);
@@ -340,7 +342,16 @@ export function useRigControl({
     handleSetLevel("AGC", parsed[(idx + 1) % parsed.length].value);
   }, [handleSetLevel]);
 
+  const swrTripRef = useRef<SwrTrip | null>(null);
+  swrTripRef.current = swrTrip;
+
+  const clearSwrTrip = useCallback(() => {
+    socket?.emit("swr-trip-clear");
+  }, [socket]);
+
   const handleVfoOp = useCallback((op: string) => {
+    // The server refuses TUNE while SWR protection is tripped; don't start the tuning UI for it.
+    if (op === "TUNE" && swrTripRef.current) return;
     const st = statusRef.current;
     if (op === "CPY") {
       skipPollsCount.current = 1;
@@ -397,6 +408,7 @@ export function useRigControl({
       vlog("[SOCKET] Received settings-data", data);
       if (data.isConnected !== undefined) setConnected(data.isConnected);
       if (data.pollRate) setPollRate(data.pollRate);
+      if (data.swrProtection) setSwrProtection(data.swrProtection);
       if (data.clientHost) setHost(data.clientHost);
       if (data.clientPort) setPort(data.clientPort);
       const isAlreadyConnected = data.isConnected === true || connectedRef.current;
@@ -552,6 +564,8 @@ export function useRigControl({
     };
 
     const onDebugFlags = ({ rig }: { rig: boolean }) => { rigVerbose = rig; };
+    const onSwrTrip = (trip: SwrTrip) => setSwrTrip(trip);
+    const onSwrTripCleared = () => setSwrTrip(null);
 
     socket.on("settings-data", onSettingsData);
     socket.on("rig-connecting", onRigConnecting);
@@ -563,6 +577,8 @@ export function useRigControl({
     socket.on("raw-response", onRawResponse);
     socket.on("rig-status", onRigStatus);
     socket.on("debug-flags", onDebugFlags);
+    socket.on("swr-trip", onSwrTrip);
+    socket.on("swr-trip-cleared", onSwrTripCleared);
 
     socket.emit("get-settings");
     socket.emit("get-radios");
@@ -578,6 +594,8 @@ export function useRigControl({
       socket.off("raw-response", onRawResponse);
       socket.off("rig-status", onRigStatus);
       socket.off("debug-flags", onDebugFlags);
+      socket.off("swr-trip", onSwrTrip);
+      socket.off("swr-trip-cleared", onSwrTripCleared);
       if (opErrorTimer.current) clearTimeout(opErrorTimer.current);
     };
   }, [socket]);
@@ -653,5 +671,8 @@ export function useRigControl({
     cycleAgc,
     handleVfoOp,
     handleSendRaw,
+    swrProtection,
+    swrTrip,
+    clearSwrTrip,
   };
 }

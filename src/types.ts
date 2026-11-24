@@ -46,6 +46,20 @@ export interface DxSpot {
   comment: string;
 }
 
+export interface SwrProtectionSettings {
+  enabled: boolean;
+  threshold: number;
+}
+
+/** Latched server-side when SWR protection unkeys the rig; blocks TX until cleared. */
+export interface SwrTrip {
+  swr: number;
+  threshold: number;
+  frequency: string;
+  mode: string;
+  at: number;
+}
+
 export interface RigStatus {
   frequency: string;
   mode: string;

@@ -209,6 +209,7 @@ Per-message deflate compression (`perMessageDeflate: false`) is explicitly disab
 - CW: `cw-paddle` (`{ dit, dah, straight, t }` — client-relative timestamps)
 - Solar: `get-solar-data`
 - Serial: `get-serial-ports` — requests a fresh server-side enumeration (see `server/serial.ts`)
+- SWR protection: `swr-trip-clear` — clears a latched SWR trip (see SWR Protection below); config is saved with a scoped `save-settings { swrProtection: { enabled, threshold } }`
 
 **Server → Client (state):**
 - `rig-status` — Polled every 2 s: frequency, mode, PTT, VFO state, meters
@@ -222,6 +223,7 @@ Per-message deflate compression (`perMessageDeflate: false`) is explicitly disab
 - `yaesu-scope-status` — FT4222 reader process state: `{ running: boolean, error: string | null }`
 - `serial-ports-list` — Result of a `get-serial-ports` request: `{ path: string; label: string }[]`
 - `dx-spots-backlog` — Buffered DX-cluster spots (`DxSpot[]`) replayed to a newly-connecting socket; `dx-spot` — one new parsed spot pushed live; `dx-cluster-status` — `{ connected: boolean, error: string | null }`
+- `swr-trip` — `{ swr, threshold, frequency, mode, at }`, broadcast when SWR protection unkeys the rig and re-sent to late joiners while latched; `swr-trip-cleared` — the latch was cleared
 - `debug-flags` — Mirrors server `--debug-*` flags as a `DebugFlags` object to browser clients
 
 ### Audio Pipeline
@@ -281,6 +283,17 @@ Three mutually exclusive source modes, selected via `spectrumSettings.source`:
 ### MUF Map Panel
 
 `MufMapPanel` embeds SVG world propagation maps from `prop.kc2g.com` (MUFD or foF2). Supports scroll-to-zoom (cursor-anchored), drag, and pinch-to-zoom. Uses `width/height = scale * 100%` on the image wrapper for crisp SVG rasterization. Height is configured at panel-add time via the two-step `PanelPicker` config flow and stored in `GridItem.heightPx`.
+
+### SWR Protection
+
+Opt-in (`swrProtection: { enabled: false, threshold: 3.0 }` in `settings.json`, threshold clamped to 1.1-10 by `sanitizeSwrThreshold`) auto-unkey for high SWR, issue #128. The controls are a shield button in the Controls panel header (`src/components/SwrProtectionControl.tsx`, `headerActions` in both `CompactLayout` and `PhoneLayout`), next to the PTT and Tune buttons it governs, deliberately not in the General Settings modal and not on the meter chart (there it read as a chart setting and was hidden on the other meter tabs). The label shows armed state at a glance (`SWR 3.0` / `SWR off`); the settings dialog is portaled so the panel's overflow-hidden chrome can't clip it. If a user removes the Controls panel from their layout the button is gone, but the protection keeps its saved state.
+
+- **Enforcement is server-side** (works with the tab closed or backgrounded; the WSJTX bridge keys via `set-ptt`, so it is covered too). `pollRig` can't do it: it reads SWR only every `pollRate` and is suspended entirely while CW keys. `startSwrGuard()`/`swrGuardTick()` in `server/rigComm.ts` run their own 250 ms loop, started/stopped with `startPolling`/`stopPolling`, doing rig I/O only while keyed. PTT keying is confirmed with a live `t` read first, because `lastStatus.ptt` can be stale for up to `pollRate` (e.g. right after a tune ends). CW is sampled only while `cwKeyIsDown`; the over-threshold count survives key-up gaps within a burst.
+- **Decision logic** is pure and unit-tested in `server/swrProtection.ts` (`evaluateSwrTrip`, `advanceTuneWindow`). A trip needs 2 consecutive over-threshold samples (an unmeasured assumption, ignoring key-up transients) and never fires on SWR < 1 or non-finite (the Dummy rig and some radios report 0).
+- **Tune exemption:** SWR is intentionally high during an ATU tune. `vfo-op TUNE` opens `ctx.tuneWindow` before sending `G TUNE`; the guard does nothing while it is open. It closes when PTT drops after having been seen, after 5 s if the rig never keys, or at a 20 s hard cap (so a hung tune carrier is still caught). Only the app's Tune button is exempt; a front-panel tune or a manual-PTT external tuner looks like normal TX, so the operator turns protection off first. The 20 s cap is a judgment call, not measured against slow ATUs.
+- **Trip action** (`tripSwrProtection`): latches `ctx.swrTrip` first (synchronously), aborts CW via `cwAbortKeying` (`server/cw.ts`), sends priority `T 0` with readback and one retry, then broadcasts `swr-trip`. While latched, `set-ptt` key-on, `vfo-op TUNE`, `cwSetKey(true)` and `cw-paddle` key-down are refused (releases always work); refusals use `rig-op-error`, since the client treats `rig-error` as a lost connection. The latch lives on `ctx`, outside `lastStatus`, survives rig reconnect, is not persisted across server restarts, and is cleared only by `swr-trip-clear` (any authenticated client). It does not cover `send-raw`.
+- **Frontend:** `useRigControl` exposes `swrProtection`, `swrTrip`, `clearSwrTrip`. The trip is the top-priority `headerNotice` in `App.tsx` (below the header when expanded, inline in the header when collapsed), the same place as the powered-down and CW-mode notices. `headerNotice` takes an optional `action` (the Clear button), and the notice never auto-dismisses. The trigger reading is stored on the trip, since `useRigControl` forces `swr` to 1.0 when PTT drops.
+- **Tests:** `server/swrProtection.test.ts`, `server/cw.test.ts` (lockout), `tests/e2e/swr-protection.spec.ts`. Hamlib's Dummy rig rejects `L SWR` (RPRT -11) and reads 0, so the e2e uses `tests/fixtures/swr-proxy.ts`, a TCP proxy in front of a real Dummy rigctld that answers `l SWR` itself and fakes the tune carrier.
 
 ### Radio Power Control
 

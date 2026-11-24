@@ -1,6 +1,7 @@
 import fs from "fs";
 import { Socket } from "socket.io";
 import type { ServerContext } from "./context.ts";
+import { sanitizeSwrThreshold } from "./swrProtection.ts";
 import { vlogInfra as vlog, vlogDx, debugFlags, setDebugFlag, type DebugFlags } from "./vlog.ts";
 
 export function sanitizePollRate(value: unknown, fallback = 2000): number {
@@ -49,6 +50,12 @@ export function loadSettings(ctx: ServerContext, settingsFile: string): void {
     if (data.spectrumSettings) {
       ctx.spectrumSettings = { ...ctx.spectrumSettings, ...data.spectrumSettings };
     }
+    if (data.swrProtection) {
+      ctx.swrProtection = {
+        enabled: data.swrProtection.enabled === true,
+        threshold: sanitizeSwrThreshold(data.swrProtection.threshold),
+      };
+    }
     if (data.debugFlags) {
       // OR semantics: a persisted "off" must never silently defeat an
       // explicit --debug-x CLI/env flag for this session, but a persisted
@@ -81,6 +88,7 @@ export function saveSettings(ctx: ServerContext, settingsFile: string): void {
       dxClusterSettings: ctx.dxClusterSettings,
       cwSettings: ctx.cwSettings,
       spectrumSettings: ctx.spectrumSettings,
+      swrProtection: ctx.swrProtection,
       debugFlags,
     }, null, 2));
   } catch (e) {
@@ -144,6 +152,14 @@ export function registerSettingsHandlers(
         onSpectrumEnabledChanged(ctx.spectrumSettings.enabled);
       }
       socket.emit("settings-data", { spectrumSettings: ctx.spectrumSettings });
+    }
+    if (data.swrProtection !== undefined) {
+      ctx.swrProtection = {
+        enabled: data.swrProtection.enabled === true,
+        threshold: sanitizeSwrThreshold(data.swrProtection.threshold, ctx.swrProtection.threshold),
+      };
+      // Echo the sanitized value back so the saver's UI shows what was actually stored.
+      socket.emit("settings-data", { swrProtection: ctx.swrProtection });
     }
 
     ctx.saveSettings();

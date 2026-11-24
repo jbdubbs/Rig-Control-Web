@@ -377,6 +377,9 @@ export default function App() {
     localNRLevel, setLocalNRLevel,
     localNBLevel, setLocalNBLevel,
     isTuning,
+    swrProtection,
+    swrTrip,
+    clearSwrTrip,
     tuneJustFinished,
     isDraggingRF,
     isDraggingRFLevel,
@@ -764,11 +767,31 @@ export default function App() {
 
   const isHeaderCollapsed = isPhone ? isPhoneHeaderCollapsed : isCompactHeaderCollapsed;
   const setHeaderCollapsed = isPhone ? setIsPhoneHeaderCollapsed : setIsCompactHeaderCollapsed;
-  const headerNotice = status?.powerState === 'off'
-    ? { tone: 'red' as const, text: 'Radio powered down — Power on to resume', shortText: 'Radio powered down' }
-    : cwSettings.enabled && connected && !['CW', 'CWR', 'CW-R'].includes(status?.mode || '')
-      ? { tone: 'amber' as const, text: 'Radio not in CW mode — Switch mode to key', shortText: 'Not in CW mode' }
-      : null;
+  // SWR protection trip (#128): top priority, and carries a Clear action since TX stays blocked
+  // until it's cleared. Lives here (not a floating toast) so it shows in both the expanded and
+  // collapsed header like the other status notices.
+  const swrTripMhz = swrTrip && swrTrip.frequency && !Number.isNaN(Number(swrTrip.frequency))
+    ? ` at ${(Number(swrTrip.frequency) / 1e6).toFixed(3)} MHz`
+    : '';
+  const headerNotice: {
+    tone: 'red' | 'amber';
+    text: string;
+    shortText: string;
+    testId?: string;
+    action?: { label: string; onClick: () => void; testId: string };
+  } | null = swrTrip
+    ? {
+        tone: 'red',
+        text: `SWR ${swrTrip.swr.toFixed(2)}:1 exceeded ${swrTrip.threshold.toFixed(1)}:1${swrTripMhz}${swrTrip.mode ? ` ${swrTrip.mode}` : ''}. TX stopped.`,
+        shortText: `SWR ${swrTrip.swr.toFixed(2)}:1, TX stopped`,
+        testId: 'swr-trip-banner',
+        action: { label: 'Clear', onClick: clearSwrTrip, testId: 'swr-trip-clear' },
+      }
+    : status?.powerState === 'off'
+      ? { tone: 'red', text: 'Radio powered down — Power on to resume', shortText: 'Radio powered down' }
+      : cwSettings.enabled && connected && !['CW', 'CWR', 'CW-R'].includes(status?.mode || '')
+        ? { tone: 'amber', text: 'Radio not in CW mode — Switch mode to key', shortText: 'Not in CW mode' }
+        : null;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -803,14 +826,27 @@ export default function App() {
               <img src="/rcw-r-64.png" className="w-5 h-5 flex-shrink-0" alt="" />
             </div>
             {headerNotice ? (
-              <span className={cn(
-                "flex-1 text-center truncate text-[10px] font-bold px-2 py-0.5 rounded border",
-                headerNotice.tone === 'red'
-                  ? "bg-red-900/40 border-red-500/60 text-red-300"
-                  : "bg-amber-900/40 border-amber-500/60 text-amber-300"
-              )}>
-                {headerNotice.shortText}
-              </span>
+              <div
+                role={headerNotice.action ? "alert" : undefined}
+                data-testid={headerNotice.testId}
+                className={cn(
+                  "flex-1 min-w-0 flex items-center justify-center gap-2 text-[10px] font-bold px-2 py-0.5 rounded border",
+                  headerNotice.tone === 'red'
+                    ? "bg-red-900/40 border-red-500/60 text-red-300"
+                    : "bg-amber-900/40 border-amber-500/60 text-amber-300"
+                )}
+              >
+                <span className="truncate">{headerNotice.shortText}</span>
+                {headerNotice.action && (
+                  <button
+                    onClick={headerNotice.action.onClick}
+                    data-testid={headerNotice.action.testId}
+                    className="flex-shrink-0 px-1.5 rounded bg-red-500 hover:bg-red-400 text-white"
+                  >
+                    {headerNotice.action.label}
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="flex-1" />
             )}
@@ -988,13 +1024,26 @@ export default function App() {
         )}
 
         {!isHeaderCollapsed && headerNotice && (
-          <div className={cn(
-            "text-xs font-bold px-3 py-2 rounded-xl text-center border",
-            headerNotice.tone === 'red'
-              ? "bg-red-900/40 border-red-500/60 text-red-300"
-              : "bg-amber-900/40 border-amber-500/60 text-amber-300"
-          )}>
-            {headerNotice.text}
+          <div
+            role={headerNotice.action ? "alert" : undefined}
+            data-testid={headerNotice.testId}
+            className={cn(
+              "text-xs font-bold px-3 py-2 rounded-xl text-center border flex items-center justify-center gap-3",
+              headerNotice.tone === 'red'
+                ? "bg-red-900/40 border-red-500/60 text-red-300"
+                : "bg-amber-900/40 border-amber-500/60 text-amber-300"
+            )}
+          >
+            <span>{headerNotice.text}</span>
+            {headerNotice.action && (
+              <button
+                onClick={headerNotice.action.onClick}
+                data-testid={headerNotice.action.testId}
+                className="flex-shrink-0 px-2 py-0.5 rounded bg-red-500 hover:bg-red-400 text-white"
+              >
+                {headerNotice.action.label}
+              </button>
+            )}
           </div>
         )}
 
@@ -1081,6 +1130,7 @@ export default function App() {
             setPhoneMeterTab={setPhoneMeterTab}
             isPhoneQuickControlsCollapsed={isPhoneQuickControlsCollapsed}
             isTuning={isTuning}
+            swrProtection={swrProtection}
             tuneJustFinished={tuneJustFinished}
             attenuatorLevels={attenuatorLevels}
             preampLevels={preampLevels}
@@ -1279,6 +1329,7 @@ export default function App() {
             setIsCompactControlsCollapsed={setIsCompactControlsCollapsed}
             setIsCompactRFPowerCollapsed={setIsCompactRFPowerCollapsed}
             isTuning={isTuning}
+            swrProtection={swrProtection}
             tuneJustFinished={tuneJustFinished}
             attenuatorLevels={attenuatorLevels}
             preampLevels={preampLevels}

@@ -5,6 +5,7 @@ import { Socket } from "socket.io";
 import type { ServerContext } from "./context.ts";
 import { vlogRig as vlog, vlogWsjtx, ts } from "./vlog.ts";
 import { startRigctld } from "./rigctld.ts";
+import { evaluateSwrTrip, advanceTuneWindow, openTuneWindow } from "./swrProtection.ts";
 
 // Hamlib's Yaesu newcat backend (dual-receiver rigs like the FTDX3000/5000/101/10) and some
 // Icom dual-receiver rigs (IC-9700, IC-905, IC-7610, IC-7850/7851) report the current VFO as
@@ -493,6 +494,7 @@ async function triggerPowerOff(ctx: ServerContext): Promise<void> {
   ctx.lastPowerCheck = Date.now();
   ctx.powerOffProbeFailureCount = 0;
   ctx.pttOwnerSocketId = null;
+  ctx.tuneWindow = null;
   ctx.lastStatus = { ...ctx.lastStatus, ptt: false, powerState: 'off', powerPending: false };
   ctx.io.emit("rig-status", ctx.lastStatus);
   ctx.io.emit("spectrum-data", { id: 0, name: "", amplitudes: [], timestamp: Date.now() });
@@ -542,6 +544,134 @@ export function stopPolling(ctx: ServerContext): void {
     clearTimeout(ctx.pollingTimeout);
     ctx.pollingTimeout = null;
   }
+  stopSwrGuard(ctx);
+}
+
+// --- SWR protection (#128) ---------------------------------------------------------------------
+// pollRig only reads SWR every pollRate (2 s default) and is suspended entirely while CW keys, so
+// protection runs its own fast loop. It is idle (no rig traffic) unless the rig is keyed.
+
+const SWR_GUARD_INTERVAL_MS = 250;
+let swrOverCount = 0;
+
+export function stopSwrGuard(ctx: ServerContext): void {
+  if (ctx.swrGuardTimer) {
+    clearTimeout(ctx.swrGuardTimer);
+    ctx.swrGuardTimer = null;
+  }
+  swrOverCount = 0;
+}
+
+export function startSwrGuard(ctx: ServerContext): void {
+  stopSwrGuard(ctx);
+  const run = async () => {
+    ctx.swrGuardTimer = null;
+    if (!ctx.isConnected) return;
+    try {
+      await swrGuardTick(ctx);
+    } catch (err) {
+      vlog(`[RIG][SWR] Guard tick failed: ${err}`);
+    }
+    if (ctx.isConnected && !ctx.swrGuardTimer) {
+      ctx.swrGuardTimer = setTimeout(run, SWR_GUARD_INTERVAL_MS);
+    }
+  };
+  ctx.swrGuardTimer = setTimeout(run, SWR_GUARD_INTERVAL_MS);
+}
+
+async function swrGuardTick(ctx: ServerContext): Promise<void> {
+  if (ctx.powerState === "off") {
+    ctx.tuneWindow = null;
+    swrOverCount = 0;
+    return;
+  }
+
+  // App-initiated ATU tune: SWR is intentionally high, so protection stays out of the way until
+  // the cycle ends. The window needs a live PTT read, since polling can miss a short tune.
+  if (ctx.tuneWindow) {
+    swrOverCount = 0;
+    const ptt = (await sendToRig(ctx, "t", true)) === "1";
+    const before = ctx.tuneWindow;
+    ctx.tuneWindow = advanceTuneWindow(before, ptt, Date.now());
+    if (!ctx.tuneWindow) {
+      vlog(`[RIG][SWR] Tune window closed after ${Date.now() - before.startedAt} ms (ptt seen: ${before.seenPtt}, ptt now: ${ptt})`);
+    }
+    return;
+  }
+
+  if (!ctx.swrProtection.enabled || ctx.swrTrip) {
+    swrOverCount = 0;
+    return;
+  }
+  const cwDown = ctx.cwKeyIsDown;
+  if (!ctx.lastStatus.ptt && !cwDown) {
+    // Between CW elements the key is up and SWR reads low; keep the count so a CW burst can still
+    // trip. Anything else that isn't keyed starts over.
+    if (!ctx.cwIsKeying) swrOverCount = 0;
+    return;
+  }
+  if (!cwDown) {
+    // lastStatus.ptt only refreshes every pollRate, so it can be stale (e.g. a tune just ended).
+    // Confirm with a live read before treating a stale "keyed" as real TX.
+    const livePtt = (await sendToRig(ctx, "t", true)) === "1";
+    if (!livePtt) {
+      swrOverCount = 0;
+      ctx.lastStatus = { ...ctx.lastStatus, ptt: false };
+      ctx.io.emit("rig-status", ctx.lastStatus);
+      return;
+    }
+  }
+
+  const swr = parseFloat(await sendToRig(ctx, "l SWR", true));
+  // State may have changed while the read was in flight (a tune opened, a trip already latched).
+  const decision = evaluateSwrTrip({
+    swr,
+    keyed: ctx.lastStatus.ptt || ctx.cwKeyIsDown,
+    tuning: ctx.tuneWindow !== null,
+    enabled: ctx.swrProtection.enabled,
+    threshold: ctx.swrProtection.threshold,
+    alreadyTripped: ctx.swrTrip !== null,
+    consecutive: swrOverCount,
+  });
+  swrOverCount = decision.consecutive;
+  if (decision.trip) {
+    swrOverCount = 0;
+    await tripSwrProtection(ctx, swr);
+  }
+}
+
+/** Unkeys everything (rig PTT and CW), latches the trip, and tells every client. */
+export async function tripSwrProtection(ctx: ServerContext, swr: number): Promise<void> {
+  const trip = {
+    swr,
+    threshold: ctx.swrProtection.threshold,
+    frequency: ctx.lastStatus.frequency,
+    mode: ctx.lastStatus.mode,
+    at: Date.now(),
+  };
+  // Latch first and synchronously: from here on set-ptt / CW key-down are refused.
+  ctx.swrTrip = trip;
+  ctx.pttOwnerSocketId = null;
+  console.warn(`[${ts()}] [RIG][SWR] SWR ${swr.toFixed(2)} exceeded ${trip.threshold.toFixed(1)} — TX stopped`);
+  try {
+    const { cwAbortKeying } = await import("./cw.ts");
+    cwAbortKeying(ctx);
+  } catch (err) {
+    vlog(`[RIG][SWR] CW abort failed: ${err}`);
+  }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await sendToRig(ctx, "T 0", true, true);
+      const confirmedPtt = (await sendToRig(ctx, "t", true, true)) === "1";
+      ctx.lastStatus = { ...ctx.lastStatus, ptt: confirmedPtt };
+      ctx.io.emit("rig-status", ctx.lastStatus);
+      if (!confirmedPtt) break;
+      vlog("[RIG][SWR] WARNING: rig still reports PTT active after trip release, retrying");
+    } catch (err) {
+      vlog(`[RIG][SWR] Trip release attempt ${attempt + 1} FAILED: ${err}`);
+    }
+  }
+  ctx.io.emit("swr-trip", trip);
 }
 
 export async function pollRig(ctx: ServerContext): Promise<void> {
@@ -719,6 +849,7 @@ export async function pollRig(ctx: ServerContext): Promise<void> {
 
 export function startPolling(ctx: ServerContext): void {
   stopPolling(ctx);
+  startSwrGuard(ctx);
   const runPoll = async () => {
     if (!ctx.isConnected) return;
     if (ctx.cwIsKeying) {
@@ -743,6 +874,7 @@ export function resetRigState(ctx: ServerContext): void {
   ctx.powerOffProbeFailureCount = 0;
   ctx.pendingCapabilityProbe = false;
   ctx.knownPoweredOff = false;
+  ctx.tuneWindow = null;
   ctx.lastStatus = {
     frequency: "14074000",
     mode: "USB",
@@ -1112,6 +1244,12 @@ export function registerRigCommHandlers(socket: Socket, ctx: ServerContext): voi
   });
 
   socket.on("set-ptt", async (ptt) => {
+    // SWR protection tripped (#128): refuse to key until cleared. Releasing is always allowed.
+    if (ptt && ctx.swrTrip) {
+      socket.emit("rig-op-error", "TX blocked: SWR protection tripped. Clear the alert to transmit.");
+      socket.emit("rig-status", ctx.lastStatus);
+      return;
+    }
     const pttVal = ptt ? "1" : "0";
     const t0 = Date.now();
     vlogWsjtx(`[wsjtx:ptt] set-ptt received: ptt=${ptt} → sending T ${pttVal} to rigctld`);
@@ -1300,6 +1438,15 @@ export function registerRigCommHandlers(socket: Socket, ctx: ServerContext): voi
   });
 
   socket.on("vfo-op", async (op) => {
+    if (op === "TUNE") {
+      if (ctx.swrTrip) {
+        socket.emit("rig-op-error", "TX blocked: SWR protection tripped. Clear the alert to tune.");
+        return;
+      }
+      // Open before G TUNE is sent so the guard can't see the tune's own high SWR first.
+      ctx.tuneWindow = openTuneWindow(Date.now());
+      vlog("[RIG][SWR] Tune window opened");
+    }
     try {
       await sendToRig(ctx, `G ${op}`, true, true);
       const frequency = await sendToRig(ctx, "f", true, true);
@@ -1313,8 +1460,17 @@ export function registerRigCommHandlers(socket: Socket, ctx: ServerContext): voi
       }
       ctx.io.emit("rig-status", ctx.lastStatus);
     } catch (err) {
+      if (op === "TUNE") ctx.tuneWindow = null;
       socket.emit("rig-error", `Failed to execute VFO operation: ${op}`);
     }
+  });
+
+  socket.on("swr-trip-clear", () => {
+    if (!ctx.swrTrip) return;
+    vlog("[RIG][SWR] Trip cleared by operator");
+    ctx.swrTrip = null;
+    swrOverCount = 0;
+    ctx.io.emit("swr-trip-cleared");
   });
 
   socket.on("set-visible-meters", (meters: string[]) => {

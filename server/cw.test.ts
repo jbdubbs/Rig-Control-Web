@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cwTick, isValidKeyerPort } from './cw.ts';
+import { cwAbortKeying, cwSetKey, cwTick, isValidKeyerPort } from './cw.ts';
 
 // cwTick's iambic FSM is exercised here in "rigctld-ptt" keying mode, which
 // sends real "T 1"/"T 0" commands via ctx.sendToRig instead of driving the
@@ -195,5 +195,35 @@ describe('isValidKeyerPort', () => {
     expect(isValidKeyerPort('com12')).toBe(true);
     expect(isValidKeyerPort('/dev/ttyUSB0')).toBe(false);
     expect(isValidKeyerPort('LPT1')).toBe(false);
+  });
+});
+
+describe('SWR protection lockout (#128)', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('cwSetKey refuses to key down while an SWR trip is latched, but still releases', () => {
+    vi.useFakeTimers();
+    const sendToRig = vi.fn().mockResolvedValue('');
+    const ctx = makeCtx({ sendToRig, swrTrip: { swr: 4, threshold: 3, frequency: '14074000', mode: 'USB', at: 0 } });
+    cwSetKey(ctx as any, true);
+    expect(ctx.cwKeyIsDown).toBe(false);
+    expect(sendToRig).not.toHaveBeenCalled();
+
+    ctx.cwKeyIsDown = true;
+    cwSetKey(ctx as any, false);
+    expect(ctx.cwKeyIsDown).toBe(false);
+    expect(sendToRig).toHaveBeenCalledWith('T 0', false, true);
+  });
+
+  it('cwAbortKeying releases the key and drops the keying session', () => {
+    vi.useFakeTimers();
+    const sendToRig = vi.fn().mockResolvedValue('');
+    const ctx = makeCtx({ sendToRig, cwKeyIsDown: true, cwIsKeying: true, cwPaddleBuffer: [{ t: 1, dit: true, dah: false, straight: false }] });
+    cwAbortKeying(ctx as any);
+    expect(ctx.cwKeyIsDown).toBe(false);
+    expect(ctx.cwIsKeying).toBe(false);
+    expect(ctx.activeCwClientId).toBeNull();
+    expect(ctx.cwPaddleBuffer).toEqual([]);
+    expect(sendToRig).toHaveBeenCalledWith('T 0', false, true);
   });
 });

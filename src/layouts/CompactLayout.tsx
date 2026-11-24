@@ -12,6 +12,7 @@ import type {
   RfLevelCapabilities,
   ConsoleLog,
   SpectrumData,
+  SwrProtectionSettings,
 } from "../types";
 import type { GridItem, GridLayoutCallbacks, PanelType, ViewLayout } from "../types/layout";
 import { PANEL_LABELS } from "../types/layout";
@@ -26,6 +27,7 @@ import PanelPicker from "../components/PanelPicker";
 import CommandConsolePanel from "../panels/CommandConsolePanel";
 import RfLevelsPanel from "../panels/RfLevelsPanel";
 import { MeterHistoryChart } from "../panels/TabbedMeterPanel";
+import SwrProtectionControl from "../components/SwrProtectionControl";
 import VfoPanel, { VfoCollapsedHeader } from "../panels/VfoPanel";
 import VideoFeedPanel, { VideoFeedHeaderActions } from "../panels/VideoFeedPanel";
 import { AudioFeedHeaderActions } from "../panels/AudioFeedPanel";
@@ -158,6 +160,7 @@ export interface CompactLayoutProps {
   setIsCompactControlsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   setIsCompactRFPowerCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   isTuning: boolean;
+  swrProtection: SwrProtectionSettings;
   tuneJustFinished: boolean;
   attenuatorLevels: string[];
   preampLevels: string[];
@@ -349,6 +352,7 @@ function CompactLayout({
   setIsCompactControlsCollapsed,
   setIsCompactRFPowerCollapsed,
   isTuning,
+  swrProtection,
   tuneJustFinished,
   attenuatorLevels,
   preampLevels,
@@ -667,6 +671,7 @@ function CompactLayout({
           <PanelChrome
             title="Controls"
             icon={<Zap size={12} />}
+            headerActions={<SwrProtectionControl socket={socket} settings={swrProtection} dense />}
             isCollapsed={isCompactControlsCollapsed}
             setIsCollapsed={setIsCompactControlsCollapsed}
             className="shadow-lg"
@@ -1034,7 +1039,7 @@ function CompactLayout({
     videoStatus, isVideoCollapsed, isElectronSource, videoError,
     audioStatus, localAudioReady, inboundMuted, outboundMuted, audioSettings, audioWasRestarted,
     isCompactControlsCollapsed, isCompactRFPowerCollapsed,
-    isTuning, tuneJustFinished, attenuatorLevels, preampLevels, agcLevels,
+    isTuning, swrProtection, tuneJustFinished, attenuatorLevels, preampLevels, agcLevels,
     nbCapabilities, nrCapabilities, anfCapabilities,
     localRFPower, rfPowerCapabilities, rfLevelCapabilities, localRFLevel, localNRLevel, localNBLevel,
     potaPollRate, potaMaxAge, potaModeFilter, potaBandFilter,

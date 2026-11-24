@@ -204,7 +204,9 @@ export async function startServer(appPath?: string, userDataPath?: string) {
         ? { open: true, port: ctx.cwSettings.keyerPort }
         : { open: false, port: ctx.cwSettings.keyerPort },
       spectrumSettings: ctx.spectrumSettings,
+      swrProtection: ctx.swrProtection,
     });
+    if (ctx.swrTrip) socket.emit("swr-trip", ctx.swrTrip);
     socket.emit("spectrum-supported", ctx.spectrumSupported);
     socket.emit("yaesu-scope-status", { running: ctx.yaesuScopeRunning, error: ctx.yaesuScopeError });
     socket.emit("iq-scope-status", { running: ctx.iqScopeRunning, error: ctx.iqScopeError });

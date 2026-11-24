@@ -12,6 +12,7 @@ import type {
   RfLevelCapabilities,
   ConsoleLog,
   SpectrumData,
+  SwrProtectionSettings,
   SpectrumSettings,
 } from "../types";
 import type { GridItem, GridLayoutCallbacks, PanelType, ViewLayout } from "../types/layout";
@@ -37,6 +38,7 @@ const SpotSettingsModal = lazy(() => import("../modals/SpotSettingsModal"));
 const ComboSpotSettingsModal = lazy(() => import("../modals/ComboSpotSettingsModal"));
 const DxSpotSettingsModal = lazy(() => import("../modals/DxSpotSettingsModal"));
 import ControlsPanel from "../panels/ControlsPanel";
+import SwrProtectionControl from "../components/SwrProtectionControl";
 import TabbedMeterPanel, {
   TabbedMeterHeaderContent,
 } from "../panels/TabbedMeterPanel";
@@ -113,6 +115,7 @@ export interface PhoneLayoutProps {
   // Quick controls
   isPhoneQuickControlsCollapsed: boolean;
   isTuning: boolean;
+  swrProtection: SwrProtectionSettings;
   tuneJustFinished: boolean;
   attenuatorLevels: string[];
   preampLevels: string[];
@@ -342,6 +345,7 @@ function PhoneLayout({
   setPhoneMeterTab,
   isPhoneQuickControlsCollapsed,
   isTuning,
+  swrProtection,
   tuneJustFinished,
   attenuatorLevels,
   preampLevels,
@@ -653,6 +657,7 @@ function PhoneLayout({
           <PanelChrome
             title="Quick Controls"
             icon={<Zap size={12} />}
+            headerActions={<SwrProtectionControl socket={socket} settings={swrProtection} />}
             isCollapsed={isPhoneQuickControlsCollapsed}
             setIsCollapsed={setIsPhoneQuickControlsCollapsed}
             bodyClassName="p-3 flex flex-col gap-4"

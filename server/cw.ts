@@ -79,6 +79,8 @@ const setCwKeyingActive = (ctx: ServerContext, active: boolean) => {
 };
 
 export function cwSetKey(ctx: ServerContext, active: boolean): void {
+  // SWR protection tripped (#128): never key until a client clears it. Releasing is always allowed.
+  if (active && ctx.swrTrip) return;
   if (ctx.cwKeyIsDown === active) return;
   ctx.cwKeyIsDown = active;
   if (active) {
@@ -113,6 +115,24 @@ export function cwSetKey(ctx: ServerContext, active: boolean): void {
 
 export function stopCwTick(ctx: ServerContext): void {
   if (ctx.cwTickTimer) { clearTimeout(ctx.cwTickTimer); ctx.cwTickTimer = null; }
+}
+
+/**
+ * Releases the CW key and drops the active keying session, as a client disconnect does. Used by
+ * SWR protection so a trip also ends an in-progress CW transmission.
+ */
+export function cwAbortKeying(ctx: ServerContext): void {
+  stopCwTick(ctx);
+  if (ctx.cwClaimIdleTimer) { clearTimeout(ctx.cwClaimIdleTimer); ctx.cwClaimIdleTimer = null; }
+  cwSetKey(ctx, false);
+  ctx.cwKeyLockedOut = false;
+  ctx.cwMachine = "IDLE";
+  ctx.cwPendingElement = null;
+  ctx.cwPaddleBuffer = [];
+  ctx.activeCwClientId = null;
+  ctx.cwIsKeying = false;
+  if (ctx.cwIdleTimer) { clearTimeout(ctx.cwIdleTimer); ctx.cwIdleTimer = null; }
+  if (ctx.cwStuckKeyTimer) { clearTimeout(ctx.cwStuckKeyTimer); ctx.cwStuckKeyTimer = null; }
 }
 
 export function cwTick(ctx: ServerContext): void {
@@ -315,6 +335,7 @@ export function registerCwHandlers(socket: Socket, ctx: ServerContext): void {
     const anyActive = dit || dah || straight;
 
     if (anyActive) {
+      if (ctx.swrTrip) return;
       if (ctx.cwKeyLockedOut) return;
       if (ctx.activeCwClientId && ctx.activeCwClientId !== socket.id) return;
       if (!ctx.activeCwClientId) {

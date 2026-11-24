@@ -6,6 +6,21 @@ import { Server } from "socket.io";
 import { ChildProcess } from "child_process";
 import type { AuthenticatedSocket } from "./authTypes.ts";
 
+/** Latched when SWR protection unkeys the rig; blocks all keying until a client clears it. */
+export interface SwrTrip {
+  swr: number;
+  threshold: number;
+  frequency: string;
+  mode: string;
+  at: number;
+}
+
+/** Open for the duration of an app-initiated ATU tune cycle (see server/swrProtection.ts). */
+export interface TuneWindow {
+  startedAt: number;
+  seenPtt: boolean;
+}
+
 export interface HfBandCondition {
   name: string;
   day: string;
@@ -125,6 +140,12 @@ export interface ServerContext {
     dahKey: string;
     straightKey: string;
   };
+  // SWR protection (#128): auto-unkey above `threshold`, then latch (`swrTrip`) until cleared.
+  swrProtection: { enabled: boolean; threshold: number };
+  swrTrip: SwrTrip | null;
+  // Open while an app-initiated ATU tune (`G TUNE`) runs; SWR is intentionally high then.
+  tuneWindow: TuneWindow | null;
+  swrGuardTimer: ReturnType<typeof setTimeout> | null;
   potaSettings: { enabled: boolean; pollRate: number; maxAge: number };
   sotaSettings: { enabled: boolean; pollRate: number; maxAge: number };
   wwffSettings: { enabled: boolean; pollRate: number; maxAge: number };
@@ -405,6 +426,10 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
       dahKey: "ControlRight",
       straightKey: "Space",
     },
+    swrProtection: { enabled: false, threshold: 3.0 },
+    swrTrip: null,
+    tuneWindow: null,
+    swrGuardTimer: null,
     potaSettings: { enabled: false, pollRate: 5, maxAge: 15 },
     sotaSettings: { enabled: false, pollRate: 5, maxAge: 15 },
     wwffSettings: { enabled: false, pollRate: 5, maxAge: 15 },
