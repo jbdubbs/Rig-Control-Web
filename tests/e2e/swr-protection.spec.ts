@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../fixtures/test.ts';
 import { startDummyRigctld, type DummyRigctld } from '../fixtures/rigctld-dummy.ts';
 import { startSwrProxy, type SwrProxy } from '../fixtures/swr-proxy.ts';
 import { connectToDummy, disconnectFromDummy } from './connect-helper.ts';

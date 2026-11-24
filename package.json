@@ -23,6 +23,7 @@
     "test:ui": "vitest --ui",
     "test:fixtures": "vitest run --config vitest.fixtures.config.ts",
     "test:e2e": "node tests/e2e/reset-test-data.mjs && playwright test",
+    "test:e2e:live-spots": "node tests/e2e/reset-test-data.mjs && node tests/e2e/run-live-spots.mjs",
     "test:e2e:ui": "node tests/e2e/reset-test-data.mjs && playwright test --ui",
     "test:hardware": "node tests/e2e-hardware/reset-test-data.mjs && playwright test --config=playwright.hardware.config.ts",
     "test:ft8-calibration": "node native/ft8-decoder/tools/test-calibration.mjs",

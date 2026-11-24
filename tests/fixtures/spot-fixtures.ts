@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 
 // usePotaSpots.tsx parses spotTime/timeStamp as `new Date(s + 'Z').getTime()`
 // (the trailing Z is appended by the code, not present in the API's own
@@ -47,7 +47,9 @@ export const WWFF_FIXTURE = [{
   id: 3001,
 }];
 
-export async function routeSpots(page: Page, opts: { pota?: unknown; sota?: unknown; wwff?: unknown } = {}) {
+// Accepts a Page (per-test overrides, which take precedence over context routes) or a
+// BrowserContext (the suite-wide default installed by tests/fixtures/test.ts).
+export async function routeSpots(page: Page | BrowserContext, opts: { pota?: unknown; sota?: unknown; wwff?: unknown } = {}) {
   await page.route('https://api.pota.app/spot/', (route) =>
     route.fulfill({ json: opts.pota ?? POTA_FIXTURE }));
   await page.route('https://api2.sota.org.uk/api/spots/-1/all', (route) =>

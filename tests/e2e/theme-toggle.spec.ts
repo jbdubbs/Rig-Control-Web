@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/test.ts';
 
 test.describe('Light/dark theme toggle', () => {
   test('defaults to dark, toggles to light, and persists across reload', async ({ page }) => {

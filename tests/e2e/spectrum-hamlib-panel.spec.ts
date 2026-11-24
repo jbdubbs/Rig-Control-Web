@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/test.ts';
 import { startDummyRigctld, type DummyRigctld } from '../fixtures/rigctld-dummy.ts';
 import { sendSyntheticSpectrumPacket } from '../fixtures/synthetic-udp.ts';
 

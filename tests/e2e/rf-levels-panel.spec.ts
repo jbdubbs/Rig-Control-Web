@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { test, expect, type Locator } from '@playwright/test';
+import { test, expect, type Locator } from '../fixtures/test.ts';
 import { startDummyRigctld, type DummyRigctld } from '../fixtures/rigctld-dummy.ts';
 import { connectToDummy, disconnectFromDummy } from './connect-helper.ts';
 

@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../fixtures/test.ts';
 import { startDummyRigctld, type DummyRigctld } from '../fixtures/rigctld-dummy.ts';
 import { connectToDummy, disconnectFromDummy } from './connect-helper.ts';
 import { LOOPBACK_INPUT_NAME, LOOPBACK_OUTPUT_NAME } from '../fixtures/audio-loopback.ts';

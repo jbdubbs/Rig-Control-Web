@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/test.ts';
 
 test.describe('UI scale', () => {
   test('header zoom button opens a 50-200% slider that scales the page, persists, and resets', async ({ page }) => {

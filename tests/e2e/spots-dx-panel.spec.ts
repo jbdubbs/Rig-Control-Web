@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/test.ts';
 import { startDummyRigctld, type DummyRigctld } from '../fixtures/rigctld-dummy.ts';
 import { startSyntheticDxCluster, type SyntheticDxCluster } from '../fixtures/synthetic-dx-cluster.ts';
 import { DEFAULT_COMPACT_LAYOUT } from '../../src/hooks/useLayoutConfig.ts';

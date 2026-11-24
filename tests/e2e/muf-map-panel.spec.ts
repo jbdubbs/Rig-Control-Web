@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../fixtures/test.ts';
 
 // MufMapPanel ("mufmap") is in DEFAULT_COMPACT_LAYOUT (useLayoutConfig.ts) —
 // no layout seeding needed. It's a bare <img src="https://prop.kc2g.com/

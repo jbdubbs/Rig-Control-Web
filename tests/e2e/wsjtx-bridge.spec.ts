@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/test.ts';
 import { startDummyRigctld, type DummyRigctld } from '../fixtures/rigctld-dummy.ts';
 import { startWsjtxBridge, type WsjtxBridge } from '../fixtures/wsjtx-bridge.ts';
 import { SyntheticWsjtxClient } from '../fixtures/synthetic-wsjtx-client.ts';

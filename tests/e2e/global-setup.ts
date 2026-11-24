@@ -2,6 +2,7 @@ import { chromium } from '@playwright/test';
 import { AUTH_STATE_PATH, BASE_URL } from '../../playwright.config.ts';
 import { startSolarFixtureServer } from '../fixtures/solar-fixture-server.ts';
 import { startAudioLoopback } from '../fixtures/audio-loopback.ts';
+import { routeSpots } from '../fixtures/spot-fixtures.ts';
 
 /**
  * Logs in once as the freshly-seeded default ADMIN user (see server/auth.ts
@@ -26,6 +27,10 @@ export default async function globalSetup() {
 
   const browser = await chromium.launch();
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  // Spot feeds are mocked everywhere except the opt-in live pre-release check (see
+  // tests/fixtures/test.ts). Setup must never depend on them: a pending third-party
+  // request here stalls the `networkidle` wait below.
+  await routeSpots(context);
   const page = await context.newPage();
 
   await page.goto(BASE_URL);

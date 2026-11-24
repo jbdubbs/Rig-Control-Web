@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Page } from '../fixtures/test.ts';
 import { AUTH_STATE_PATH, BASE_URL } from '../../playwright.config.ts';
 
 // Covers ground CLAUDE.md's backlog table flagged as untested: admin user

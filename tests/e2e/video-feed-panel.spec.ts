@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/test.ts';
 import { AUTH_STATE_PATH } from '../../playwright.config.ts';
 
 // Runs under the 'video-fake-device' Playwright project (see

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/test.ts';
 import { SOLAR_FIXTURE } from '../fixtures/solar-fixture-server.ts';
 
 // server/solar.ts fetches from RCW_SOLAR_HAMQSL_URL/RCW_SOLAR_KC2G_URL
