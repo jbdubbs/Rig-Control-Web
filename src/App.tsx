@@ -28,6 +28,7 @@ const AudioSettingsModal = lazy(() => import("./modals/AudioSettingsModal"));
 import LoginScreen from "./components/LoginScreen";
 import ChangePasswordModal from "./components/ChangePasswordModal";
 import PhoneHeaderMenu from "./components/PhoneHeaderMenu";
+import UiScaleHeaderControl from "./components/UiScaleHeaderControl";
 import { useAuth } from "./hooks/useAuth";
 import { useTheme } from "./hooks/useTheme";
 import { useUiScale } from "./hooks/useUiScale";
@@ -148,7 +149,11 @@ export default function App() {
     onPasswordChanged,
   } = useAuth(socket);
   const { theme, toggleTheme } = useTheme();
-  const { scale: uiScale, increase: increaseUiScale, decrease: decreaseUiScale, reset: resetUiScale, canIncrease: canIncreaseUiScale, canDecrease: canDecreaseUiScale } = useUiScale();
+  const { scale: uiScale, setScale: setUiScale, increase: increaseUiScale, decrease: decreaseUiScale, reset: resetUiScale, canIncrease: canIncreaseUiScale, canDecrease: canDecreaseUiScale } = useUiScale();
+  const uiScaleControls = useMemo(
+    () => ({ scale: uiScale, onSet: setUiScale, onIncrease: increaseUiScale, onDecrease: decreaseUiScale, onReset: resetUiScale, canIncrease: canIncreaseUiScale, canDecrease: canDecreaseUiScale }),
+    [uiScale, setUiScale, increaseUiScale, decreaseUiScale, resetUiScale, canIncreaseUiScale, canDecreaseUiScale]
+  );
 
   // ── Hooks ─────────────────────────────────────────────────────────────────
   const { isCompact, isPhone, stickyBarHeight, containerRef, stickyBarRef } = useLayoutState(uiScale);
@@ -846,6 +851,7 @@ export default function App() {
                   >
                     <LayoutGrid size={14} />
                   </button>
+                  <UiScaleHeaderControl scale={uiScale} onSet={setUiScale} onReset={resetUiScale} variant="collapsed" />
                   <button
                     onClick={toggleTheme}
                     className="p-1 rounded text-muted hover:text-ink transition-all flex-shrink-0"
@@ -875,6 +881,7 @@ export default function App() {
                   onToggleFullscreen={toggleFullscreenWakeLock}
                   theme={theme}
                   onToggleTheme={toggleTheme}
+                  uiScale={uiScaleControls}
                   onLogout={logout}
                   callsign={currentUser?.callsign ?? ''}
                 />
@@ -934,6 +941,7 @@ export default function App() {
                   >
                     <LayoutGrid size={18} />
                   </button>
+                  <UiScaleHeaderControl scale={uiScale} onSet={setUiScale} onReset={resetUiScale} variant="expanded" />
                   <button
                     onClick={toggleTheme}
                     className="p-1.5 sm:p-2 bg-app border border-line rounded-lg text-muted hover:text-ink transition-all flex-shrink-0"
@@ -963,6 +971,7 @@ export default function App() {
                   onToggleFullscreen={toggleFullscreenWakeLock}
                   theme={theme}
                   onToggleTheme={toggleTheme}
+                  uiScale={uiScaleControls}
                   onLogout={logout}
                   callsign={currentUser?.callsign ?? ''}
                 />
@@ -1562,7 +1571,6 @@ export default function App() {
               role={currentUser?.role ?? "regular"}
               activeSettingsTab={activeSettingsTab}
               setActiveSettingsTab={setActiveSettingsTab}
-              uiScale={{ scale: uiScale, onIncrease: increaseUiScale, onDecrease: decreaseUiScale, onReset: resetUiScale, canIncrease: canIncreaseUiScale, canDecrease: canDecreaseUiScale }}
               rigctldSettings={rigctldSettings}
               setRigctldSettings={setRigctldSettings}
               rigctldProcessStatus={rigctldProcessStatus}

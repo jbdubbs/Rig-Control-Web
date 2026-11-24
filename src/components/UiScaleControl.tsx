@@ -7,12 +7,16 @@ export interface UiScaleControlProps {
   onIncrease: () => void;
   onDecrease: () => void;
   onReset: () => void;
+  /** Jump straight to a scale (clamped and snapped by the hook). */
+  onSet: (scale: number) => void;
   canIncrease: boolean;
   canDecrease: boolean;
+  /** Tighter sizing for the phone hamburger menu. */
+  compact?: boolean;
 }
 
-const btn =
-  "p-2 bg-app border border-line rounded-lg text-muted hover:text-ink transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted";
+const btnBase =
+  "bg-app border border-line rounded-lg text-muted hover:text-ink transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted";
 
 export default function UiScaleControl({
   scale,
@@ -21,13 +25,15 @@ export default function UiScaleControl({
   onReset,
   canIncrease,
   canDecrease,
+  compact = false,
 }: UiScaleControlProps) {
+  const btn = cn(btnBase, compact ? "p-1.5" : "p-2");
   return (
     <div className="flex items-center gap-2" data-testid="ui-scale-control">
       <button onClick={onDecrease} disabled={!canDecrease} className={btn} title="Smaller" aria-label="Decrease UI scale">
         <Minus size={14} />
       </button>
-      <span className="w-16 text-center text-sm font-mono text-ink" data-testid="ui-scale-value">
+      <span className={cn("text-center text-sm font-mono text-ink", compact ? "w-12" : "w-16")} data-testid="ui-scale-value">
         {Math.round(scale * 100)}%
       </span>
       <button onClick={onIncrease} disabled={!canIncrease} className={btn} title="Larger" aria-label="Increase UI scale">
@@ -36,7 +42,7 @@ export default function UiScaleControl({
       <button
         onClick={onReset}
         disabled={scale === UI_SCALE_DEFAULT}
-        className={cn(btn, "ml-2")}
+        className={cn(btn, compact ? "ml-1" : "ml-2")}
         title="Reset to 100%"
         aria-label="Reset UI scale"
       >

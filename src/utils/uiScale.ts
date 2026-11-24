@@ -2,8 +2,8 @@
 // localStorage, not server settings.json (shared by every client).
 
 export const UI_SCALE_KEY = 'ui-scale';
-export const UI_SCALE_MIN = 0.75;
-export const UI_SCALE_MAX = 3;
+export const UI_SCALE_MIN = 0.5;
+export const UI_SCALE_MAX = 2;
 export const UI_SCALE_STEP = 0.25;
 export const UI_SCALE_DEFAULT = 1;
 

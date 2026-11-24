@@ -62,7 +62,7 @@ function getDefaultAudioSourceId(): string | null {
 // capture from playback by name; pw-dump's node.name property is reliable
 // regardless of WirePlumber version/display differences.
 function findLoopbackSourceNodeId(): string {
-  const dump = JSON.parse(execSync('pw-dump').toString()) as Array<{ id: number; info?: { props?: Record<string, unknown> } }>;
+  const dump = JSON.parse(execSync('pw-dump', { maxBuffer: 64 * 1024 * 1024 }).toString()) as Array<{ id: number; info?: { props?: Record<string, unknown> } }>;
   const targetName = `${NODE_NAME}.output`;
   const found = dump.find((obj) => obj.info?.props?.['node.name'] === targetName);
   if (!found) throw new Error(`pw-dump: could not find ${targetName} node id`);

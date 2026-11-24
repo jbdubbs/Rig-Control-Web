@@ -207,6 +207,17 @@ async function createWindow() {
     return { action: 'deny' };
   });
 
+  // Electron's default View menu binds Zoom In to Ctrl+Plus, which needs Shift on
+  // most layouts, so the unshifted Ctrl+= (and numpad Ctrl++) most people press
+  // does nothing. Mirror the menu's zoom-in step (0.5 zoom levels) for those keys.
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || input.alt || input.shift) return;
+    if (!(input.control || input.meta)) return;
+    if (input.key !== '=' && input.key !== '+') return;
+    event.preventDefault();
+    win.webContents.setZoomLevel(Math.min(win.webContents.getZoomLevel() + 0.5, 9));
+  });
+
   // Pass the window reference to the server for device enumeration
   setElectronWindow(win);
   mainWindow = win;

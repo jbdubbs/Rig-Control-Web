@@ -49,7 +49,7 @@ export function useRigctld({ socket }: UseRigctldOptions) {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'cw' | 'display' | 'admin' | 'diagnostics'>('rigctld');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'cw' | 'admin' | 'diagnostics'>('rigctld');
   const [radios, setRadios] = useState<{ id: string; mfg: string; model: string }[]>([]);
   const [serialPorts, setSerialPorts] = useState<{ path: string; label: string }[]>([]);
   const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");

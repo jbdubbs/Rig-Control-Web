@@ -10,7 +10,6 @@ import {
 import { cn } from "../utils";
 import { SearchableSelect } from "../components/SearchableSelect";
 import { SerialPortInput } from "../components/SerialPortInput";
-import UiScaleControl, { type UiScaleControlProps } from "../components/UiScaleControl";
 import type { CwSettings, RigctldSettings } from "../types";
 
 const AdminTab = lazy(() => import("./AdminTab"));
@@ -24,9 +23,9 @@ export interface SettingsModalProps {
   role?: "admin" | "regular";
 
   // Tab state
-  activeSettingsTab: "rigctld" | "cw" | "display" | "admin" | "diagnostics";
+  activeSettingsTab: "rigctld" | "cw" | "admin" | "diagnostics";
   setActiveSettingsTab: React.Dispatch<
-    React.SetStateAction<"rigctld" | "cw" | "display" | "admin" | "diagnostics">
+    React.SetStateAction<"rigctld" | "cw" | "admin" | "diagnostics">
   >;
 
   // Rigctld tab
@@ -64,9 +63,6 @@ export interface SettingsModalProps {
   pttRebindActive: boolean;
   setPttRebindActive: React.Dispatch<React.SetStateAction<boolean>>;
   pttRebindError: string | null;
-
-  // Display tab (per-device UI scale, issue #123)
-  uiScale: UiScaleControlProps;
 }
 
 function SettingsModal({
@@ -105,7 +101,6 @@ function SettingsModal({
   pttRebindActive,
   setPttRebindActive,
   pttRebindError,
-  uiScale,
 }: SettingsModalProps) {
   const radioOptions = useMemo(
     () =>
@@ -144,7 +139,7 @@ function SettingsModal({
     {/* Tab Bar */}
     <div className="flex border-b border-line bg-panel-2">
       {([
-        ...(["rigctld", "cw", "display", "diagnostics"] as const),
+        ...(["rigctld", "cw", "diagnostics"] as const),
         ...(role === "admin" ? (["admin"] as const) : []),
       ] as const).map((tab) => (
         <button
@@ -678,18 +673,6 @@ function SettingsModal({
         )}
       </div>
 
-    </div>
-    )}
-
-    {activeSettingsTab === 'display' && (
-    <div className="p-6 space-y-4">
-      <h3 className="text-[0.625rem] uppercase text-emerald-500 font-bold border-b border-emerald-500/20 pb-1">UI Scale (This Device)</h3>
-      <UiScaleControl {...uiScale} />
-      <p className="text-xs text-muted leading-relaxed">
-        Enlarges the whole interface on this device only, for example on a 4K display. The setting is
-        remembered by this browser or app and is not shared with other clients. Your browser's own
-        zoom (Ctrl and +, -, 0) keeps working too.
-      </p>
     </div>
     )}
 

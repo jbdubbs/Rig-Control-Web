@@ -34,19 +34,34 @@ describe('useUiScale', () => {
     expect(document.documentElement.style.zoom).toBe('');
   });
 
-  it('uses Electron zoom instead of CSS zoom when the bridge exists', () => {
+  it('uses Electron zoom instead of CSS zoom when the bridge exists, and skips the initial 100% push', () => {
     const calls: number[] = [];
     (window as { electron?: unknown }).electron = { setZoomFactor: (f: number) => calls.push(f) };
     const { result } = renderHook(() => useUiScale());
+    expect(calls).toEqual([]); // fresh load at 100% leaves native Ctrl +/- zoom alone
     act(() => result.current.increase());
-    expect(calls).toEqual([1, 1.25]);
+    expect(calls).toEqual([1.25]);
+    act(() => result.current.reset());
+    expect(calls).toEqual([1.25, 1]); // an explicit reset still pushes 100%
     expect(document.documentElement.style.zoom).toBe('');
   });
 
+  it('pushes a stored non-default scale on load in Electron', () => {
+    localStorage.setItem('ui-scale', '2');
+    const calls: number[] = [];
+    (window as { electron?: unknown }).electron = { setZoomFactor: (f: number) => calls.push(f) };
+    renderHook(() => useUiScale());
+    expect(calls).toEqual([2]);
+  });
+
   it('disables stepping at the limits', () => {
-    localStorage.setItem('ui-scale', '3');
+    localStorage.setItem('ui-scale', '3'); // old range's max clamps to the new 200%
     const { result } = renderHook(() => useUiScale());
+    expect(result.current.scale).toBe(2);
     expect(result.current.canIncrease).toBe(false);
     expect(result.current.canDecrease).toBe(true);
+    act(() => result.current.setScale(0.5));
+    expect(result.current.canDecrease).toBe(false);
+    expect(result.current.canIncrease).toBe(true);
   });
 });

@@ -274,10 +274,13 @@ When the CW keyer is enabled and the rig is in a CW mode, the PTT button at the 
 
 ## Display Scaling (High-DPI Screens)
 
-If the interface is too small on a 4K or other high-resolution display, enlarge it from **Settings → DISPLAY** (the gear icon, then the **display** tab). Use **−** and **+** to step between 75% and 300%, and the reset button to return to 100%.
+If the interface is too small on a 4K or other high-resolution display, enlarge it with the **zoom button** (magnifier with a plus) in the top bar. Clicking it opens a slider from **50% to 200%** in 25% steps. The scale is applied when you release the slider, and the button turns green whenever the scale is not 100%. **Reset to 100%** is in the same popover. Click outside it or press Escape to close it.
+
+On the phone layout the same control is in the **hamburger menu**, in the **UI Scale** row, as − / + buttons over the same 50% to 200% range. The menu stays open while you step the scale.
 
 - The setting applies to **this device only** and is remembered by this browser or desktop app. It is not shared with other clients connected to the same server.
 - In the desktop app it uses the Chromium zoom factor. In a browser it uses CSS zoom.
-- Enlarging the interface reduces the page width available to the layout. Once the effective width drops below 768 px, for example a small window enlarged far enough, the app switches to the phone layout. Your browser's own zoom (Ctrl and +, −, 0) behaves the same way.
+- Enlarging the interface reduces the page width available to the layout. Once the effective width drops below 768 px, for example a small window enlarged far enough, the app switches to the phone layout.
+- In the desktop app, **Ctrl and +** (either the unshifted `=` key or the numpad plus), **Ctrl and −**, and **Ctrl and 0** also zoom, and that zoom is kept across reloads. It is separate from the top-bar scale, and the two multiply if you use both. In a browser, the browser's own zoom works the same way.
 
-**Desktop app launch flag.** Chromium's `--force-device-scale-factor` also works with the desktop app, for example `./RigControl-Web.AppImage --force-device-scale-factor=2`. To make it permanent on Linux, add it to the `Exec=` line of the app's `.desktop` file. The in-app setting above is the simpler option.
+**Desktop app launch flag.** Chromium's `--force-device-scale-factor` also works with the desktop app, for example `./RigControl-Web.AppImage --force-device-scale-factor=2`. To make it permanent on Linux, add it to the `Exec=` line of the app's `.desktop` file. The top-bar scale is the simpler option.

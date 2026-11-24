@@ -8,8 +8,8 @@ import {
 
 describe('uiScale', () => {
   it('clamps to range and snaps to the step', () => {
-    expect(clampScale(0.1)).toBe(0.75);
-    expect(clampScale(9)).toBe(3);
+    expect(clampScale(0.1)).toBe(0.5);
+    expect(clampScale(9)).toBe(2);
     expect(clampScale(1.1)).toBe(1);
     expect(clampScale(1.9)).toBe(2);
     expect(clampScale(NaN)).toBe(1);
@@ -19,14 +19,15 @@ describe('uiScale', () => {
     expect(parseStoredScale(null)).toBe(1);
     expect(parseStoredScale('2')).toBe(2);
     expect(parseStoredScale('abc')).toBe(1);
-    expect(parseStoredScale('99')).toBe(3);
+    expect(parseStoredScale('99')).toBe(2);
+    expect(parseStoredScale('3')).toBe(2); // saved under the old 75-300% range
   });
 
   it('steps within bounds', () => {
     expect(stepScale(1, 1)).toBe(1.25);
     expect(stepScale(1, -1)).toBe(0.75);
-    expect(stepScale(0.75, -1)).toBe(0.75);
-    expect(stepScale(3, 1)).toBe(3);
+    expect(stepScale(0.5, -1)).toBe(0.5);
+    expect(stepScale(2, 1)).toBe(2);
   });
 
   it('divides innerWidth by the scale only on the CSS-zoom (browser) path', () => {

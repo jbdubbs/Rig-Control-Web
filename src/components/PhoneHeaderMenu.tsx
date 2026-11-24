@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { LayoutGrid, LogOut, Maximize, Menu, Minimize, Moon, Plug, Settings, Sun, Unplug } from "lucide-react";
+import { LayoutGrid, LogOut, Maximize, Menu, Minimize, Moon, Plug, Settings, Sun, Unplug, ZoomIn } from "lucide-react";
 import { cn } from "../utils";
+import UiScaleControl, { type UiScaleControlProps } from "./UiScaleControl";
 
 export interface PhoneHeaderMenuProps {
   variant: "collapsed" | "expanded";
@@ -14,6 +15,7 @@ export interface PhoneHeaderMenuProps {
   onToggleFullscreen: () => void;
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  uiScale: UiScaleControlProps;
   onLogout: () => void;
   callsign: string;
 }
@@ -35,6 +37,7 @@ function PhoneHeaderMenu({
   onToggleFullscreen,
   theme,
   onToggleTheme,
+  uiScale,
   onLogout,
   callsign,
 }: PhoneHeaderMenuProps) {
@@ -117,6 +120,10 @@ function PhoneHeaderMenu({
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             {theme === "dark" ? "Light Theme" : "Dark Theme"}
           </button>
+          <div className="flex flex-col gap-1.5 px-3 py-2 text-sm text-ink">
+            <span className="flex items-center gap-2"><ZoomIn size={16} />UI Scale</span>
+            <UiScaleControl {...uiScale} compact />
+          </div>
           <button
             onClick={() => { setIsOpen(false); onLogout(); }}
             className={rowClass(false, true)}

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {
   UI_SCALE_DEFAULT,
   UI_SCALE_KEY,
@@ -42,8 +42,21 @@ export function applyScale(scale: number) {
 export function useUiScale() {
   const [scale, setScaleState] = useState<number>(readStoredScale);
 
+  // Last scale pushed to the page, or null before the first push.
+  const appliedRef = useRef<number | null>(null);
+
   useEffect(() => {
-    applyScale(scale);
+    // Electron: on a fresh load at the default scale, leave Chromium's own zoom
+    // (the user's Ctrl +/- zoom) alone instead of resetting it to 100% on every
+    // load. Once applied (including a later reset to 100%), changes always push.
+    // The ref, not a mount flag, keeps this correct under StrictMode's
+    // double-invoked effects.
+    const keepNativeZoom =
+      appliedRef.current === null && scale === UI_SCALE_DEFAULT && !!window.electron?.setZoomFactor;
+    if (!keepNativeZoom) {
+      applyScale(scale);
+      appliedRef.current = scale;
+    }
     try {
       localStorage.setItem(UI_SCALE_KEY, String(scale));
     } catch {
