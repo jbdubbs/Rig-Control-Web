@@ -348,7 +348,7 @@ function SettingsModal({
                 </div>
               </div>
               <p className="text-[0.625rem] text-amber-400/80">
-                For radios without CAT control (e.g. a mobile VHF/UHF rig behind an AllScan or Masters interface), choose the Hamlib "Dummy" rig model above (the serial port can stay empty); frequency and meters will show simulated values. With a real CAT rig the GPIO is keyed in place of CI-V PTT. Needs a recent rigctld (the bundled one works). Linux needs read/write access to the hidraw device (udev rule); on Windows and macOS leave the device on Auto unless several CM108 devices are attached.
+                Keys the radio from a CM108 USB interface's GPIO pin. For radios without CAT, select the Dummy rig model. See the wiki for setup.
               </p>
             </div>
           )}
