@@ -79,7 +79,7 @@ If several CM108 devices are attached, pick one from the **CM108 Device** list (
 | **Windows** | Uses the Windows HID API; no driver or extra software needed. Leave the device on Auto unless several CM108 devices are attached. |
 | **macOS** | Uses IOKit's HID API. Leave the device on Auto unless several are attached. You may see a macOS privacy prompt the first time. |
 
-> **Windows and macOS need a rigctld built with CM108 support for those platforms** (the one bundled with RigControl Web is). A `rigctld` installed from your package manager or Hamlib's own installer may only support CM108 on Linux, and may not report PTT state correctly.
+> **Windows and macOS need a rigctld built with CM108 support for those platforms** (the one bundled with RigControl Web is). A `rigctld` installed from your package manager or Hamlib's own installer may only support CM108 on Linux,.
 
 ---
 
