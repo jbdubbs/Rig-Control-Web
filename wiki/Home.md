@@ -48,7 +48,7 @@ Both layouts show the same information and controls, just arranged differently f
 - [FT-710 Spectrum Scope Setup](Spectrum-Scope-FT-710) — Live panadapter for the Yaesu FT-710 via USB
 - [Audio I/Q Spectrum Scope Setup](Spectrum-Scope-Audio-IQ) — Live panadapter from a radio's baseband I/Q output via a USB audio interface (tested on the Xiegu G90)
 - [Connecting the Local Client](Connecting-the-Local-Client) — Connect to your rig and understand the status display
-- [Controls](Controls) — VFO, mode, meters, PTT, radio power on/off, radio function buttons, and the CW and FT8 decoders
+- [Controls](Controls) — VFO, mode, meters, SWR protection, PTT, radio power on/off, radio function buttons, and the CW and FT8 decoders
 - [CW Keying Setup](CW-Keying-Setup) — Get your radio actually transmitting CW from the keyer (radio menu settings and troubleshooting)
 - [Audio and Video](Audio-and-Video) — Set up the audio feed, the Audio Waterfall, and the video display
 - [Remote Access](Remote-Access) — Connect from another device over your network or VPN

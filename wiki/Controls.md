@@ -53,11 +53,54 @@ The meters section shows readings from the radio in real time. Available meters 
 | Meter | What it shows |
 |-------|--------------|
 | **SIGNAL** | S-Meter reading while receiving; transmit power output while transmitting |
-| **SWR** | Standing Wave Ratio on transmit |
+| **SWR** | Standing Wave Ratio on transmit (see [SWR Protection](#swr-protection) to stop transmitting automatically when it gets too high) |
 | **ALC** | Automatic Level Control — useful for monitoring audio drive on SSB |
 | **VDD** | Supply voltage (on supported radios) |
 
 Click the tab labels (SIGNAL, SWR, ALC, VDD) to switch which meter is graphed. On the phone layout, these appear as tab buttons above a single graph.
+
+---
+
+## SWR Protection
+
+SWR Protection stops your radio from transmitting if the SWR climbs above a limit you choose. It is meant for remote operation, where you might not be watching the SWR meter when an antenna or feedline problem appears. It is **off by default**.
+
+### Turning It On
+
+The **SWR** button in the **Controls** panel header (**Quick Controls** on the phone layout) opens the settings. The button always shows the current state: **SWR off**, or **SWR 3.0** in green when protection is on and set to 3.0:1.
+
+In the dialog:
+
+- **Stop TX above threshold** turns protection on or off.
+- **Threshold (SWR)** is the limit, from 1.1 to 10. The default is 3.0.
+
+The settings are stored on the server and apply to everyone connected to it.
+
+### What Happens When It Trips
+
+While the radio is transmitting (PTT, or a CW key-down), the server checks the radio's SWR reading several times a second. When two readings in a row are above your threshold:
+
+1. The radio is unkeyed, and any CW keying in progress is stopped.
+2. A red notice appears under the header (inside the header when it is collapsed) showing the SWR that caused the cutoff, your threshold, and the frequency and mode, for example *SWR 5.00:1 exceeded 3.0:1 at 14.074 MHz USB. TX stopped.*
+3. PTT, **TUNE** and CW keying stay **blocked** until you press **Clear** on that notice.
+
+Because the check runs on the server, it works even if your browser tab is closed or in the background. It also covers keying that comes from the [WSJTX bridge](WSJTX-Integration).
+
+The notice stays until someone clears it. Any connected client can press **Clear**, and a tripped state survives a rig reconnect (it is only lost if the server restarts). Check your antenna and feedline before you clear it.
+
+### Antenna Tuner (TUNE)
+
+SWR is high on purpose while an antenna tuner works, so protection pauses during a tune started from the **TUNE** button in RigControl Web. The pause ends as soon as the radio stops transmitting. If the radio never starts transmitting it ends after 5 seconds, and it always ends after 20 seconds, so a stuck tune carrier is still caught.
+
+Protection is **not** paused for a tune that RigControl Web cannot see: one started from the radio's front panel, or an external tuner you drive with a manual PTT. Turn SWR Protection off before tuning that way, or press **Clear** if it trips.
+
+### Limits
+
+- Your radio must report SWR through Hamlib. If the SWR meter always reads 0 or never moves, protection has nothing to act on. Readings below 1.0 are ignored.
+- It is fast, not instant. SSB and other PTT use typically trips within about a second of a bad reading. For CW it can take longer, because SWR can only be read while the key is down.
+- It does not replace your radio's built-in high-SWR protection or an amplifier's own protection.
+- Keying through the raw command console is not blocked.
+- This feature is new. If it trips too early or too late on your radio, please [open an issue](https://github.com/jbdubbs/Rig-Control-Web/issues) with your radio model.
 
 ---
 
@@ -189,7 +232,7 @@ The keyer is toggled in the **CW** settings tab. The decoder is enabled by addin
 
 ### TUNE
 
-The **TUNE** button activates your radio's built-in antenna tuner (if equipped). The tuner will run its tuning cycle and then return to receive.
+The **TUNE** button activates your radio's built-in antenna tuner (if equipped). The tuner will run its tuning cycle and then return to receive. SWR Protection does not interrupt a tune started from this button (see [SWR Protection](#swr-protection)), but TUNE is blocked after a protection trip until you clear it.
 
 ### ATT
 
