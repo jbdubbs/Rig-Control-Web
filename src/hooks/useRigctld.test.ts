@@ -23,6 +23,8 @@ function validSettings(overrides: Partial<RigctldSettings> = {}): RigctldSetting
     rfPowerRange: { min: 0, max: 1, step: 0.01 },
     anfSupported: false,
     pttType: 'rig',
+    pttFile: 'auto',
+    pttGpio: 3,
     pttKey: 'AltLeft',
     ...overrides,
   };
@@ -39,6 +41,10 @@ describe('isRigctldSettingsValid', () => {
       expect(isRigctldSettingsValid(validSettings({ [field]: '' }))).toBe(false);
     },
   );
+
+  it.each(['1', '6'])('does not require a serial port for Hamlib Dummy rig %s', (rigNumber) => {
+    expect(isRigctldSettingsValid(validSettings({ rigNumber, serialPort: '' }))).toBe(true);
+  });
 });
 
 describe('dedupeRadiosById', () => {

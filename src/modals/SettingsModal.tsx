@@ -37,6 +37,7 @@ export interface SettingsModalProps {
   testResult: { success: boolean; message: string } | null;
   radios: { id: string; mfg: string; model: string }[];
   serialPorts: { path: string; label: string }[];
+  hidDevices: { path: string; label: string }[];
   host: string;
   setHost: React.Dispatch<React.SetStateAction<string>>;
   port: number;
@@ -81,6 +82,7 @@ function SettingsModal({
   testResult,
   radios,
   serialPorts,
+  hidDevices,
   host,
   setHost,
   port,
@@ -115,6 +117,15 @@ function SettingsModal({
   const serialPortOptions = useMemo(
     () => serialPorts.map((p) => ({ value: p.path, label: p.label })),
     [serialPorts]
+  );
+
+  // "Auto" first: it is the right choice for the usual single CM108 interface.
+  const hidDeviceOptions = useMemo(
+    () => [
+      { value: "auto", label: "Auto (the only attached CM108 device)" },
+      ...hidDevices.map((d) => ({ value: d.path, label: d.label })),
+    ],
+    [hidDevices]
   );
 
   if (!isOpen) return null;
@@ -285,6 +296,7 @@ function SettingsModal({
                 { id: 'rig', label: 'CI-V / CAT' },
                 { id: 'dtr', label: 'DTR' },
                 { id: 'rts', label: 'RTS' },
+                { id: 'cm108', label: 'CM108 GPIO' },
                 { id: 'none', label: 'None' },
               ] as const).map(({ id, label }) => (
                 <button
@@ -306,6 +318,39 @@ function SettingsModal({
             <p className="text-[0.625rem] text-amber-400/80 mt-1">
               For IC-7300: set USB Send to {rigctldSettings.pttType.toUpperCase()} in the radio's SET → Connectors menu. USB Keying (CW) must be set to a <span className="font-bold">different</span> line.
             </p>
+          )}
+          {rigctldSettings.pttType === 'cm108' && (
+            <div className="space-y-2 mt-2">
+              <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+                <div className="space-y-1">
+                  <label className="text-[0.625rem] uppercase text-muted" htmlFor="rigctld-cm108-device">CM108 Device</label>
+                  <SerialPortInput
+                    id="rigctld-cm108-device"
+                    options={hidDeviceOptions}
+                    value={rigctldSettings.pttFile ?? 'auto'}
+                    onChange={(val) => setRigctldSettings(prev => ({ ...prev, pttFile: val }))}
+                    onFocus={() => socket?.emit("get-hidraw-devices")}
+                    placeholder="auto"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[0.625rem] uppercase text-muted" htmlFor="rigctld-cm108-gpio">GPIO</label>
+                  <select
+                    id="rigctld-cm108-gpio"
+                    value={rigctldSettings.pttGpio ?? 3}
+                    onChange={(e) => setRigctldSettings(prev => ({ ...prev, pttGpio: Number(e.target.value) }))}
+                    className="bg-app border border-line rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-ink"
+                  >
+                    {[2, 3, 4].map((n) => (
+                      <option key={n} value={n}>GPIO{n}{n === 3 ? ' (default)' : ''}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="text-[0.625rem] text-amber-400/80">
+                For radios without CAT control (e.g. a mobile VHF/UHF rig behind an AllScan or Masters interface), choose the Hamlib "Dummy" rig model above (the serial port can stay empty); frequency and meters will show simulated values. With a real CAT rig the GPIO is keyed in place of CI-V PTT. Needs a recent rigctld (the bundled one works). Linux needs read/write access to the hidraw device (udev rule); on Windows and macOS leave the device on Auto unless several CM108 devices are attached.
+              </p>
+            </div>
           )}
         </div>
 

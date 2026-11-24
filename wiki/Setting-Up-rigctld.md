@@ -61,6 +61,26 @@ These settings are passed directly to `rigctld` when the app starts it. You must
 
 > **Can't find your port in the list, or want to double-check on Windows?** Open Device Manager and look under "Ports (COM & LPT)" with your radio connected.
 
+### PTT Type and CM108 GPIO PTT
+
+The **PTT Type** buttons choose how the radio is keyed: **CI-V / CAT** (the radio's own command, the default), **DTR** or **RTS** (a handshake line on the radio's serial port, e.g. IC-7300), **CM108 GPIO**, or **None**.
+
+**CM108 GPIO** is for simple radio interfaces with no CAT control, such as the AllScan.info and Masters Communications interfaces, which key the radio from a GPIO pin on a CM108/CM119 USB sound chip (GPIO3 on these boards). This is typically how a mobile VHF/UHF radio is connected. The same USB device carries the radio's audio, so Backend Audio works with it as usual.
+
+1. Set **Rig Model** to the Hamlib **Dummy** rig (`1: Hamlib Dummy`). The radio has no CAT, so Hamlib has nothing to talk to; the serial port can stay empty. Frequency and meters will show simulated values, so you may want to remove the VFO and meter panels from your layout.
+2. Set **PTT Type** to **CM108 GPIO**, leave **CM108 Device** on **Auto** (the only attached CM108-compatible device) and **GPIO** on `GPIO3` unless your interface says otherwise. GPIO2 and GPIO4 are also available; GPIO1 is not, because Hamlib treats it as "unset" and would key GPIO3 instead.
+3. Start rigctld. The PTT button, hotkey, CW "CAT PTT" mode and the WSJT-X bridge all key the GPIO.
+
+If several CM108 devices are attached, pick one from the **CM108 Device** list (Linux lists them with their `/dev/hidrawN` node) instead of Auto. With a real CAT radio the GPIO is used *instead of* CI-V for PTT.
+
+| Platform | Notes |
+|----------|-------|
+| **Linux** | Needs read/write access to the `/dev/hidrawN` node, which is normally `root`-only. A udev rule such as `SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0d8c", MODE="0660", GROUP="plugdev", TAG+="uaccess"` (then `sudo udevadm control --reload && sudo udevadm trigger`) grants access. In Docker, pass the device with `--device=/dev/hidrawN`. |
+| **Windows** | Uses the Windows HID API; no driver or extra software needed. Leave the device on Auto unless several CM108 devices are attached. |
+| **macOS** | Uses IOKit's HID API. Leave the device on Auto unless several are attached. You may see a macOS privacy prompt the first time. |
+
+> **Windows and macOS need a rigctld built with CM108 support for those platforms** (the one bundled with RigControl Web is). A `rigctld` installed from your package manager or Hamlib's own installer may only support CM108 on Linux, and may not report PTT state correctly.
+
 ---
 
 ## Starting rigctld

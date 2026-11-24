@@ -15,6 +15,7 @@ import { initAudioEngine, stopAudio, registerAudioHandlers } from "./server/audi
 import { syncKeyerPort, closeKeyerPort, cwSetKey, stopCwTick, registerCwHandlers } from "./server/cw.ts";
 import { registerVideoHandlers } from "./server/video.ts";
 import { registerSerialHandlers } from "./server/serial.ts";
+import { registerHidrawHandlers } from "./server/hidraw.ts";
 import { registerSolarHandlers, pushSolarData } from "./server/solar.ts";
 import { startSpectrumListener, stopSpectrumListener } from "./server/spectrum.ts";
 import { startYaesuScope, stopYaesuScope } from "./server/yaesuScope.ts";
@@ -278,6 +279,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     registerCwHandlers(socket, ctx);
     registerVideoHandlers(socket, ctx);
     registerSerialHandlers(socket);
+    registerHidrawHandlers(socket);
     registerSolarHandlers(socket, ctx);
     pushSolarData(socket, ctx);
     registerAdminHandlers(socket, ctx);

@@ -309,6 +309,16 @@ For radios that support Hamlib's `set_powerstat`/`get_powerstat` (probed once pe
 
 **Linux note:** on radios whose USB Audio interface disappears from the OS entirely when powered off (e.g. the FT-710), see the "Linux: Radio Power Cycling and USB Audio Reconnection" section of `wiki/Audio-and-Video.md` for a PipeWire default-device caveat that can leave backend audio broken after a power cycle until the user manually reassigns PipeWire's default device.
 
+### CM108 GPIO PTT
+
+`pttType: "cm108"` (issue #131) keys simple non-CAT radio interfaces (AllScan, Masters Communications, other CM108/CM119 USB sound-card boards) through a GPIO pin, with `pttFile` (`"auto"`, `/dev/hidrawN`, a Windows HID interface path or `DevSrvsID:N` on macOS) and `pttGpio` (2-4). PTT stays owned by rigctld: `buildRigctldArgs()` in `server/rigctld.ts` emits `-P CM108 -p <pttFile> --set-conf=ptt_bitnum=<gpio-1>`, so `T`/`t`, the SWR guard, CW "CAT PTT" and the WSJTX bridge are unchanged. Non-CAT radios use Hamlib's Dummy rig (1 or 6; `isDummyRig()` lets the serial port stay empty).
+
+- **Needs the patched Hamlib** (hamlib-RCW, from the `cm108-win-mac` work): upstream Hamlib's CM108 backend is Linux hidraw only, and `cm108_ptt_get()` returns `-RIG_ENIMPL`, so `t` fails once Hamlib's 500 ms PTT cache expires, which stops `pollRig` emitting `rig-status`. The patch adds native Windows (hid.dll/SetupAPI) and macOS (IOHIDManager) backends in `src/cm108.c` (no hidapi dependency), a `t` fallback to the last-set state, and defaults an empty `-p` to the platform default device. A rigctld without it can key on Linux but breaks status polling.
+- **GPIO1 is not offered:** Hamlib treats `ptt_bitnum` 0 as "unset" and substitutes GPIO3, so GPIO1 would key the wrong pin (`server/ptt.ts`). All PTT settings are validated there on save and load, since they reach rigctld's command line.
+- **Linux `auto`** is resolved server-side to the only `/dev/hidrawN` CM108 device (`server/hidraw.ts`, also the `get-hidraw-devices` picker list); Windows/macOS pass `auto` to Hamlib. Windows/macOS device enumeration for the picker is not implemented (Auto or a typed path).
+- DTR/RTS now launch with `-P` (PTT *type*); they used to pass `-p` (PTT *device*). The "None" type still passes `-p NONE` unchanged, since Hamlib's real NONE type makes `t` fail (`-RIG_ENAVAIL`) and that needs separate verification.
+- Windows/macOS Hamlib backends are compile-checked only for Windows (mingw) and unverified on hardware; macOS has not been compiled.
+
 ### CW Keyer
 
 Server-side iambic state machine (A/B/straight) in `server/cw.ts`. Client sends `cw-paddle { dit, dah, straight, t }` events where `t` is ms since socket connect (computed via `performance.now() - cwConnectTimeRef`) to decouple element timing from network jitter. Keying output via DTR or RTS through the `cw-key-helper` C binary subprocess (`bin/<platform>/cw-key-helper[.exe]`); `rigctld-ptt` mode also supported. 5 s stuck-key watchdog. Client-side sidetone (`AudioContext` oscillator, routed via `setSinkId`) provides zero-latency local feedback gated on `localAudioReady`. Phone view shows dit/dah touch paddle buttons when rig is in a CW mode and the keyer is enabled.

@@ -137,7 +137,11 @@ export interface RigctldSettings {
   rfLevelRange: { min: number; max: number; step: number };
   rfPowerRange: { min: number; max: number; step: number };
   anfSupported: boolean;
-  pttType: "rig" | "dtr" | "rts" | "none";
+  pttType: "rig" | "dtr" | "rts" | "none" | "cm108";
+  /** CM108 PTT device: "auto", a /dev/hidrawN path (Linux), a HID interface path (Windows) or DevSrvsID:N (macOS). */
+  pttFile: string;
+  /** CM108 GPIO pin number (2-4). */
+  pttGpio: number;
   pttKey: string;
 }
 

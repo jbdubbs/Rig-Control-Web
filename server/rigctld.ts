@@ -4,6 +4,68 @@ import { spawn, exec, execFile, ChildProcess } from "child_process";
 import { Socket } from "socket.io";
 import type { ServerContext } from "./context.ts";
 import { vlogRig as vlog } from "./vlog.ts";
+import { sanitizePttSettings, CM108_AUTO, type PttType } from "./ptt.ts";
+import { resolveCm108Path } from "./hidraw.ts";
+
+// Hamlib's Dummy rigs (1 = Dummy, 6 = Dummy No VFO) have no serial port; the usual stand-in for
+// radios without CAT control (e.g. behind a CM108 GPIO PTT interface).
+export function isDummyRig(rigNumber: string): boolean {
+  return rigNumber === "1" || rigNumber === "6";
+}
+
+export interface RigctldArgSettings {
+  rigNumber: string;
+  serialPort: string;
+  portNumber: string;
+  ipAddress: string;
+  serialPortSpeed: string;
+  pttType?: PttType;
+  pttFile?: string;
+  pttGpio?: number;
+}
+
+export interface RigctldArgSpectrum {
+  enabled: boolean;
+  multicastAddr: string;
+  multicastPort: number | string;
+}
+
+// Pure builder for rigctld's command line. For cm108, `pttFile` must already be resolved by the
+// caller (see resolveCm108Path); "auto" is passed through for Hamlib to resolve on Windows/macOS.
+export function buildRigctldArgs(s: RigctldArgSettings, spectrum?: RigctldArgSpectrum): string[] {
+  const args = ["-m", s.rigNumber];
+  if (s.serialPort) args.push("-r", s.serialPort);
+  args.push("-t", s.portNumber, "-T", s.ipAddress, "-s", s.serialPortSpeed);
+
+  const pttType = s.pttType ?? "rig";
+  if (pttType === "dtr" || pttType === "rts") {
+    // -P is Hamlib's PTT *type*; with no -p, the PTT line is on the rig's own serial port.
+    args.push("-P", pttType.toUpperCase());
+  } else if (pttType === "cm108") {
+    // Hamlib's ptt_bitnum is 0-based (bit 2 = GPIO3) and 0 means "unset", hence GPIO2-4 only.
+    const gpio = Number.isInteger(s.pttGpio) ? (s.pttGpio as number) : 3;
+    args.push(
+      "-P", "CM108",
+      "-p", s.pttFile || CM108_AUTO,
+      `--set-conf=ptt_bitnum=${gpio - 1}`,
+    );
+  } else if (pttType === "none") {
+    // Historical behaviour kept as-is: passes "NONE" as the PTT *device* (-p), not as a type.
+    // Hamlib's real PTT type NONE would make `t` (get PTT) fail, so this needs separate
+    // verification before changing.
+    args.push("-p", "NONE");
+  }
+
+  if (spectrum?.enabled) {
+    args.push(
+      `--set-conf=multicast_data_addr=${spectrum.multicastAddr}`,
+      `--set-conf=multicast_data_port=${spectrum.multicastPort}`,
+      "--set-conf=async=1",
+    );
+  }
+
+  return args;
+}
 
 export function getRigctldPath(baseDir: string): string {
   let platformDir = "";
@@ -255,35 +317,28 @@ async function startRigctldInternal(ctx: ServerContext): Promise<void> {
 
   const { rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed } = ctx.rigctldSettings;
 
-  if (!rigNumber || !serialPort || !portNumber || !ipAddress || !serialPortSpeed) {
+  if (!rigNumber || (!serialPort && !isDummyRig(rigNumber)) || !portNumber || !ipAddress || !serialPortSpeed) {
     console.error("Cannot start rigctld: missing settings");
     ctx.rigctldStatus = "error";
     emitRigctldStatus(ctx);
     return;
   }
 
+  let pttSettings = ctx.rigctldSettings;
+  if (pttSettings.pttType === "cm108") {
+    const resolved = await resolveCm108Path(pttSettings.pttFile);
+    if ("error" in resolved) {
+      addLog(ctx, `Error: ${resolved.error}`);
+      ctx.rigctldStatus = "error";
+      emitRigctldStatus(ctx);
+      return;
+    }
+    pttSettings = { ...pttSettings, pttFile: resolved.path };
+  }
+
   const rigctldPath = getRigctldPath(ctx.baseDir);
 
-  const args = [
-    "-m", rigNumber,
-    "-r", serialPort,
-    "-t", portNumber,
-    "-T", ipAddress,
-    "-s", serialPortSpeed,
-  ];
-
-  const pttType = ctx.rigctldSettings.pttType ?? "rig";
-  if (pttType !== "rig") {
-    args.push("-p", pttType.toUpperCase());
-  }
-
-  if (ctx.spectrumSettings.enabled) {
-    args.push(
-      `--set-conf=multicast_data_addr=${ctx.spectrumSettings.multicastAddr}`,
-      `--set-conf=multicast_data_port=${ctx.spectrumSettings.multicastPort}`,
-      "--set-conf=async=1",
-    );
-  }
+  const args = buildRigctldArgs(pttSettings, ctx.spectrumSettings);
 
   vlog(`Starting rigctld: ${rigctldPath} ${args.join(" ")}`);
 
@@ -378,13 +433,28 @@ export function registerRigctldHandlers(
       addLog(ctx, `Warning: rigctld version ${ctx.rigctldVersion} is less than 4.7.0 and is unsupported.`);
     }
 
-    const testProc = spawn(getRigctldPath(ctx.baseDir), [
-      "-m", rigNumber,
-      "-r", serialPort,
-      "-t", portNumber,
-      "-T", ipAddress,
-      "-s", serialPortSpeed,
-    ]);
+    // The Test button checks the rig and PTT configuration the client is about to save; spectrum
+    // flags are deliberately left out (as before).
+    // PTT fields the client didn't send (or sent invalid) fall back to the saved values.
+    let testSettings = {
+      ...ctx.rigctldSettings,
+      rigNumber, serialPort, portNumber, ipAddress, serialPortSpeed,
+      ...sanitizePttSettings(
+        { pttType: data.pttType, pttFile: data.pttFile, pttGpio: data.pttGpio },
+        ctx.rigctldSettings,
+      ),
+    };
+    if (testSettings.pttType === "cm108") {
+      const resolved = await resolveCm108Path(testSettings.pttFile);
+      if ("error" in resolved) {
+        socket.emit("test-result", { success: false, message: resolved.error });
+        addLog(ctx, `Test Failed: ${resolved.error}`);
+        return;
+      }
+      testSettings = { ...testSettings, pttFile: resolved.path };
+    }
+
+    const testProc = spawn(getRigctldPath(ctx.baseDir), buildRigctldArgs(testSettings));
 
     let errorMsg = "";
     testProc.stderr?.on("data", (d) => errorMsg += d.toString());

@@ -110,7 +110,11 @@ export interface ServerContext {
     rfLevelRange: { min: number; max: number; step: number };
     rfPowerRange: { min: number; max: number; step: number };
     anfSupported: boolean;
-    pttType: "rig" | "dtr" | "rts" | "none";
+    pttType: "rig" | "dtr" | "rts" | "none" | "cm108";
+    /** CM108 PTT device: "auto", a /dev/hidrawN path (Linux), a HID interface path (Windows) or DevSrvsID:N (macOS). */
+    pttFile: string;
+    /** CM108 GPIO pin number (2-4, see server/ptt.ts). */
+    pttGpio: number;
     pttKey: string;
   };
   audioSettings: {
@@ -401,6 +405,8 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
       rfPowerRange: { min: 0, max: 1, step: 0.01 },
       anfSupported: false,
       pttType: "rig",
+      pttFile: "auto",
+      pttGpio: 3,
       pttKey: "AltLeft",
     },
     audioSettings: {

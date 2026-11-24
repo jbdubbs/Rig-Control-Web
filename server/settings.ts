@@ -2,6 +2,7 @@ import fs from "fs";
 import { Socket } from "socket.io";
 import type { ServerContext } from "./context.ts";
 import { sanitizeSwrThreshold } from "./swrProtection.ts";
+import { sanitizePttSettings } from "./ptt.ts";
 import { vlogInfra as vlog, vlogDx, debugFlags, setDebugFlag, type DebugFlags } from "./vlog.ts";
 
 export function sanitizePollRate(value: unknown, fallback = 2000): number {
@@ -13,7 +14,10 @@ export function loadSettings(ctx: ServerContext, settingsFile: string): void {
   if (!fs.existsSync(settingsFile)) return;
   try {
     const data = JSON.parse(fs.readFileSync(settingsFile, "utf-8"));
-    ctx.rigctldSettings = { ...ctx.rigctldSettings, ...data.settings };
+    ctx.rigctldSettings = {
+      ...ctx.rigctldSettings,
+      ...sanitizePttSettings(data.settings ?? {}, ctx.rigctldSettings),
+    };
     ctx.autoStartEnabled = data.autoStart || false;
     ctx.videoAutoStart = data.videoAutoStart || false;
     ctx.pollRate = sanitizePollRate(data.pollRate);
@@ -111,7 +115,11 @@ export function registerSettingsHandlers(
     const oldRigNumber = ctx.rigctldSettings.rigNumber;
 
     if (data.settings) {
-      ctx.rigctldSettings = { ...ctx.rigctldSettings, ...data.settings };
+      // The PTT fields end up on rigctld's command line, so they are validated rather than merged blindly.
+      ctx.rigctldSettings = {
+        ...ctx.rigctldSettings,
+        ...sanitizePttSettings(data.settings, ctx.rigctldSettings),
+      };
     }
     // else: individual key saves (e.g. spectrumSettings) — never merge into ctx.rigctldSettings
 

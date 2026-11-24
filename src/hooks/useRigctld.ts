@@ -6,9 +6,12 @@ interface UseRigctldOptions {
   socket: Socket | null;
 }
 
+// Hamlib's Dummy rigs (1, 6) have no serial port: the stand-in for radios without CAT control.
+const isDummyRigNumber = (rigNumber: string) => rigNumber === "1" || rigNumber === "6";
+
 export function isRigctldSettingsValid(settings: RigctldSettings): boolean {
   return !!(settings.rigNumber &&
-    settings.serialPort &&
+    (settings.serialPort || isDummyRigNumber(settings.rigNumber)) &&
     settings.portNumber &&
     settings.ipAddress &&
     settings.serialPortSpeed);
@@ -39,7 +42,9 @@ export function useRigctld({ socket }: UseRigctldOptions) {
     rfLevelRange: { min: 0, max: 1, step: 0.1 },
     rfPowerRange: { min: 0, max: 1, step: 0.01 },
     anfSupported: false,
-    pttType: "rig" as "rig" | "dtr" | "rts" | "none",
+    pttType: "rig" as "rig" | "dtr" | "rts" | "none" | "cm108",
+    pttFile: "auto",
+    pttGpio: 3,
     pttKey: "AltLeft",
   });
   const rigctldSettingsRef = useRef(rigctldSettings);
@@ -52,6 +57,7 @@ export function useRigctld({ socket }: UseRigctldOptions) {
   const [activeSettingsTab, setActiveSettingsTab] = useState<'rigctld' | 'cw' | 'admin' | 'diagnostics'>('rigctld');
   const [radios, setRadios] = useState<{ id: string; mfg: string; model: string }[]>([]);
   const [serialPorts, setSerialPorts] = useState<{ path: string; label: string }[]>([]);
+  const [hidDevices, setHidDevices] = useState<{ path: string; label: string }[]>([]);
   const [rigctldProcessStatus, setRigctldProcessStatus] = useState<"running" | "stopped" | "error" | "already_running">("stopped");
   const [preampLevels, setPreampLevels] = useState<string[]>([]);
   const [attenuatorLevels, setAttenuatorLevels] = useState<string[]>([]);
@@ -93,6 +99,10 @@ export function useRigctld({ socket }: UseRigctldOptions) {
 
     const onSerialPortsList = (list: { path: string; label: string }[]) => {
       setSerialPorts(list);
+    };
+
+    const onHidrawDevicesList = (list: { path: string; label: string }[]) => {
+      setHidDevices(list);
     };
 
     const onRigctldStatus = (data: any) => {
@@ -158,6 +168,7 @@ export function useRigctld({ socket }: UseRigctldOptions) {
     socket.on("settings-data", onSettingsData);
     socket.on("radios-list", onRadiosList);
     socket.on("serial-ports-list", onSerialPortsList);
+    socket.on("hidraw-devices-list", onHidrawDevicesList);
     socket.on("rigctld-status", onRigctldStatus);
     socket.on("rigctld-log", onRigctldLog);
     socket.on("test-result", onTestResult);
@@ -174,6 +185,7 @@ export function useRigctld({ socket }: UseRigctldOptions) {
       socket.off("settings-data", onSettingsData);
       socket.off("radios-list", onRadiosList);
       socket.off("serial-ports-list", onSerialPortsList);
+      socket.off("hidraw-devices-list", onHidrawDevicesList);
       socket.off("rigctld-status", onRigctldStatus);
       socket.off("rigctld-log", onRigctldLog);
       socket.off("test-result", onTestResult);
@@ -208,6 +220,7 @@ export function useRigctld({ socket }: UseRigctldOptions) {
     activeSettingsTab, setActiveSettingsTab,
     radios,
     serialPorts,
+    hidDevices,
     rigctldProcessStatus,
     preampLevels,
     attenuatorLevels,
