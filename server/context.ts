@@ -143,6 +143,8 @@ export interface ServerContext {
   // SWR protection (#128): auto-unkey above `threshold`, then latch (`swrTrip`) until cleared.
   swrProtection: { enabled: boolean; threshold: number };
   swrTrip: SwrTrip | null;
+  /** Issue #130: when true, a non-admin callsign may hold only one session (clientId) at a time. */
+  singleSessionPerUser: boolean;
   // Open while an app-initiated ATU tune (`G TUNE`) runs; SWR is intentionally high then.
   tuneWindow: TuneWindow | null;
   swrGuardTimer: ReturnType<typeof setTimeout> | null;
@@ -362,6 +364,8 @@ export interface ServerContext {
 
   // Cross-module callbacks (wired in orchestrator after modules init)
   saveSettings: () => void;
+  /** Frees PTT/CW/video/mic held by a socket without disconnecting it (wired in server.ts). */
+  releaseSocketResources: (socketId: string, clientId: string) => void;
   /** Re-binds the HTTPS server to a new port. Resolves with an error message, or null on success. */
   changePort: (port: number) => Promise<string | null>;
   sendToRig: (cmd: string, useExtended?: boolean, priority?: boolean) => Promise<string>;
@@ -428,6 +432,7 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
     },
     swrProtection: { enabled: false, threshold: 3.0 },
     swrTrip: null,
+    singleSessionPerUser: false,
     tuneWindow: null,
     swrGuardTimer: null,
     potaSettings: { enabled: false, pollRate: 5, maxAge: 15 },
@@ -587,6 +592,7 @@ export function createInitialContext(io: Server, baseDir: string, dataDir: strin
     portSource: "default",
 
     saveSettings: () => {},
+    releaseSocketResources: () => {},
     changePort: () => Promise.resolve("changePort not yet initialized"),
     sendToRig: () => Promise.reject("sendToRig not yet initialized"),
   };

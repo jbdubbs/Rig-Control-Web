@@ -5,10 +5,11 @@ import { cn } from "../utils";
 interface Props {
   onLogin: (callsign: string, password: string) => void;
   loginError: string;
+  notice?: string | null;
   retryAfter: number;
 }
 
-export default function LoginScreen({ onLogin, loginError, retryAfter }: Props) {
+export default function LoginScreen({ onLogin, loginError, notice, retryAfter }: Props) {
   const [callsign, setCallsign] = useState("");
   const [password, setPassword] = useState("");
   const [locked, setLocked] = useState(false);
@@ -79,6 +80,12 @@ export default function LoginScreen({ onLogin, loginError, retryAfter }: Props) 
                 className="w-full bg-app border border-line rounded-lg px-3 py-2 text-sm font-mono text-ink focus:outline-none focus:border-emerald-600 transition-colors"
               />
             </div>
+
+            {notice && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400 font-mono">
+                {notice}
+              </div>
+            )}
 
             {loginError && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-xs text-red-400 font-mono">

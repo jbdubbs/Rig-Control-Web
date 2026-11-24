@@ -3,6 +3,8 @@ export interface AuthenticatedSocket {
   role: "admin" | "regular";
   connectedAt: number;
   ip: string;
+  /** Persistent per-browser/app id (localStorage `client-id`); tabs of one browser share it. */
+  clientId: string;
 }
 
 export interface UserRecord {

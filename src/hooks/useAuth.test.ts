@@ -230,6 +230,41 @@ describe('useAuth state machine', () => {
     expect(localStorage.getItem('auth-token')).toBeNull();
   });
 
+  describe('single-session notice (#130)', () => {
+    it('sets a notice when kicked with session_replaced, and clears it on a successful login', () => {
+      const socket = new StubSocket();
+      const { result } = renderHook(() => useAuth(socket as unknown as Socket));
+
+      act(() => socket.emit('auth:kicked', { reason: 'session_replaced' }));
+      expect(result.current.authNotice).toMatch(/another device/);
+
+      act(() =>
+        socket.emit('auth:result', { ok: true, token: 't', callsign: 'W1ABC', role: 'regular' }),
+      );
+      expect(result.current.authNotice).toBeNull();
+    });
+
+    it('sets a notice when a token resume is rejected with session_elsewhere', () => {
+      const socket = new StubSocket();
+      const { result } = renderHook(() => useAuth(socket as unknown as Socket));
+
+      act(() => socket.emit('auth:required', { reason: 'session_elsewhere' }));
+
+      expect(result.current.authState).toBe('unauthenticated');
+      expect(result.current.authNotice).toMatch(/another device/);
+    });
+
+    it('shows no notice for a plain logout or a bare auth:required', () => {
+      const socket = new StubSocket();
+      const { result } = renderHook(() => useAuth(socket as unknown as Socket));
+
+      act(() => socket.emit('auth:kicked', { reason: 'logout' }));
+      expect(result.current.authNotice).toBeNull();
+      act(() => socket.emit('auth:required'));
+      expect(result.current.authNotice).toBeNull();
+    });
+  });
+
   describe('connect / reconnect', () => {
     it('does not reset state on the first connect event', () => {
       const socket = new StubSocket();

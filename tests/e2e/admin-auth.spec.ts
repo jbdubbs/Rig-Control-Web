@@ -149,6 +149,48 @@ test.describe.serial('Admin / Auth e2e flows', () => {
     await scratchContext.close();
   });
 
+  test('single-session limit signs out the older client but not other tabs of the same browser (#130)', async ({ page, browser }) => {
+    await page.goto('/');
+    await openAdminTab(page);
+    const limitBox = page.getByRole('checkbox', { name: /one active session/i });
+    // Controlled by server state, so it flips after the round trip; .check() would fail its immediate state assertion.
+    await limitBox.click();
+    await expect(limitBox).toBeChecked();
+
+    const contextA = await newAnonymousContext(browser);
+    const contextB = await newAnonymousContext(browser);
+    try {
+      const pageA = await contextA.newPage();
+      await loginAs(pageA, SCRATCH_CALLSIGN, SCRATCH_NEW_PASSWORD);
+      await expect(pageA.getByPlaceholder('W1ABC')).toHaveCount(0);
+
+      // A second tab in the same browser shares client-id, so it is the same session.
+      const pageA2 = await contextA.newPage();
+      await pageA2.goto(BASE_URL);
+      await expect(pageA2.getByPlaceholder('W1ABC')).toHaveCount(0);
+      await expect(pageA.getByPlaceholder('W1ABC')).toHaveCount(0);
+
+      // A different client logging in with the password displaces client A (both its tabs).
+      const pageB = await contextB.newPage();
+      await loginAs(pageB, SCRATCH_CALLSIGN, SCRATCH_NEW_PASSWORD);
+      await expect(pageB.getByPlaceholder('W1ABC')).toHaveCount(0);
+
+      await expect(pageA.getByPlaceholder('W1ABC')).toBeVisible();
+      await expect(pageA.getByText(/another device/)).toBeVisible();
+      await expect(pageA2.getByPlaceholder('W1ABC')).toBeVisible();
+
+      // Client A's stale token must not bounce B back out on reload.
+      await pageA.reload();
+      await expect(pageA.getByPlaceholder('W1ABC')).toBeVisible();
+      await expect(pageB.getByPlaceholder('W1ABC')).toHaveCount(0);
+    } finally {
+      await contextA.close();
+      await contextB.close();
+      await limitBox.click();
+      await expect(limitBox).not.toBeChecked();
+    }
+  });
+
   test('admin deletes the scratch user and it disappears from the list', async ({ page }) => {
     page.on('dialog', (d) => d.accept());
     await page.goto('/');

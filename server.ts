@@ -25,6 +25,7 @@ import {
   initAuth,
   issueToken,
   resolveToken,
+  isSessionHeldElsewhere,
   registerAuthHandlers,
   registerAdminHandlers,
 } from "./server/auth.ts";
@@ -315,6 +316,60 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     pushInitialState(socket).catch(e => console.error("[INIT] pushInitialState error:", e));
   };
 
+  // Frees everything a socket holds (PTT, CW claim, video source, mic). Shared by the disconnect
+  // handler and single-session displacement (#130), where the socket stays connected.
+  // `graceMic` defers the mic release 5 s so a reconnecting client keeps it; a displaced client
+  // is not coming back, so its mic is released immediately.
+  const releaseSocketResources = (socketId: string, clientId: string, graceMic = false) => {
+    // Unkey the rig if this socket was the one holding PTT (#124); fire-and-forget, errors are
+    // handled and logged inside.
+    void releasePttForSocket(ctx, socketId);
+
+    if (ctx.activeCwClientId === socketId) {
+      stopCwTick(ctx);
+      if (ctx.cwClaimIdleTimer) { clearTimeout(ctx.cwClaimIdleTimer); ctx.cwClaimIdleTimer = null; }
+      cwSetKey(ctx, false);
+      ctx.cwKeyLockedOut = false;
+      ctx.cwMachine = "IDLE";
+      ctx.cwPaddleBuffer = [];
+      ctx.activeCwClientId = null;
+      ctx.cwIsKeying = false;
+      if (ctx.cwIdleTimer) { clearTimeout(ctx.cwIdleTimer); ctx.cwIdleTimer = null; }
+      if (ctx.cwStuckKeyTimer) { clearTimeout(ctx.cwStuckKeyTimer); ctx.cwStuckKeyTimer = null; }
+    }
+
+    if (socketId === ctx.videoSourceSocketId) {
+      vlogVideo("[VIDEO] Source client disconnected — stopping stream.");
+      ctx.videoSourceSocketId = null;
+      ctx.lastKeyframe = null;
+      ctx.videoStatus = "stopped";
+      ctx.videoAutoStart = false;
+      ctx.saveSettings();
+      ctx.io.emit("video-source-status", { status: "stopped" });
+    }
+
+    if (ctx.activeMicClientId === clientId && !graceMic) {
+      vlogAudio(`[AUDIO] Releasing mic for displaced client: ${clientId}`);
+      ctx.activeMicClientId = null;
+      ctx.io.emit("mic-active-client", null);
+    } else if (ctx.activeMicClientId === clientId) {
+      setTimeout(() => {
+        let hasActiveSocket = false;
+        ctx.io.sockets.sockets.forEach(s => {
+          if ((s.handshake.auth.clientId || s.id) === clientId) {
+            hasActiveSocket = true;
+          }
+        });
+        if (!hasActiveSocket && ctx.activeMicClientId === clientId) {
+          vlogAudio(`[AUDIO] Releasing mic for disconnected client: ${clientId}`);
+          ctx.activeMicClientId = null;
+          ctx.io.emit("mic-active-client", null);
+        }
+      }, 5000);
+    }
+  };
+  ctx.releaseSocketResources = (socketId, clientId) => releaseSocketResources(socketId, clientId);
+
   io.on("connection", (socket) => {
     const clientId = socket.handshake.auth.clientId || socket.id;
     const token = socket.handshake.auth.token as string | undefined;
@@ -344,12 +399,18 @@ export async function startServer(appPath?: string, userDataPath?: string) {
     // Attempt token verification on connect — resolveToken validates the signature
     // AND confirms the user still exists in users.json with their current role.
     const resolved = token ? resolveToken(token, ctx) : null;
-    if (resolved) {
+    // Single-session limit (#130): a token resume never displaces another client's session,
+    // only a password login does. This stops a kicked client (whose in-memory token survives
+    // reconnects) from kicking the new session back.
+    const heldElsewhere = !!resolved
+      && isSessionHeldElsewhere(ctx, resolved.callsign, resolved.role, clientId);
+    if (resolved && !heldElsewhere) {
       ctx.authenticatedSockets.set(socket.id, {
         callsign: resolved.callsign,
         role: resolved.role,
         connectedAt: Date.now(),
         ip: socket.handshake.address,
+        clientId,
       });
       socket.emit("auth:token-refreshed", {
         token: issueToken(resolved.callsign, resolved.role, ctx),
@@ -363,7 +424,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       // If mustChangePassword, functional handlers are registered after
       // auth:change-password succeeds (onAuthenticated closure in auth.ts).
     } else {
-      socket.emit("auth:required");
+      socket.emit("auth:required", heldElsewhere ? { reason: "session_elsewhere" } : undefined);
     }
 
     socket.on("disconnect", () => {
@@ -371,48 +432,7 @@ export async function startServer(appPath?: string, userDataPath?: string) {
       ctx.socketConnectTimes.delete(socket.id);
       ctx.authenticatedSockets.delete(socket.id);
 
-      // Unkey the rig if this socket was the one holding PTT (#124); fire-and-forget, errors are
-      // handled and logged inside.
-      void releasePttForSocket(ctx, socket.id);
-
-      if (ctx.activeCwClientId === socket.id) {
-        stopCwTick(ctx);
-        if (ctx.cwClaimIdleTimer) { clearTimeout(ctx.cwClaimIdleTimer); ctx.cwClaimIdleTimer = null; }
-        cwSetKey(ctx, false);
-        ctx.cwKeyLockedOut = false;
-        ctx.cwMachine = "IDLE";
-        ctx.cwPaddleBuffer = [];
-        ctx.activeCwClientId = null;
-        ctx.cwIsKeying = false;
-        if (ctx.cwIdleTimer) { clearTimeout(ctx.cwIdleTimer); ctx.cwIdleTimer = null; }
-        if (ctx.cwStuckKeyTimer) { clearTimeout(ctx.cwStuckKeyTimer); ctx.cwStuckKeyTimer = null; }
-      }
-
-      if (socket.id === ctx.videoSourceSocketId) {
-        vlogVideo("[VIDEO] Source client disconnected — stopping stream.");
-        ctx.videoSourceSocketId = null;
-        ctx.lastKeyframe = null;
-        ctx.videoStatus = "stopped";
-        ctx.videoAutoStart = false;
-        ctx.saveSettings();
-        ctx.io.emit("video-source-status", { status: "stopped" });
-      }
-
-      if (ctx.activeMicClientId === clientId) {
-        setTimeout(() => {
-          let hasActiveSocket = false;
-          ctx.io.sockets.sockets.forEach(s => {
-            if ((s.handshake.auth.clientId || s.id) === clientId) {
-              hasActiveSocket = true;
-            }
-          });
-          if (!hasActiveSocket && ctx.activeMicClientId === clientId) {
-            vlogAudio(`[AUDIO] Releasing mic for disconnected client: ${clientId}`);
-            ctx.activeMicClientId = null;
-            ctx.io.emit("mic-active-client", null);
-          }
-        }, 5000);
-      }
+      releaseSocketResources(socket.id, clientId, true);
     });
   });
 

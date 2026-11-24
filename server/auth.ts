@@ -361,11 +361,16 @@ export function registerAuthHandlers(
       loginAttempts.delete(ip);
       loginCallsignAttempts.delete(normalizedCallsign);
 
+      const clientId = (socket.handshake.auth?.clientId as string | undefined) || socket.id;
+      // Newest wins (#130): a password login claims the account's single session.
+      displaceOtherSessions(ctx, user.callsign, user.role, clientId, ip);
+
       ctx.authenticatedSockets.set(socket.id, {
         callsign: user.callsign,
         role: user.role,
         connectedAt: Date.now(),
         ip,
+        clientId,
       });
 
       const token = issueToken(user.callsign, user.role, ctx);
@@ -761,6 +766,7 @@ export function registerAdminHandlers(
         certExpiry,
         port: ctx.port,
         portSource: ctx.portSource,
+        singleSessionPerUser: ctx.singleSessionPerUser,
       });
     });
   });
@@ -833,6 +839,26 @@ export function registerAdminHandlers(
         detail: `${oldPort} -> ${parsed}`,
       });
       socket.emit("admin:op-result", { ok: true, port: parsed });
+    });
+  }));
+
+  socket.on("admin:set-single-session", withErrorGuard(socket, "admin:op-result", ({ enabled }: { enabled: unknown }) => {
+    requireAdmin(socket, ctx, (authInfo) => {
+      if (typeof enabled !== "boolean") {
+        socket.emit("admin:op-result", { ok: false, error: "enabled must be true or false" });
+        return;
+      }
+      ctx.singleSessionPerUser = enabled;
+      ctx.saveSettings();
+      appendAudit(ctx, {
+        ts: new Date().toISOString(),
+        event: "single_session_changed",
+        callsign: authInfo.callsign,
+        ip: socket.handshake.address,
+        detail: enabled ? "enabled" : "disabled",
+      });
+      if (enabled) enforceSingleSessionNow(ctx);
+      socket.emit("admin:op-result", { ok: true });
     });
   }));
 
@@ -914,6 +940,73 @@ function kickUserSockets(
     ctx.io.in(socketId).socketsLeave("authenticated");
     ctx.authenticatedSockets.delete(socketId);
   }
+}
+
+/** True when the single-session limit applies to this role (admins are exempt). */
+function singleSessionApplies(ctx: ServerContext, role: "admin" | "regular"): boolean {
+  return ctx.singleSessionPerUser && role !== "admin";
+}
+
+/**
+ * True if `callsign` is already held by a live socket belonging to a different client
+ * (browser/app) and the single-session limit applies. Used to reject token-resume
+ * reconnects so a kicked client's stale in-memory token can't kick the new session back.
+ */
+export function isSessionHeldElsewhere(
+  ctx: ServerContext,
+  callsign: string,
+  role: "admin" | "regular",
+  clientId: string
+): boolean {
+  if (!singleSessionApplies(ctx, role)) return false;
+  for (const info of ctx.authenticatedSockets.values()) {
+    if (info.callsign === callsign && info.clientId !== clientId) return true;
+  }
+  return false;
+}
+
+/**
+ * Kicks every other-client session of `callsign` (newest wins) and frees the PTT/CW/video/mic
+ * each held. Sockets sharing `keepClientId` (other tabs of the same browser) are left alone.
+ */
+export function displaceOtherSessions(
+  ctx: ServerContext,
+  callsign: string,
+  role: "admin" | "regular",
+  keepClientId: string,
+  ip: string
+): void {
+  if (!singleSessionApplies(ctx, role)) return;
+  const displaced: [string, AuthenticatedSocket][] = [];
+  ctx.authenticatedSockets.forEach((info, socketId) => {
+    if (info.callsign === callsign && info.clientId !== keepClientId) displaced.push([socketId, info]);
+  });
+  for (const [socketId, info] of displaced) {
+    ctx.io.to(socketId).emit("auth:kicked", { reason: "session_replaced" });
+    ctx.io.in(socketId).socketsLeave("authenticated");
+    ctx.authenticatedSockets.delete(socketId);
+    ctx.releaseSocketResources(socketId, info.clientId);
+    appendAudit(ctx, {
+      ts: new Date().toISOString(),
+      event: "session_replaced",
+      callsign,
+      ip,
+      detail: `replaced session from ${info.ip}`,
+    });
+  }
+}
+
+/** On enabling the limit, collapse each non-admin callsign's sessions down to its newest client. */
+function enforceSingleSessionNow(ctx: ServerContext): void {
+  const newest = new Map<string, AuthenticatedSocket>();
+  ctx.authenticatedSockets.forEach((info) => {
+    if (info.role === "admin") return;
+    const cur = newest.get(info.callsign);
+    if (!cur || info.connectedAt > cur.connectedAt) newest.set(info.callsign, info);
+  });
+  newest.forEach((keep, callsign) => {
+    displaceOtherSessions(ctx, callsign, keep.role, keep.clientId, keep.ip);
+  });
 }
 
 function toUserSummaries(users: UserRecord[]): UserSummary[] {

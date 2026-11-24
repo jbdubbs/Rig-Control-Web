@@ -143,6 +143,7 @@ export default function App() {
     currentUser,
     mustChangePassword,
     loginError,
+    authNotice,
     retryAfter,
     login,
     logout,
@@ -750,6 +751,7 @@ export default function App() {
       <LoginScreen
         onLogin={login}
         loginError={loginError}
+        notice={authNotice}
         retryAfter={retryAfter}
       />
     );

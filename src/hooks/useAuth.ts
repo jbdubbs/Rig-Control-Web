@@ -13,11 +13,19 @@ export interface AuthUser {
   role: "admin" | "regular";
 }
 
+/** Login-screen notice for a session ended by the single-session limit (#130); null for other reasons. */
+export function sessionNoticeFor(reason: unknown): string | null {
+  return reason === "session_replaced" || reason === "session_elsewhere"
+    ? "You were signed out because this account is signed in on another device."
+    : null;
+}
+
 interface UseAuthReturn {
   authState: AuthState;
   currentUser: AuthUser | null;
   mustChangePassword: boolean;
   loginError: string;
+  authNotice: string | null;
   retryAfter: number;
   login: (callsign: string, password: string) => void;
   logout: () => void;
@@ -29,12 +37,15 @@ export function useAuth(socket: Socket | null): UseAuthReturn {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [retryAfter, setRetryAfter] = useState(0);
 
   useEffect(() => {
     if (!socket) return;
 
-    const onAuthRequired = () => {
+    const onAuthRequired = (data?: { reason?: string }) => {
+      const notice = sessionNoticeFor(data?.reason);
+      if (notice) setAuthNotice(notice);
       setAuthState("unauthenticated");
       setCurrentUser(null);
     };
@@ -51,6 +62,7 @@ export function useAuth(socket: Socket | null): UseAuthReturn {
       mustChangePassword?: boolean;
     }) => {
       localStorage.setItem("auth-token", token);
+      setAuthNotice(null);
       if (callsign && role) {
         setCurrentUser({ callsign, role });
       }
@@ -79,6 +91,7 @@ export function useAuth(socket: Socket | null): UseAuthReturn {
         }
         setCurrentUser({ callsign: data.callsign, role: data.role });
         setLoginError("");
+        setAuthNotice(null);
         setRetryAfter(0);
         if (data.mustChangePassword) {
           setMustChangePassword(true);
@@ -95,6 +108,7 @@ export function useAuth(socket: Socket | null): UseAuthReturn {
 
     const onKicked = ({ reason }: { reason: string }) => {
       console.log(`[AUTH] Kicked: ${reason}`);
+      setAuthNotice(sessionNoticeFor(reason));
       localStorage.removeItem("auth-token");
       setAuthState("unauthenticated");
       setCurrentUser(null);
@@ -166,6 +180,7 @@ export function useAuth(socket: Socket | null): UseAuthReturn {
     currentUser,
     mustChangePassword,
     loginError,
+    authNotice,
     retryAfter,
     login,
     logout,

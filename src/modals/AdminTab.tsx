@@ -33,6 +33,7 @@ interface SystemInfo {
   certExpiry: string;
   port: number;
   portSource: "env" | "config" | "default";
+  singleSessionPerUser: boolean;
 }
 
 interface LockoutEntry {
@@ -221,6 +222,12 @@ export default function AdminTab({ socket, callsign }: Props) {
     socket?.emit("admin:modify-user", { callsign: resetPwTarget, password: resetPwValue });
     setResetPwTarget(null);
     setResetPwValue("");
+  };
+
+  const handleToggleSingleSession = (enabled: boolean) => {
+    if (opPending) return;
+    beginOp();
+    socket?.emit("admin:set-single-session", { enabled });
   };
 
   const handleChangeRole = (target: string, currentRole: "admin" | "regular") => {
@@ -414,6 +421,19 @@ export default function AdminTab({ socket, callsign }: Props) {
 
       {/* ── Active Sessions ─────────────────────────────────────────── */}
       <Section title="Active Sessions">
+        <label className="flex items-start gap-2 mb-2 text-xs text-muted cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={systemInfo?.singleSessionPerUser ?? false}
+            disabled={!systemInfo || opPending}
+            onChange={(e) => handleToggleSingleSession(e.target.checked)}
+          />
+          <span>
+            Limit each user to one active session. A new login signs the older one out. Tabs of one browser count as
+            one session. Admin accounts are exempt.
+          </span>
+        </label>
         {sessions.length === 0 ? (
           <p className="text-xs text-faint-2">No active sessions</p>
         ) : (

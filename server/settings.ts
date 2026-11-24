@@ -50,6 +50,7 @@ export function loadSettings(ctx: ServerContext, settingsFile: string): void {
     if (data.spectrumSettings) {
       ctx.spectrumSettings = { ...ctx.spectrumSettings, ...data.spectrumSettings };
     }
+    ctx.singleSessionPerUser = data.singleSessionPerUser === true;
     if (data.swrProtection) {
       ctx.swrProtection = {
         enabled: data.swrProtection.enabled === true,
@@ -89,6 +90,7 @@ export function saveSettings(ctx: ServerContext, settingsFile: string): void {
       cwSettings: ctx.cwSettings,
       spectrumSettings: ctx.spectrumSettings,
       swrProtection: ctx.swrProtection,
+      singleSessionPerUser: ctx.singleSessionPerUser,
       debugFlags,
     }, null, 2));
   } catch (e) {

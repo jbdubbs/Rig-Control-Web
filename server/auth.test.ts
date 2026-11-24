@@ -1,7 +1,10 @@
 // @vitest-environment node
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
-import { issueToken, requireAdmin, requireAuth } from './auth.ts';
+import { displaceOtherSessions, isSessionHeldElsewhere, issueToken, requireAdmin, requireAuth } from './auth.ts';
 
 function fakeSocket(id = 'socket-1') {
   return { id, emit: vi.fn() } as any;
@@ -92,5 +95,60 @@ describe('issueToken', () => {
     const token = issueToken('W1ABC', 'regular', ctx);
 
     expect(() => jwt.verify(token, 'wrong-secret')).toThrow();
+  });
+});
+
+describe('single-session limit (#130)', () => {
+  function sessionCtx(enabled: boolean, entries: [string, any][]) {
+    const emit = vi.fn();
+    const ctx = {
+      authenticatedSockets: new Map(entries),
+      singleSessionPerUser: enabled,
+      dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'rcw-auth-test-')),
+      io: { to: vi.fn(() => ({ emit })), in: vi.fn(() => ({ socketsLeave: vi.fn() })) },
+      releaseSocketResources: vi.fn(),
+    } as any;
+    return { ctx, emit };
+  }
+  const sess = (callsign: string, clientId: string, role = 'regular', connectedAt = 0) =>
+    ({ callsign, role, connectedAt, ip: '10.0.0.1', clientId });
+
+  it('displaces other-client sessions of the same callsign and keeps same-client tabs', () => {
+    const { ctx, emit } = sessionCtx(true, [
+      ['old', sess('W1ABC', 'client-a')],
+      ['tab2', sess('W1ABC', 'client-b')],
+      ['other', sess('K2XYZ', 'client-a')],
+    ]);
+
+    displaceOtherSessions(ctx, 'W1ABC', 'regular', 'client-b', '10.0.0.2');
+
+    expect(ctx.authenticatedSockets.has('old')).toBe(false);
+    expect(ctx.authenticatedSockets.has('tab2')).toBe(true);
+    expect(ctx.authenticatedSockets.has('other')).toBe(true);
+    expect(emit).toHaveBeenCalledWith('auth:kicked', { reason: 'session_replaced' });
+    expect(ctx.releaseSocketResources).toHaveBeenCalledWith('old', 'client-a');
+    expect(ctx.releaseSocketResources).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a no-op when the limit is off', () => {
+    const { ctx } = sessionCtx(false, [['old', sess('W1ABC', 'client-a')]]);
+    displaceOtherSessions(ctx, 'W1ABC', 'regular', 'client-b', '10.0.0.2');
+    expect(ctx.authenticatedSockets.has('old')).toBe(true);
+  });
+
+  it('exempts admins', () => {
+    const { ctx } = sessionCtx(true, [['old', sess('ADMIN', 'client-a', 'admin')]]);
+    displaceOtherSessions(ctx, 'ADMIN', 'admin', 'client-b', '10.0.0.2');
+    expect(ctx.authenticatedSockets.has('old')).toBe(true);
+    expect(isSessionHeldElsewhere(ctx, 'ADMIN', 'admin', 'client-b')).toBe(false);
+  });
+
+  it('rejects a token resume only when a different client holds the session', () => {
+    const { ctx } = sessionCtx(true, [['s1', sess('W1ABC', 'client-a')]]);
+    expect(isSessionHeldElsewhere(ctx, 'W1ABC', 'regular', 'client-b')).toBe(true);
+    expect(isSessionHeldElsewhere(ctx, 'W1ABC', 'regular', 'client-a')).toBe(false);
+    expect(isSessionHeldElsewhere(ctx, 'K2XYZ', 'regular', 'client-b')).toBe(false);
+    ctx.singleSessionPerUser = false;
+    expect(isSessionHeldElsewhere(ctx, 'W1ABC', 'regular', 'client-b')).toBe(false);
   });
 });

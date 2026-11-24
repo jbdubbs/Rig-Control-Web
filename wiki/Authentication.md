@@ -78,6 +78,8 @@ Lists all currently authenticated connections with their callsign, role, IP addr
 
 **Force Logout** disconnects a specific session. The affected client is sent an `auth:kicked` event and returns to the login screen.
 
+**Limit each user to one active session** (checkbox, off by default) lets an account be signed in on only one browser or app at a time. When another browser, device or the desktop app signs in with the password, the older one is signed out and shown "You were signed out because this account is signed in on another device." Tabs of the same browser share one session, so they never sign each other out. Admin accounts are exempt. Turning the option on immediately signs out all but the newest session of each regular user. A signed-out client cannot rejoin from its saved login while another device holds the session; it must sign in again.
+
 ### Audit Log
 
 A timestamped log of authentication events (newest first). Events recorded:
@@ -88,6 +90,8 @@ A timestamped log of authentication events (newest first). Events recorded:
 | `login_failed` | Failed login attempt (bad credentials or non-existent user) |
 | `logout` | User-initiated logout |
 | `force_logout` | Admin-forced session termination |
+| `session_replaced` | A new login signed out an older session (single-session limit) |
+| `single_session_changed` | Admin turned the single-session limit on or off |
 | `password_changed` | Successful self-service password change |
 | `user_created` | Admin created a new user |
 | `user_deleted` | Admin deleted a user |

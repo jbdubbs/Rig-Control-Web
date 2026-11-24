@@ -127,3 +127,33 @@ describe('AdminTab mutation double-click guard', () => {
     }
   });
 });
+
+describe('AdminTab single-session toggle (#130)', () => {
+  const sysInfo = (singleSessionPerUser: boolean) => ({
+    version: '1', uptime: 0, nodeVersion: 'v1', certExpiry: 'x', port: 3000, portSource: 'default', singleSessionPerUser,
+  });
+
+  it('reflects the server state and emits admin:set-single-session once per click', () => {
+    const socket = makeFakeSocket();
+    render(<AdminTab socket={socket} callsign="ADMIN" />);
+    act(() => socket.__emitServerEvent('admin:system-info', sysInfo(false)));
+
+    const box = screen.getByRole('checkbox') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+
+    fireEvent.click(box);
+    fireEvent.click(box);
+
+    const calls = socket.emit.mock.calls.filter((c: any[]) => c[0] === 'admin:set-single-session');
+    expect(calls.length).toBe(1);
+    expect(calls[0][1]).toEqual({ enabled: true });
+  });
+
+  it('shows checked when the server reports the limit enabled', () => {
+    const socket = makeFakeSocket();
+    render(<AdminTab socket={socket} callsign="ADMIN" />);
+    act(() => socket.__emitServerEvent('admin:system-info', sysInfo(true)));
+
+    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true);
+  });
+});
