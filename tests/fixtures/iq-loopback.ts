@@ -35,8 +35,12 @@ export const IQ_LOOPBACK_INPUT_NAME = `${NODE_NAME}.output`;
 
 let child: ChildProcess | null = null;
 
+// A long-lived PipeWire session's pw-dump exceeds execSync's 1 MB default (observed 1.7 MB), which
+// throws ENOBUFS. Same limit as audio-loopback.ts.
+const PW_DUMP_MAX_BUFFER = 64 * 1024 * 1024;
+
 function findLoopbackSourceNodeId(): string {
-  const dump = JSON.parse(execSync('pw-dump').toString()) as Array<{ id: number; info?: { props?: Record<string, unknown> } }>;
+  const dump = JSON.parse(execSync('pw-dump', { maxBuffer: PW_DUMP_MAX_BUFFER }).toString()) as Array<{ id: number; info?: { props?: Record<string, unknown> } }>;
   const found = dump.find((obj) => obj.info?.props?.['node.name'] === IQ_LOOPBACK_INPUT_NAME);
   if (!found) throw new Error(`pw-dump: could not find ${IQ_LOOPBACK_INPUT_NAME} node id`);
   return String(found.id);
@@ -131,7 +135,7 @@ export async function stopIqLoopback(): Promise<void> {
   // down its nodes/links yet.
   await pollUntil(() => {
     try {
-      const dump = JSON.parse(execSync('pw-dump').toString()) as Array<{ info?: { props?: Record<string, unknown> } }>;
+      const dump = JSON.parse(execSync('pw-dump', { maxBuffer: PW_DUMP_MAX_BUFFER }).toString()) as Array<{ info?: { props?: Record<string, unknown> } }>;
       return !dump.some((obj) => obj.info?.props?.['node.name'] === NODE_NAME || obj.info?.props?.['node.name'] === IQ_LOOPBACK_INPUT_NAME);
     } catch {
       return false;
