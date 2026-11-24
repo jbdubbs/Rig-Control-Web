@@ -74,7 +74,7 @@ try {
 
   console.log(`[rigctld-win-cross] Configuring for ${MINGW_PREFIX}...`);
   execSync(
-    `./configure --host=${MINGW_PREFIX} --disable-shared --enable-static --without-tcl --without-cxx-binding LDFLAGS="-static-libgcc -static-libstdc++"`,
+    `./configure --host=${MINGW_PREFIX} --disable-shared --enable-static --without-tcl --without-cxx-binding --without-libusb LDFLAGS="-static-libgcc -static-libstdc++"`,
     {
       cwd: srcDir,
       stdio: "inherit",
